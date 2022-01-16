@@ -1,0 +1,435 @@
+/* w.h (wasm writer) -- esl */
+
+#ifndef _W_H_INCLUDED
+#define _W_H_INCLUDED
+
+/* WASM writer */
+
+typedef enum {
+  NT_I32 = 0x7F,
+  NT_I64 = 0x7E,
+  NT_F32 = 0x7D,
+  NT_F64 = 0x7C,
+  VT_V128 = 0x7B,
+  RT_FUNCREF = 0x70,
+  RT_EXTERNREF = 0x6F
+} valtype_t;
+
+typedef enum {
+  FT_FUNCTYPE = 0x60 /* followed by two vectors of parameter and result types */
+} functype_t;
+
+typedef enum {
+  LT_MIN = 0x00,     /* followed by single u32 */
+  LT_MINMAX = 0x01   /* followed by two u32s */
+} limtype_t;
+
+typedef enum {
+  MT_CONST = 0x00,   /* follows valtype */
+  MT_VAR = 0x01      /* follows valtype */
+} muttype_t;
+
+typedef enum {
+  SI_CUSTOM = 0,
+  SI_TYPE = 1,
+  SI_IMPORT = 2,
+  SI_FUNCTION = 3,
+  SI_TABLE = 4,
+  SI_MEMORY = 5,
+  SI_GLOBAL = 6,
+  SI_EXPORT = 7,
+  SI_START = 8,
+  SI_ELEMENT = 9,
+  SI_CODE = 10,
+  SI_DATA = 11,
+  SI_DATACOUNT = 12
+} secid_t;
+
+typedef enum {
+  EK_FUNC = 0x00,
+  EK_TABLE = 0x01,
+  EK_MEM = 0x02,
+  EK_GLOBAL = 0x03,
+} entkind_t;
+
+typedef enum {
+  DS_ACTIVE /* ex bv */ = 0x00,
+  DS_PASSIVE /* bv */ = 0x01,
+  DS_ACTIVE_MI /* mi ex bv */ = 0x02 /* not used */
+} dsmode_t;
+
+typedef enum {
+  ELK_FUNCREF = 0x00
+} elemkind_t;
+
+typedef enum {
+  ES_ACTIVE_EIV /* e fiv */ = 0x00,
+  ES_PASSIVE_KIV /* k fiv */ = 0x01,
+  ES_ACTIVE_TEKIV /* ti e k fiv */ = 0x02,
+  ES_DECLVE_KIV /* k fiv */ = 0x03,
+  ES_ACTIVE_EEV /* e ev */ = 0x04,
+  ES_PASSIVE_TEV /* rt ev */ = 0x05,
+  ES_ACTIVE_IETEV /* ti e rt ev */ = 0x06,
+  ES_DECLVE_TEV /* rt ev */ = 0x07
+} esmode_t;
+
+typedef enum {
+  IN_UNREACHABLE = 0x00,
+  IN_NOP = 0x01,
+  IN_BLOCK /* [t]? */ = 0x02,
+  IN_LOOP /* [t]? */ = 0x03,
+  IN_IF /* [t]? */ = 0x04,
+  IN_ELSE = 0x05,
+  /* reserved: 0x06..0x0A */
+  IN_END = 0x0B,
+  IN_BR /* l */ = 0x0C,
+  IN_BR_IF /* l */ = 0x0D,
+  IN_BR_TABLE /* l* l */ = 0x0E,
+  IN_RETURN = 0x0F,
+  IN_CALL /* x */ = 0x10,
+  IN_CALL_INDIRECT /* x */ = 0x11,
+  IN_RETURN_CALL /* x */ = 0x12, /* not in core-1 */
+  IN_RETURN_CALL_INDIRECT /* x */ = 0x13, /* not in core-1 */
+  /* reserved: 0x14..0x19 */
+  IN_DROP = 0x1A,
+  IN_SELECT = 0x1B,
+  IN_SELECT_T = 0x1C, /* not in core-1 */
+  /* reserved: 0x1D..0x1F */
+  IN_LOCAL_GET /* x */ = 0x20,
+  IN_LOCAL_SET /* x */ = 0x21,
+  IN_LOCAL_TEE /* x */ = 0x22,
+  IN_GLOBAL_GET /* x */ = 0x23,
+  IN_GLOBAL_SET /* x */ = 0x24,
+  IN_TABLE_GET /* x */ = 0x25, /* not in core-1 */
+  IN_TABLE_SET /* x */ = 0x26, /* not in core-1 */
+  /* reserved: 0x27 */
+  IN_I32_LOAD /* memarg */ = 0x28,
+  IN_I64_LOAD /* memarg */ = 0x29,
+  IN_F32_LOAD /* memarg */ = 0x2A,
+  IN_F64_LOAD /* memarg */ = 0x2B,
+  IN_I32_LOAD8_S /* memarg */ = 0x2C,
+  IN_I32_LOAD8_U /* memarg */ = 0x2D,
+  IN_I32_LOAD16_S /* memarg */ = 0x2E,
+  IN_I32_LOAD16_U /* memarg */ = 0x2F,
+  IN_I64_LOAD8_S /* memarg */ = 0x30,
+  IN_I64_LOAD8_U /* memarg */ = 0x31,
+  IN_I64_LOAD16_S /* memarg */ = 0x32,
+  IN_I64_LOAD16_U /* memarg */ = 0x33,
+  IN_I64_LOAD32_S /* memarg */ = 0x34,
+  IN_I64_LOAD32_U /* memarg */ = 0x35,
+  IN_I32_STORE /* memarg */ = 0x36,
+  IN_I64_STORE /* memarg */ = 0x37,
+  IN_F32_STORE /* memarg */ = 0x38,
+  IN_F64_STORE /* memarg */ = 0x39,
+  IN_I32_STORE8 /* memarg */ = 0x3A,
+  IN_I32_STORE16 /* memarg */ = 0x3B,
+  IN_I64_STORE8 /* memarg */ = 0x3C,
+  IN_I64_STORE16 /* memarg */ = 0x3D,
+  IN_I64_STORE32 /* memarg */ = 0x3E,
+  IN_MEMORY_SIZE = 0x3F,
+  IN_MEMORY_GROW = 0x40,
+  IN_I32_CONST /* i32 */ = 0x41,
+  IN_I64_CONST /* i64 */ = 0x42,
+  IN_F32_CONST /* f32 */ = 0x43,
+  IN_F64_CONST /* f64 */ = 0x44,
+  IN_I32_EQZ = 0x45,
+  IN_I32_EQ = 0x46,
+  IN_I32_NE = 0x47,
+  IN_I32_LT_S = 0x48,
+  IN_I32_LT_U = 0x49,
+  IN_I32_GT_S = 0x4A,
+  IN_I32_GT_U = 0x4B,
+  IN_I32_LE_S = 0x4C,
+  IN_I32_LE_U = 0x4D,
+  IN_I32_GE_S = 0x4E,
+  IN_I32_GE_U = 0x4F,
+  IN_I64_EQZ = 0x50,
+  IN_I64_EQ = 0x51,
+  IN_I64_NE = 0x52,
+  IN_I64_LT_S = 0x53,
+  IN_I64_LT_U = 0x54,
+  IN_I64_GT_S = 0x55,
+  IN_I64_GT_U = 0x56,
+  IN_I64_LE_S = 0x57,
+  IN_I64_LE_U = 0x58,
+  IN_I64_GE_S = 0x59,
+  IN_I64_GE_U = 0x5A,
+  IN_F32_EQ = 0x5B,
+  IN_F32_NE = 0x5C,
+  IN_F32_LT = 0x5D,
+  IN_F32_GT = 0x5E,
+  IN_F32_LE = 0x5F,
+  IN_F32_GE = 0x60,
+  IN_F64_EQ = 0x61,
+  IN_F64_NE = 0x62,
+  IN_F64_LT = 0x63,
+  IN_F64_GT = 0x64,
+  IN_F64_LE = 0x65,
+  IN_F64_GE = 0x66,
+  IN_I32_CLZ = 0x67,
+  IN_I32_CTZ = 0x68,
+  IN_I32_POPCNT = 0x69,
+  IN_I32_ADD = 0x6A,
+  IN_I32_SUB = 0x6B,
+  IN_I32_MUL = 0x6C,
+  IN_I32_DIV_S = 0x6D,
+  IN_I32_DIV_U = 0x6E,
+  IN_I32_REM_S = 0x6F,
+  IN_I32_REM_U = 0x70,
+  IN_I32_AND = 0x71,
+  IN_I32_OR = 0x72,
+  IN_I32_XOR = 0x73,
+  IN_I32_SHL = 0x74,
+  IN_I32_SHR_S = 0x75,
+  IN_I32_SHR_U = 0x76,
+  IN_I32_ROTL = 0x77,
+  IN_I32_ROTR = 0x78,
+  IN_I64_CLZ = 0x79,
+  IN_I64_CTZ = 0x7A,
+  IN_I64_POPCNT = 0x7B,
+  IN_I64_ADD = 0x7C,
+  IN_I64_SUB = 0x7D,
+  IN_I64_MUL = 0x7E,
+  IN_I64_DIV_S = 0x7F,
+  IN_I64_DIV_U = 0x80,
+  IN_I64_REM_S = 0x81,
+  IN_I64_REM_U = 0x82,
+  IN_I64_AND = 0x83,
+  IN_I64_OR = 0x84,
+  IN_I64_XOR = 0x85,
+  IN_I64_SHL = 0x86,
+  IN_I64_SHR_S = 0x87,
+  IN_I64_SHR_U = 0x88,
+  IN_I64_ROTL = 0x89,
+  IN_I64_ROTR = 0x8A,
+  IN_F32_ABS = 0x8B,
+  IN_F32_NEG = 0x8C,
+  IN_F32_CEIL = 0x8D,
+  IN_F32_FLOOR = 0x8E,
+  IN_F32_TRUNC = 0x8F,
+  IN_F32_NEAREST = 0x90,
+  IN_F32_SQRT = 0x91,
+  IN_F32_ADD = 0x92,
+  IN_F32_SUB = 0x93,
+  IN_F32_MUL = 0x94,
+  IN_F32_DIV = 0x95,
+  IN_F32_MIN = 0x96,
+  IN_F32_MAX = 0x97,
+  IN_F32_COPYSIGN = 0x98,
+  IN_F64_ABS = 0x99,
+  IN_F64_NEG = 0x9A,
+  IN_F64_CEIL = 0x9B,
+  IN_F64_FLOOR = 0x9C,
+  IN_F64_TRUNC = 0x9D,
+  IN_F64_NEAREST = 0x9E,
+  IN_F64_SQRT = 0x9F,
+  IN_F64_ADD = 0xA0,
+  IN_F64_SUB = 0xA1,
+  IN_F64_MUL = 0xA2,
+  IN_F64_DIV = 0xA3,
+  IN_F64_MIN = 0xA4,
+  IN_F64_MAX = 0xA5,
+  IN_F64_COPYSIGN = 0xA6,
+  IN_I32_WRAP_I64 = 0xA7,
+  IN_I32_TRUNC_F32_S = 0xA8,
+  IN_I32_TRUNC_F32_U = 0xA9,
+  IN_I32_TRUNC_F64_S = 0xAA,
+  IN_I32_TRUNC_F64_U = 0xAB,
+  IN_I64_EXTEND_I32_S = 0xAC,
+  IN_I64_EXTEND_I32_U = 0xAD,
+  IN_I64_TRUNC_F32_S = 0xAE,
+  IN_I64_TRUNC_F32_U = 0xAF,
+  IN_I64_TRUNC_F64_S = 0xB0,
+  IN_I64_TRUNC_F64_U = 0xB1,
+  IN_F32_CONVERT_I32_S = 0xB2,
+  IN_F32_CONVERT_I32_U = 0xB3,
+  IN_F32_CONVERT_I64_S = 0xB4,
+  IN_F32_CONVERT_I64_U = 0xB5,
+  IN_F32_DEMOTE_F64 = 0xB6,
+  IN_F64_CONVERT_I32_S = 0xB7,
+  IN_F64_CONVERT_I32_U = 0xB8,
+  IN_F64_CONVERT_I64_S = 0xB9,
+  IN_F64_CONVERT_I64_U = 0xBA,
+  IN_F64_PROMOTE_F32 = 0xBB,
+  IN_I32_REINTERPRET_F32 = 0xBC,
+  IN_I64_REINTERPRET_F64 = 0xBD,
+  IN_F32_REINTERPRET_I32 = 0xBE,
+  IN_F64_REINTERPRET_I64 = 0xBF,
+  IN_I32_EXTEND8_S = 0xC0, /* not in core-1 */
+  IN_I32_EXTEND16_S = 0xC1, /* not in core-1 */
+  IN_I64_EXTEND8_S = 0xC2, /* not in core-1 */
+  IN_I64_EXTEND16_S = 0xC3, /* not in core-1 */
+  IN_I64_EXTEND32_S = 0xC4, /* not in core-1 */
+  /* reserved: 0xC5..0xCF */
+  IN_REF_NULL /* t */ = 0xD0, /* not in core-1 */
+  IN_REF_IS_NULL = 0xD1, /* not in core-1 */
+  IN_REF_FUNC /* x */ = 0xD2, /* not in core-1 */
+  /* reserved: 0xD3..0xFB */
+  IN_EXTENDED_1 /* INX1_... */ = 0xFC, /* not in core-1 */
+  IN_EXTENDED_2 /* INX2_... */ = 0xFD, /* not in core-1 */
+  /* reserved: 0xFE..0xFF */
+} instr_t;
+
+
+/* low-level emits */
+
+extern void emit_header(void);
+extern void emit_section_start(secid_t si);
+extern void emit_section_bumpc(void);
+extern void emit_section_end(void);
+extern void emit_subsection_start(unsigned ssi);
+extern void emit_subsection_end(void);
+extern void emit_code_start(void);
+extern void emit_code_end(void);
+extern void emit_byte(unsigned b);
+extern void emit_data(chbuf_t *pcb);
+extern void emit_signed(long long val);
+extern void emit_unsigned(unsigned long long val);
+extern void emit_float(float val);
+extern void emit_double(double val);
+extern void emit_name(const char *name);
+extern void emit_in(instr_t in);
+
+
+/* mid-level representations */
+
+typedef buf_t vtbuf_t; 
+typedef struct funcsig_tag {
+  /* todo: add hash */ 
+  vtbuf_t argtypes;   /* of valtype_t */ 
+  vtbuf_t rettypes;   /* of valtype_t */
+} funcsig_t;
+
+extern funcsig_t* fsinit(funcsig_t* pf);
+extern void fsfini(funcsig_t* pf);
+typedef buf_t fsbuf_t; 
+#define fsbinit(mem) bufinit(mem, sizeof(funcsig_t))
+extern void fsbfini(fsbuf_t* pb);
+#define fsblen(pb) buflen(pb)
+#define fsbref(pb, i) ((funcsig_t*)bufref(pb, i))
+#define fsbnewbk(pb) fsinit(bufnewbk(pb))
+extern unsigned fsintern(fsbuf_t* pb, funcsig_t *pfs); /* may clear pfs */
+extern unsigned funcsig(fsbuf_t* pb, size_t argc, size_t retc, ...);
+
+typedef struct inscode_tag {
+  sym_t relkey; /* 0 or relocation table key */
+  instr_t in; 
+  union { long long s; unsigned long long u; float f; double d; } arg;
+  unsigned align; 
+} inscode_t;
+
+typedef buf_t icbuf_t; 
+#define icbinit(mem) bufinit(mem, sizeof(inscode_t))
+#define icbfini(pb) buffini(pb)
+#define icblen(pb) buflen(pb)
+#define icbref(pb, i) (inscode_t*)bufref(pb, i)
+#define icbnewbk(pb) (inscode_t*)bufnewbk(pb)
+
+#define vtblen(pb) buflen(pb)
+#define vtbref(pb, i) (valtype_t*)bufref(pb, i)
+#define vtbnewbk(pb) (valtype_t*)bufnewbk(pb)
+#define idxblen(pb) buflen(pb)
+#define idxbref(pb, i) (unsigned*)bufref(pb, i)
+#define idxbnewbk(pb) (unsigned*)bufnewbk(pb)
+
+typedef struct entry_tag {
+  entkind_t ek;     /* as used in import/export sections */
+  sym_t mod;        /* != 0 for imported, 0 for internal */
+  sym_t name;       /* != 0 for imported, may be 0 for internal */
+  unsigned fsi;     /* FUNC: funcsig index */
+  bool isstart;     /* FUNC: this is the start function */ 
+  valtype_t vt;     /* GLOBAL/TABLE: value type (scalar) */
+  muttype_t mut;    /* GLOBAL: var/const */
+  limtype_t lt;     /* TABLE/MEM (imported) */
+  unsigned n;       /* TABLE/MEM (imported) */
+  unsigned m;       /* TABLE/MEM (imported) */
+  vtbuf_t loctypes; /* FUNC: buf of valtype_t, for internal funcs only */ 
+  icbuf_t code;     /* FUNC/GLOBAL/MEM: buf of inscode_t, for internals only  */
+} entry_t;
+
+extern entry_t* entinit(entry_t* pf, entkind_t ek);
+extern void entfini(entry_t* pf);
+typedef buf_t entbuf_t; 
+#define entbinit(mem) bufinit(mem, sizeof(entry_t))
+extern void entbfini(entbuf_t* pb);
+#define entblen(pb) buflen(pb)
+#define entbref(pb, i) ((entry_t*)bufref(pb, i))
+#define entbnewbk(pb, ek) entinit(bufnewbk(pb), ek)
+#define entbins(pb, i, ek) entinit(bufins(pb, i), ek)
+
+typedef struct dseg_tag {
+  dsmode_t dsm;
+  unsigned idx;
+  chbuf_t data;
+  buf_t code;
+} dseg_t;
+
+extern dseg_t* dseginit(dseg_t* ps, dsmode_t dsm);
+extern void dsegfini(dseg_t* ps);
+typedef buf_t dsegbuf_t; 
+#define dsegbinit(mem) bufinit(mem, sizeof(dseg_t))
+extern void dsegbfini(dsegbuf_t* pb);
+#define dsegblen(pb) buflen(pb)
+#define dsegbref(pb, i) ((dseg_t*)bufref(pb, i))
+#define dsegbnewbk(pb, dsm) dseginit(bufnewbk(pb), dsm)
+
+typedef struct eseg_tag {
+  esmode_t esm;
+  unsigned idx; /* tableidx */
+  elemkind_t ek; /* 0 (funcref) */
+  valtype_t rt; /* RT_XXX only */ 
+  buf_t fidxs; /* of unsigned funcidx */
+  buf_t code; /* of inscode_t */
+  size_t cdc; /* count of code runs in codes */
+  buf_t codes; /* of cdc inscode_t runs each ending in IN_END */
+} eseg_t;
+
+extern eseg_t* eseginit(eseg_t* ps, esmode_t esm);
+extern void esegfini(eseg_t* ps);
+typedef buf_t esegbuf_t; 
+#define esegbinit(mem) bufinit(mem, sizeof(eseg_t))
+extern void esegbfini(esegbuf_t* pb);
+#define esegblen(pb) buflen(pb)
+#define esegbref(pb, i) ((eseg_t*)bufref(pb, i))
+#define esegbnewbk(pb, esm) eseginit(bufnewbk(pb), esm)
+
+
+/* mid-level emits */
+
+extern void emit_types(fsbuf_t *pfdb);
+extern void emit_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb);
+extern void emit_funcs(entbuf_t *pfdb);
+extern void emit_tables(entbuf_t *ptdb);
+extern void emit_mems(entbuf_t *pmdb);
+extern void emit_globals(entbuf_t *pgdb, icbuf_t *prelb);
+extern void emit_exports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb);
+extern void emit_start(entbuf_t *pfdb);
+extern void emit_elems(dsegbuf_t *pesb, icbuf_t *prelb);
+extern void emit_datacount(dsegbuf_t *pdsb);
+extern void emit_codes(entbuf_t *pfdb, icbuf_t *prelb);
+extern void emit_datas(dsegbuf_t *pdsb, icbuf_t *prelb);
+
+
+/* top-level representations */
+
+typedef struct module_tag {
+  fsbuf_t funcsigs;
+  entbuf_t funcdefs; 
+  entbuf_t tabdefs; 
+  entbuf_t memdefs; 
+  entbuf_t globdefs; 
+  esegbuf_t elemdefs;
+  dsegbuf_t datadefs;
+  icbuf_t reloctab;
+} module_t;
+
+extern module_t* modinit(module_t* pm);
+extern void modfini(module_t* pm);
+
+
+/* top-level emits */
+
+extern void emit_module(module_t* pm);
+
+
+#endif /* ndef _W_H_INCLUDED */
