@@ -2852,7 +2852,35 @@ static void parse_define_directive(pws_t *pw, int startpos)
   }
 }
 
-/* parse single top-level declaration/definition */
+static void parse_include_directive(pws_t *pw, node_t *pn, int startpos)
+{
+  chbuf_t cb; bool gotdot = false;
+  chbinit(&cb);
+  dropt(pw);
+  expect(pw, TT_LT, "<");
+  while (peekt(pw) != TT_GT) {
+    if (peekt(pw) == TT_DOT) {
+      dropt(pw); gotdot = true;
+    } else if (!gotdot && peekt(pw) == TT_IDENTIFIER) {
+      chbputs(pw->tokstr, &cb); dropt(pw);
+    } else if (!gotdot && peekt(pw) == TT_SLASH) {
+      chbputc('.', &cb); dropt(pw);
+    } else if (gotdot && peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "h")) {
+      dropt(pw); break;
+    } else if (gotdot && peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "wh")) {
+      dropt(pw); break;
+    } else if (gotdot) {
+      reprintf(pw, peekpos(pw), "unsupported file extension in include directive");
+      break;
+    }
+  }
+  expect(pw, TT_GT, ">");
+  ndset(pn, NT_INCLUDE, pw->id, startpos);
+  pn->name = intern(chbdata(&cb));
+  chbfini(&cb);
+}
+
+/* parse single top-level declaration/definition/directive */
 bool parse_top_form(pws_t *pw, node_t *pn)
 {
   ndclear(pn);
@@ -2870,18 +2898,8 @@ bool parse_top_form(pws_t *pw, node_t *pn)
       } else if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "undef")) {
         parse_define_directive(pw, startpos);
         ndset(pn, NT_BLOCK, pw->id, startpos);
-      } else if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "include")) { 
-        dropt(pw);
-        ndset(pn, NT_INCLUDE, pw->id, startpos);
-        expect(pw, TT_LT, "<");
-        pn->name = getid(pw);
-        if (peekt(pw) == TT_DOT) {
-          dropt(pw);
-          if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "h")) dropt(pw);
-          else if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "wh")) dropt(pw);
-          else reprintf(pw, pw->pos, "invalid module name");
-        }
-        expect(pw, TT_GT, ">");
+      } else if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "include")) {
+        parse_include_directive(pw, pn, startpos); 
       } else {
         reprintf(pw, startpos, "invalid or unsupported preprocessor directive");
       }
