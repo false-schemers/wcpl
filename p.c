@@ -372,11 +372,11 @@ void init_symbols(void)
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
   intern_symbol("ptrdiff_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
-  intern_symbol("sizeof", TT_INTR_NAME, -1);
-  intern_symbol("alignof", TT_INTR_NAME, -1);
-  intern_symbol("offsetof", TT_INTR_NAME, -2);
-  intern_symbol("alloca", TT_INTR_NAME, 1);
-  intern_symbol("static_assert", TT_INTR_NAME, 2);
+  intern_symbol("sizeof", TT_INTR_NAME, INTR_SIZEOF);
+  intern_symbol("alignof", TT_INTR_NAME, INTR_ALIGNOF);
+  intern_symbol("offsetof", TT_INTR_NAME, INTR_OFFSETOF);
+  intern_symbol("alloca", TT_INTR_NAME, INTR_ALLOCA);
+  intern_symbol("static_assert", TT_INTR_NAME, INTR_SASSERT);
 }
 
 /* simple comparison of NT_TYPE nodes for equivalence */
@@ -1904,41 +1904,49 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
     } break;
     case TT_INTR_NAME: {
       /* intrinsic application */
-      int argc = INT_MIN; lookup_symbol(pw->tokstr, &argc);
-      if (argc == INT_MIN) 
+      int intr = INTR_NONE; lookup_symbol(pw->tokstr, &intr);
+      if (intr == INTR_NONE) 
         reprintf(pw, startpos, "use of undefined intrinsic??");
       ndset(pn, NT_INTRCALL, pw->id, startpos);
       pn->name = intern(pw->tokstr); dropt(pw);
-      if (argc == -1) { /* (type) */
-        node_t *ptn = ndnewbk(pn);
-        expect(pw, TT_LPAR, "(");
-        parse_base_type(pw, ptn);
-        if (parse_declarator(pw, ptn)) 
-          reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
-        expect(pw, TT_RPAR, ")"); 
-      } else if (argc == -2) { /* (type, id) */
-        node_t *ptn = ndnewbk(pn);
-        expect(pw, TT_LPAR, "(");
-        parse_base_type(pw, ptn);
-        if (parse_declarator(pw, ptn)) 
-          reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
-        expect(pw, TT_COMMA, ",");
-        ptn = ndnewbk(pn);
-        ndset(ptn, NT_IDENTIFIER, pw->id, peekpos(pw));
-        ptn->name = getid(pw); 
-        expect(pw, TT_RPAR, ")"); 
-      } else { /* (expression, ...) */
-        expect(pw, TT_LPAR, "(");
-        while (peekt(pw) != TT_RPAR) {
-          parse_assignment_expr(pw, ndnewbk(pn));
-          if (peekt(pw) != TT_COMMA) break;
-          dropt(pw); 
-        }
-        expect(pw, TT_RPAR, ")"); 
+      pn->intr = (intr_t)intr;
+      switch (intr) {
+        case INTR_SIZEOF: case INTR_ALIGNOF: { /* (type) */
+          node_t *ptn = ndnewbk(pn);
+          expect(pw, TT_LPAR, "(");
+          parse_base_type(pw, ptn);
+          if (parse_declarator(pw, ptn)) 
+            reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+          expect(pw, TT_RPAR, ")"); 
+        } break;
+        case INTR_OFFSETOF: { /* (type, id) */
+          node_t *ptn = ndnewbk(pn);
+          expect(pw, TT_LPAR, "(");
+          parse_base_type(pw, ptn);
+          if (parse_declarator(pw, ptn)) 
+            reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+          expect(pw, TT_COMMA, ",");
+          ptn = ndnewbk(pn);
+          ndset(ptn, NT_IDENTIFIER, pw->id, peekpos(pw));
+          ptn->name = getid(pw); 
+          expect(pw, TT_RPAR, ")"); 
+        } break;
+        case INTR_ALLOCA: case INTR_SASSERT: { /* (expr ...) */
+          size_t n = 0;
+          expect(pw, TT_LPAR, "(");
+          while (peekt(pw) != TT_RPAR) {
+            parse_assignment_expr(pw, ndnewbk(pn));
+            ++n; 
+            if (peekt(pw) != TT_COMMA) break;
+            dropt(pw); 
+          }
+          expect(pw, TT_RPAR, ")"); 
+          if ((intr == INTR_ALLOCA && n != 1) || 
+              (intr == INTR_SASSERT && !(n == 1 || n == 2)))  
+           reprintf(pw, startpos, "unexpected arguments for %s", symname(pn->name));
+        } break;
+        default: assert(false);
       }
-      if (argc >= 0 && (size_t)argc != ndlen(pn))
-        reprintf(pw, startpos, "%s intrinsic: %d argument(s) expected", 
-                 symname(pn->name), argc);
     } break;
     default:
       reprintf(pw, startpos, "valid expression expected");
@@ -2844,9 +2852,17 @@ static void parse_define_directive(pws_t *pw, int startpos)
       }
       expect(pw, TT_RPAR, ")");
     }  
-    /* righ-hand-side expression or block */    
-    if (peekt(pw) == TT_LBRC) parse_stmt(pw, ndnewbk(pn));
-    else parse_primary_expr(pw, ndnewbk(pn));
+    /* righ-hand-side expression or do-block-while-0 */    
+    if (peekt(pw) == TT_DO_KW) {
+      dropt(pw); parse_stmt(pw, ndnewbk(pn));
+      expect(pw, TT_WHILE_KW, "while");
+      expect(pw, TT_LPAR, "(");
+      if (peekt(pw) == TT_INT && streql(pw->tokstr, "0")) dropt(pw);
+      else reprintf(pw, pw->pos, "0 is expected");
+      expect(pw, TT_RPAR, ")");
+    } else { 
+      parse_primary_expr(pw, ndnewbk(pn));
+    }
     /* save macro definition for future use */
     if (lookup_symbol(symname(pn->name), NULL) != TT_IDENTIFIER) {
       reprintf(pw, startpos, "macro name is already in use");

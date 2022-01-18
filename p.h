@@ -103,6 +103,12 @@ typedef union numval_tag {
   float f; double d;
 } numval_t;
 
+/* intrinsics and special forms */
+typedef enum intr_tag {
+  INTR_NONE,   INTR_ALLOCA,  INTR_SASSERT,
+  INTR_SIZEOF, INTR_ALIGNOF, INTR_OFFSETOF
+} intr_t;
+
 /* grammar node data type */
 typedef enum nt_tag {
   NT_NULL = 0,    /* NOP */
@@ -138,13 +144,15 @@ typedef enum nt_tag {
   NT_INCLUDE,     /* #include <m> */
   NT_IMPORT,      /* m t (symbol table only) */
 } nt_t;
+
 typedef struct node_tag {
   nt_t nt;        /* node type */
   int pwsid;      /* id of origin pws */
   int startpos;   /* start position in origin pws */
-  sym_t name;     /* IDENTIFIER/TYPE/VARDECL/FUNDEF */
+  sym_t name;     /* IDENTIFIER/TYPE/VARDECL/FUNDEF/INTRCALL */
   chbuf_t data;   /* LITERAL (string); data is in utf-8 */
   numval_t val;   /* LITERAL (numeric); type defined by ts */
+  intr_t intr;    /* INTRCALL */
   tt_t op;        /* POSTFIX/PREFIX/INFIX; op is tt of an operator */
   ts_t ts;        /* TYPE/LITERAL */
   sc_t sc;        /* VARDECL/FUNDEF/IMPORT */

@@ -93,12 +93,12 @@ static bool envlookup(env_t *penv, const char *v, size_t *pdepth)
 
 /* type predicates and operations */
 
-static bool type_numerical(ts_t ts) 
+static bool ts_numerical(ts_t ts) 
 {
   return TS_CHAR <= ts && ts <= TS_DOUBLE;
 }
 
-static bool type_unsigned(ts_t ts) 
+static bool ts_unsigned(ts_t ts) 
 {
   switch (ts) {
     case TS_UCHAR: case TS_USHORT: case TS_UINT:
@@ -109,7 +109,7 @@ static bool type_unsigned(ts_t ts)
 }
 
 /* returns TS_INT/TS_UINT/TS_LLONG/TS_ULLONG/TS_FLOAT/TS_DOUBLE */
-static ts_t type_integral_promote(ts_t ts)
+static ts_t ts_integral_promote(ts_t ts)
 {
   switch (ts) {
     case TS_CHAR: case TS_UCHAR: 
@@ -127,12 +127,12 @@ static ts_t type_integral_promote(ts_t ts)
 } 
 
 /* common arith type for ts1 and ts2 (can be promoted one) */
-static ts_t type_arith_common(ts_t ts1, ts_t ts2)
+static ts_t ts_arith_common(ts_t ts1, ts_t ts2)
 {
-  assert(type_numerical(ts1) && type_numerical(ts2));
+  assert(ts_numerical(ts1) && ts_numerical(ts2));
   if (ts1 == TS_DOUBLE || ts2 == TS_DOUBLE) return TS_DOUBLE;
   if (ts1 == TS_FLOAT || ts2 == TS_FLOAT) return TS_FLOAT;
-  ts1 = type_integral_promote(ts1), ts2 = type_integral_promote(ts2);
+  ts1 = ts_integral_promote(ts1), ts2 = ts_integral_promote(ts2);
   if (ts1 == ts2) return ts1;
   if (ts1 == TS_ULLONG || ts2 == TS_ULLONG) return TS_ULLONG;
   if (ts1 == TS_LLONG || ts2 == TS_LLONG) return TS_LLONG;
@@ -185,17 +185,17 @@ long long integral_sext(ts_t ts, long long i)
 void numval_convert(ts_t tsto, ts_t tsfrom, numval_t *pnv)
 {
   assert(pnv);
-  assert(type_numerical(tsto) && type_numerical(tsfrom));
+  assert(ts_numerical(tsto) && ts_numerical(tsfrom));
   if (tsto == tsfrom) return; /* no change */
   else if (tsto == TS_DOUBLE) {
     if (tsfrom == TS_FLOAT) pnv->d = (double)pnv->f;
-    else if (type_unsigned(tsfrom)) pnv->d = (double)pnv->u;
+    else if (ts_unsigned(tsfrom)) pnv->d = (double)pnv->u;
     else pnv->d = (double)pnv->i;
   } else if (tsto == TS_FLOAT) {
     if (tsfrom == TS_DOUBLE) pnv->f = (float)pnv->d;
-    else if (type_unsigned(tsfrom)) pnv->f = (float)pnv->u;
+    else if (ts_unsigned(tsfrom)) pnv->f = (float)pnv->u;
     else pnv->f = (float)pnv->i;
-  } else if (type_unsigned(tsto)) {
+  } else if (ts_unsigned(tsto)) {
     if (tsfrom == TS_DOUBLE) pnv->u = (unsigned long long)pnv->d;
     else if (tsfrom == TS_FLOAT) pnv->u = (unsigned long long)pnv->f;
     else pnv->u = integral_mask(tsto, pnv->u); /* i reinterpreted as u */
@@ -208,7 +208,7 @@ void numval_convert(ts_t tsto, ts_t tsfrom, numval_t *pnv)
 
 ts_t numval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
 {
-  ts_t tz = type_integral_promote(tx);
+  ts_t tz = ts_integral_promote(tx);
   numval_convert(tz, tx, &vx);
   switch (tz) {
     case TS_DOUBLE: {
@@ -259,7 +259,7 @@ ts_t numval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
 
 ts_t numval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t *pvz)
 {
-  ts_t tz = type_arith_common(tx, ty);
+  ts_t tz = ts_arith_common(tx, ty);
   numval_convert(tz, tx, &vx), numval_convert(tz, ty, &vy);
   switch (tz) {
     case TS_DOUBLE: {
@@ -486,7 +486,7 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld)
 bool static_eval_to_int(node_t *pn, int *pri)
 {
   node_t nd; bool ok = false;
-  if (static_eval(pn, ndinit(&nd)) && nd.nt == NT_LITERAL && type_numerical(nd.ts)) {
+  if (static_eval(pn, ndinit(&nd)) && nd.nt == NT_LITERAL && ts_numerical(nd.ts)) {
     numval_t v = nd.val; numval_convert(TS_INT, nd.ts, &v);
     *pri = (int)v.i, ok = true;
   }
@@ -513,20 +513,20 @@ bool static_eval(node_t *pn, node_t *prn)
   /* for now, deal with ints only */
   switch (pn->nt) {
     case NT_LITERAL: {
-      if (type_numerical(pn->ts)) {
+      if (ts_numerical(pn->ts)) {
         ndcpy(prn, pn);
         return true;
       }
     } break;
     case NT_INTRCALL: {
-      if (pn->name == intern("sizeof") || pn->name == intern("alignof")) {
+      if (pn->intr == INTR_SIZEOF || pn->intr == INTR_ALIGNOF) {
         size_t size, align; assert(ndlen(pn) == 1);
         measure_type(ndref(pn, 0), pn, &size, &align, 0);
         ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); prn->ts = TS_INT; 
         if (pn->name == intern("sizeof")) prn->val.i = (int)size;
         else prn->val.i = (int)align;
         return true;
-      } else if (pn->name = intern("offsetof")) {
+      } else if (pn->intr == INTR_OFFSETOF) {
         size_t offset; assert(ndlen(pn) == 2 && ndref(pn, 1)->nt == NT_IDENTIFIER);
         offset = measure_offset(ndref(pn, 0), pn, ndref(pn, 1)->name);
         ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); prn->ts = TS_INT; 
@@ -539,7 +539,7 @@ bool static_eval(node_t *pn, node_t *prn)
       ndinit(&nx);
       assert(ndlen(pn) == 1); 
       if ((static_eval)(ndref(pn, 0), &nx)) {
-        if (nx.nt == NT_LITERAL && type_numerical(nx.ts)) {
+        if (nx.nt == NT_LITERAL && ts_numerical(nx.ts)) {
           numval_t vz; ts_t tz = numval_unop(pn->op, nx.ts, nx.val, &vz);
           if (tz != TS_VOID) {
             ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
@@ -555,7 +555,7 @@ bool static_eval(node_t *pn, node_t *prn)
       ndinit(&nx), ndinit(&ny);
       assert(ndlen(pn) == 2); 
       if ((static_eval)(ndref(pn, 0), &nx) && (static_eval)(ndref(pn, 1), &ny)) {
-        if (nx.nt == NT_LITERAL && type_numerical(nx.ts) && ny.nt == NT_LITERAL && type_numerical(ny.ts)) {
+        if (nx.nt == NT_LITERAL && ts_numerical(nx.ts) && ny.nt == NT_LITERAL && ts_numerical(ny.ts)) {
           numval_t vz; ts_t tz = numval_binop(pn->op, nx.ts, nx.val, ny.ts, ny.val, &vz);
           if (tz != TS_VOID) {
             ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
@@ -570,8 +570,8 @@ bool static_eval(node_t *pn, node_t *prn)
       node_t nr; bool ok = false; int cond;
       ndinit(&nr); assert(ndlen(pn) == 3);
       if (static_eval_to_int(ndref(pn, 0), &cond)) {
-        if (cond) ok = (static_eval)(ndref(pn, 1), &nr) && type_numerical(nr.ts);
-        else ok = (static_eval)(ndref(pn, 2), &nr) && type_numerical(nr.ts);
+        if (cond) ok = (static_eval)(ndref(pn, 1), &nr) && ts_numerical(nr.ts);
+        else ok = (static_eval)(ndref(pn, 2), &nr) && ts_numerical(nr.ts);
         if (ok) {
           ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
           prn->ts = nr.ts; prn->val = nr.val;
@@ -584,8 +584,8 @@ bool static_eval(node_t *pn, node_t *prn)
       node_t nx; ts_t tc; bool ok = false;
       ndinit(&nx);
       assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
-      if ((tc = ndref(pn, 0)->ts) == TS_ENUM || type_numerical(tc)) {
-        if ((static_eval)(ndref(pn, 1), &nx) && type_numerical(nx.ts)) {
+      if ((tc = ndref(pn, 0)->ts) == TS_ENUM || ts_numerical(tc)) {
+        if ((static_eval)(ndref(pn, 1), &nx) && ts_numerical(nx.ts)) {
           numval_t vc = nx.val; if (tc == TS_ENUM) tc = TS_INT;
           numval_convert(tc, nx.ts, &vc);
           ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
@@ -738,21 +738,23 @@ static void process_intrcall(node_t *pn, module_t *pm)
 #ifdef _DEBUG
   dump_node(pn, stderr);
 #endif
-  if (pn->name == intern("static_assert")) {
+  if (pn->intr == INTR_SASSERT) {
     node_t *pen, *psn; int res;
-    assert(ndlen(pn) == 2);
-    pen = ndref(pn, 0), psn = ndref(pn, 1);
-    if (psn->nt != NT_LITERAL || psn->ts != TS_STRING) 
+    assert(ndlen(pn) == 1 || ndlen(pn) == 2);
+    pen = ndref(pn, 0), psn = ndlen(pn) == 2 ? ndref(pn, 1) : NULL;
+    if (psn && (psn->nt != NT_LITERAL || psn->ts != TS_STRING))
       neprintf(pn, "unexpected 2nd arg of static_assert (string literal expected)");
     if (!static_eval_to_int(pen, &res))
       n2eprintf(pen, pn, "unexpected lhs of static_assert comparison (static test expected)");
-    if (res == 0) 
-      neprintf(pn, "static_assert failed (%s)", chbdata(&psn->data));
+    if (res == 0) {
+      if (!psn) neprintf(pn, "static_assert failed");
+      else neprintf(pn, "static_assert failed (%s)", chbdata(&psn->data));
+    }
   } else neprintf(pn, "unexpected top-level form");
 }
 
-/* process single node (from module or include) */
-static void process_node(sym_t mainmod, node_t *pn, module_t *pm)
+/* process single top node (from module or include) */
+static void process_top_node(sym_t mainmod, node_t *pn, module_t *pm)
 {
   /* ignore empty blocks left from macros */
   if (pn->nt == NT_BLOCK && ndlen(pn) == 0) return;
@@ -822,7 +824,7 @@ static void process_include(pws_t *pw, int startpos, sym_t name, module_t *pm)
       if (nd.nt == NT_INCLUDE) {
         process_include(pwi, nd.startpos, nd.name, pm);
       } else {
-        process_node(0, &nd, pm);
+        process_top_node(0, &nd, pm);
       }
     }
     closepws(pwi);
@@ -848,7 +850,7 @@ static sym_t process_module(const char *fname, module_t *pm)
       if (nd.nt == NT_INCLUDE) {
         process_include(pw, nd.startpos, nd.name, pm);
       } else {
-        process_node(pw->curmod, &nd, pm);
+        process_top_node(pw->curmod, &nd, pm);
       }
     }
     mod = pw->curmod;
