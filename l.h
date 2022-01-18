@@ -5,7 +5,8 @@
 
 #if defined(_MSC_VER) && (_MSC_VER > 1300)
 #pragma warning(disable: 4996)
-#define strtoull _strtoui64 
+#define strtoll _strtoi64 
+#define strtoull _strtoui64
 #endif
 
 #if !defined(true) && !defined(__cplusplus) && !defined(inline) /* cutil hack */ 
@@ -134,6 +135,7 @@ extern void chbputt(ptrdiff_t v, chbuf_t* pb);
 extern void chbputu(unsigned v, chbuf_t* pb);
 extern void chbputlu(unsigned long v, chbuf_t* pb);
 extern void chbputllu(unsigned long long v, chbuf_t* pb);
+extern void chbputll(long long v, chbuf_t* pb);
 extern void chbputz(size_t v, chbuf_t* pb);
 extern void chbputg(double v, chbuf_t* pb);
 extern void chbputvf(chbuf_t* pb, const char *fmt, va_list ap);

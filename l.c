@@ -745,6 +745,22 @@ void chbputz(size_t val, chbuf_t* pb)
   chbput(p, e-p, pb);
 }
 
+void chbputll(long long val, chbuf_t* pb)
+{
+  char buf[39+1]; /* enough up to 128 bits (w/sign) */
+  char *e = buf + sizeof(buf), *p = e;
+  if (val) {
+    unsigned long long m;
+    if (val == LLONG_MIN) m = LLONG_MAX + (unsigned long long)1;
+    else if (val < 0) m = -val;
+    else m = val;
+    do *--p = (int)(m%10) + '0';
+      while ((m /= 10) > 0);
+    if (val < 0) *--p = '-';
+  } else *--p = '0';
+  chbput(p, e-p, pb);
+}
+
 void chbputg(double v, chbuf_t* pb)
 {
   char buf[100];

@@ -91,6 +91,261 @@ static bool envlookup(env_t *penv, const char *v, size_t *pdepth)
   return false;
 }
 
+/* type predicates and operations */
+
+static bool type_numerical(ts_t ts) 
+{
+  return TS_CHAR <= ts && ts <= TS_DOUBLE;
+}
+
+static bool type_unsigned(ts_t ts) 
+{
+  switch (ts) {
+    case TS_UCHAR: case TS_USHORT: case TS_UINT:
+    case TS_ULONG: case TS_ULLONG: 
+      return true;
+  }
+  return false;
+}
+
+/* returns TS_INT/TS_UINT/TS_LLONG/TS_ULLONG/TS_FLOAT/TS_DOUBLE */
+static ts_t type_integral_promote(ts_t ts)
+{
+  switch (ts) {
+    case TS_CHAR: case TS_UCHAR: 
+    case TS_SHORT: case TS_USHORT:
+    case TS_INT: case TS_ENUM:      return TS_INT;
+    case TS_UINT:                   return TS_UINT;
+    /* fixme: should depend on wasm32/wasm64 model */
+    case TS_LONG:                   return TS_INT;
+    case TS_ULONG:                  return TS_UINT;
+    case TS_LLONG: case TS_ULLONG:  
+    case TS_FLOAT: case TS_DOUBLE:  return ts;
+    default: assert(false);
+  }
+  return ts; /* shouldn't happen */
+} 
+
+/* common arith type for ts1 and ts2 (can be promoted one) */
+static ts_t type_arith_common(ts_t ts1, ts_t ts2)
+{
+  assert(type_numerical(ts1) && type_numerical(ts2));
+  if (ts1 == TS_DOUBLE || ts2 == TS_DOUBLE) return TS_DOUBLE;
+  if (ts1 == TS_FLOAT || ts2 == TS_FLOAT) return TS_FLOAT;
+  ts1 = type_integral_promote(ts1), ts2 = type_integral_promote(ts2);
+  if (ts1 == ts2) return ts1;
+  if (ts1 == TS_ULLONG || ts2 == TS_ULLONG) return TS_ULLONG;
+  if (ts1 == TS_LLONG || ts2 == TS_LLONG) return TS_LLONG;
+  if (ts1 == TS_UINT || ts2 == TS_UINT) return TS_UINT;
+  return TS_INT;
+}
+
+unsigned long long integral_mask(ts_t ts, unsigned long long u)
+{
+  switch (ts) {
+    case TS_CHAR: case TS_UCHAR:    
+      return u & 0x00000000000000FFull; 
+    case TS_SHORT: case TS_USHORT:  
+      return u & 0x000000000000FFFFull; 
+    case TS_INT: case TS_ENUM: case TS_UINT:                   
+      return u & 0x00000000FFFFFFFFull; 
+    /* fixme: should depend on wasm32/wasm64 model */
+    case TS_LONG: case TS_ULONG:                  
+      return u & 0x00000000FFFFFFFFull; 
+    case TS_LLONG: case TS_ULLONG:  
+      return u;
+    default: assert(false);
+  }
+  return u;
+}
+
+long long integral_sext(ts_t ts, long long i)
+{
+  switch (ts) {
+    case TS_CHAR: case TS_UCHAR:
+      return (long long)((((unsigned long long)i & 0x00000000000000FFull) 
+                        ^ 0x0000000000000080ull) - 0x0000000000000080ull); 
+    case TS_SHORT: case TS_USHORT:
+      return (long long)((((unsigned long long)i & 0x000000000000FFFFull) 
+                        ^ 0x0000000000008000ull) - 0x0000000000008000ull); 
+    case TS_INT: case TS_ENUM: case TS_UINT:                   
+      return (long long)((((unsigned long long)i & 0x00000000FFFFFFFFull) 
+                        ^ 0x0000000080000000ull) - 0x0000000080000000ull); 
+    /* fixme: should depend on wasm32/wasm64 model */
+    case TS_LONG: case TS_ULONG:                  
+      return (long long)((((unsigned long long)i & 0x00000000FFFFFFFFull) 
+                        ^ 0x0000000080000000ull) - 0x0000000080000000ull); 
+    case TS_LLONG: case TS_ULLONG:  
+      return i;
+    default: assert(false);
+  }
+  return i;
+}
+
+void numval_convert(ts_t tsto, ts_t tsfrom, numval_t *pnv)
+{
+  assert(pnv);
+  assert(type_numerical(tsto) && type_numerical(tsfrom));
+  if (tsto == tsfrom) return; /* no change */
+  else if (tsto == TS_DOUBLE) {
+    if (tsfrom == TS_FLOAT) pnv->d = (double)pnv->f;
+    else if (type_unsigned(tsfrom)) pnv->d = (double)pnv->u;
+    else pnv->d = (double)pnv->i;
+  } else if (tsto == TS_FLOAT) {
+    if (tsfrom == TS_DOUBLE) pnv->f = (float)pnv->d;
+    else if (type_unsigned(tsfrom)) pnv->f = (float)pnv->u;
+    else pnv->f = (float)pnv->i;
+  } else if (type_unsigned(tsto)) {
+    if (tsfrom == TS_DOUBLE) pnv->u = (unsigned long long)pnv->d;
+    else if (tsfrom == TS_FLOAT) pnv->u = (unsigned long long)pnv->f;
+    else pnv->u = integral_mask(tsto, pnv->u); /* i reinterpreted as u */
+  } else { /* signed integer */
+    if (tsfrom == TS_DOUBLE) pnv->i = (long long)pnv->d;
+    else if (tsfrom == TS_FLOAT) pnv->i = (long long)pnv->f;
+    else pnv->i = integral_sext(tsto, pnv->i); /* u reinterpreted as i */
+  }
+}
+
+ts_t numval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
+{
+  ts_t tz = type_integral_promote(tx);
+  numval_convert(tz, tx, &vx);
+  switch (tz) {
+    case TS_DOUBLE: {
+      double x = vx.d;
+      switch (op) {
+        case TT_PLUS:  pvz->d = x; break;
+        case TT_MINUS: pvz->d = -x; break;
+        case TT_NOT:   pvz->i = x == 0; tz = TS_INT; break;
+        default:       tz = TS_VOID; break;
+      }
+    } break;
+    case TS_FLOAT: {
+      float x = vx.f;
+      switch (op) {
+        case TT_PLUS:  pvz->f = x; break;
+        case TT_MINUS: pvz->f = -x; break;
+        case TT_NOT:   pvz->i = x == 0; tz = TS_INT; break;
+        default:       tz = TS_VOID; break;
+      }
+    } break;
+    case TS_ULLONG: case TS_UINT: {
+      unsigned long long x = vx.u;
+      switch (op) {
+        case TT_PLUS:  pvz->u = integral_mask(tz, x); break;
+        case TT_MINUS: pvz->u = integral_mask(tz, (unsigned long long)-(long long)x); break;
+        case TT_TILDE: pvz->u = integral_mask(tz, ~x); break;
+        case TT_NOT:   pvz->i = x == 0; tz = TS_INT; break;
+        default:       tz = TS_VOID; break;
+      }
+    } break;
+    case TS_LLONG: case TS_INT: {
+      long long x = vx.i;
+      switch (op) {
+        case TT_PLUS:  pvz->i = integral_sext(tz, x); break;
+        case TT_MINUS: pvz->i = integral_sext(tz, -x); break;
+        case TT_TILDE: pvz->i = integral_sext(tz, ~x); break;
+        case TT_NOT:   pvz->i = x == 0; tz = TS_INT; break;
+        default:       tz = TS_VOID; break;
+      }
+    } break;
+    default: {
+      assert(false);
+      tz = TS_VOID; break;
+    } break;
+  }
+  return tz;
+}  
+
+ts_t numval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t *pvz)
+{
+  ts_t tz = type_arith_common(tx, ty);
+  numval_convert(tz, tx, &vx), numval_convert(tz, ty, &vy);
+  switch (tz) {
+    case TS_DOUBLE: {
+      double x = vx.d, y = vy.d;
+      switch (op) {
+        case TT_PLUS:  pvz->d = x + y; break;
+        case TT_MINUS: pvz->d = x - y; break;
+        case TT_STAR:  pvz->d = x * y; break;
+        case TT_SLASH: if (y) pvz->d = x / y; else tz = TS_VOID; break;
+        case TT_EQ:    pvz->i = x == y; tz = TS_INT; break;
+        case TT_NE:    pvz->i = x != y; tz = TS_INT; break;
+        case TT_LT:    pvz->i = x < y;  tz = TS_INT; break;
+        case TT_GT:    pvz->i = x > y;  tz = TS_INT; break;
+        case TT_LE:    pvz->i = x <= y; tz = TS_INT; break;
+        case TT_GE:    pvz->i = x >= y; tz = TS_INT; break;
+        default:       tz = TS_VOID; break;
+      }
+    } break;
+    case TS_FLOAT: {
+      float x = vx.f, y = vy.f;
+      switch (op) {
+        case TT_PLUS:  pvz->f = x + y; break;
+        case TT_MINUS: pvz->f = x - y; break;
+        case TT_STAR:  pvz->f = x * y; break;
+        case TT_SLASH: if (y) pvz->f = x / y; else tz = TS_VOID; break;
+        case TT_EQ:    pvz->i = x == y; tz = TS_INT; break;
+        case TT_NE:    pvz->i = x != y; tz = TS_INT; break;
+        case TT_LT:    pvz->i = x < y;  tz = TS_INT; break;
+        case TT_GT:    pvz->i = x > y;  tz = TS_INT; break;
+        case TT_LE:    pvz->i = x <= y; tz = TS_INT; break;
+        case TT_GE:    pvz->i = x >= y; tz = TS_INT; break;
+        default:       tz = TS_VOID; break;
+      }
+    } break;
+    case TS_ULLONG: case TS_UINT: {
+      unsigned long long x = vx.u, y = vy.u;
+      switch (op) {
+        case TT_PLUS:  pvz->u = integral_mask(tz, x + y); break;
+        case TT_MINUS: pvz->u = integral_mask(tz, x - y); break;
+        case TT_STAR:  pvz->u = integral_mask(tz, x * y); break;
+        case TT_AND:   pvz->u = integral_mask(tz, x & y); break;
+        case TT_OR:    pvz->u = integral_mask(tz, x | y); break;
+        case TT_XOR:   pvz->u = integral_mask(tz, x ^ y); break;
+        case TT_SLASH: if (y) pvz->u = integral_mask(tz, x / y); else tz = TS_VOID; break;
+        case TT_REM:   if (y) pvz->u = integral_mask(tz, x % y); else tz = TS_VOID; break;
+        case TT_SHL:   if (y >= 0 && y < 64) pvz->u = integral_mask(tz, x << y); break;
+        case TT_SHR:   if (y >= 0 && y < 64) pvz->u = integral_mask(tz, x >> y); break;
+        case TT_EQ:    pvz->i = x == y; tz = TS_INT; break;
+        case TT_NE:    pvz->i = x != y; tz = TS_INT; break;
+        case TT_LT:    pvz->i = x < y;  tz = TS_INT; break;
+        case TT_GT:    pvz->i = x > y;  tz = TS_INT; break;
+        case TT_LE:    pvz->i = x <= y; tz = TS_INT; break;
+        case TT_GE:    pvz->i = x >= y; tz = TS_INT; break;
+        default:       tz = TS_VOID; break;
+      }
+    } break;
+    case TS_LLONG: case TS_INT: {
+      long long x = vx.i, y = vy.i;
+      switch (op) {
+        case TT_PLUS:  pvz->i = integral_sext(tz, x + y); break;
+        case TT_MINUS: pvz->i = integral_sext(tz, x - y); break;
+        case TT_STAR:  pvz->i = integral_sext(tz, x * y); break;
+        case TT_AND:   pvz->i = integral_sext(tz, x & y); break;
+        case TT_OR:    pvz->i = integral_sext(tz, x | y); break;
+        case TT_XOR:   pvz->i = integral_sext(tz, x ^ y); break;
+        case TT_SLASH: if (y) pvz->i = integral_sext(tz, x / y); else tz = TS_VOID; break;
+        case TT_REM:   if (y) pvz->i = integral_sext(tz, x % y); else tz = TS_VOID; break;
+        case TT_SHL:   if (y >= 0 && y < 64) pvz->i = integral_sext(tz, x << y); break;
+        case TT_SHR:   if (y >= 0 && y < 64) pvz->i = integral_sext(tz, x >> y); break;
+        case TT_EQ:    pvz->i = x == y; tz = TS_INT; break;
+        case TT_NE:    pvz->i = x != y; tz = TS_INT; break;
+        case TT_LT:    pvz->i = x < y;  tz = TS_INT; break;
+        case TT_GT:    pvz->i = x > y;  tz = TS_INT; break;
+        case TT_LE:    pvz->i = x <= y; tz = TS_INT; break;
+        case TT_GE:    pvz->i = x >= y; tz = TS_INT; break;
+        default:       tz = TS_VOID; break;
+      }
+    } break;
+    default: {
+      assert(false);
+      tz = TS_VOID; break;
+    } break;
+  }
+  return tz;
+}  
+
 /* calc size/align for ptn; prn is NULL or reference node for errors */
 void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl)
 {
@@ -227,13 +482,38 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld)
   return 0; /* won't happen */
 }
 
+/* evaluate integer expression pn statically, putting result into pi */
+bool static_eval_to_int(node_t *pn, int *pri)
+{
+  node_t nd; bool ok = false;
+  if (static_eval(pn, ndinit(&nd)) && nd.nt == NT_LITERAL && type_numerical(nd.ts)) {
+    numval_t v = nd.val; numval_convert(TS_INT, nd.ts, &v);
+    *pri = (int)v.i, ok = true;
+  }
+  ndfini(&nd);
+  return ok;
+}
+
+#ifdef _DEBUG
+bool static_eval(node_t *pn, node_t *prn)
+{
+  bool ok; bool __static_eval(node_t *pn, node_t *prn);
+  ok = __static_eval(pn, prn);
+  fprintf(stderr, "** eval\n"); dump_node(pn, stderr);
+  if (ok) { fprintf(stderr, "=>\n"); dump_node(prn, stderr); }
+  else fprintf(stderr, "=> failed!\n");
+  return ok;
+}
+#define static_eval(pn, prn) __static_eval(pn, prn)
+#endif
+
 /* evaluate pn expression statically, putting result into prn (VERY limited) */
 bool static_eval(node_t *pn, node_t *prn)
 {
   /* for now, deal with ints only */
   switch (pn->nt) {
     case NT_LITERAL: {
-      if (pn->ts == TS_INT) {
+      if (type_numerical(pn->ts)) {
         ndcpy(prn, pn);
         return true;
       }
@@ -243,34 +523,28 @@ bool static_eval(node_t *pn, node_t *prn)
         size_t size, align; assert(ndlen(pn) == 1);
         measure_type(ndref(pn, 0), pn, &size, &align, 0);
         ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); prn->ts = TS_INT; 
-        if (pn->name == intern("sizeof")) chbsetf(&prn->data, "%d", (int)size);
-        else chbsetf(&prn->data, "%d", (int)align);
+        if (pn->name == intern("sizeof")) prn->val.i = (int)size;
+        else prn->val.i = (int)align;
         return true;
       } else if (pn->name = intern("offsetof")) {
         size_t offset; assert(ndlen(pn) == 2 && ndref(pn, 1)->nt == NT_IDENTIFIER);
         offset = measure_offset(ndref(pn, 0), pn, ndref(pn, 1)->name);
         ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); prn->ts = TS_INT; 
-        chbsetf(&prn->data, "%d", (int)offset);
+        prn->val.i = (int)offset;
         return true;
       }
     } break;
     case NT_PREFIX: {
-      node_t nx; bool ok = false;
+      node_t nx; bool ok = false; 
       ndinit(&nx);
       assert(ndlen(pn) == 1); 
-      if (static_eval(ndref(pn, 0), &nx)) {
-        if (nx.nt == NT_LITERAL && nx.ts == TS_INT) {
-          int x = atoi(chbdata(&nx.data)), z;
-          switch (pn->op) {
-            case TT_PLUS:  z = x; ok = true; break;
-            case TT_MINUS: z = -x; ok = true; break;
-            case TT_NOT:   z = !x; ok = true; break;
-            case TT_TILDE: z = ~x; ok = true; break;
+      if ((static_eval)(ndref(pn, 0), &nx)) {
+        if (nx.nt == NT_LITERAL && type_numerical(nx.ts)) {
+          numval_t vz; ts_t tz = numval_unop(pn->op, nx.ts, nx.val, &vz);
+          if (tz != TS_VOID) {
+            ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
+            prn->ts = tz; prn->val = vz; ok = true;
           }
-          if (ok) {
-            ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); prn->ts = TS_INT;
-            chbsetf(&prn->data, "%d", z); 
-          } 
         }
       }
       ndfini(&nx);
@@ -280,49 +554,49 @@ bool static_eval(node_t *pn, node_t *prn)
       node_t nx, ny; bool ok = false;
       ndinit(&nx), ndinit(&ny);
       assert(ndlen(pn) == 2); 
-      if (static_eval(ndref(pn, 0), &nx) && static_eval(ndref(pn, 1), &ny)) {
-        if (nx.nt == NT_LITERAL && nx.ts == TS_INT && ny.nt == NT_LITERAL && ny.ts == TS_INT) {
-          int x = atoi(chbdata(&nx.data)), y = atoi(chbdata(&ny.data)), z;
-          switch (pn->op) {
-            case TT_PLUS:  z = x + y; ok = true; break;
-            case TT_MINUS: z = x - y; ok = true; break;
-            case TT_STAR:  z = x * y; ok = true; break;
-            case TT_AND:   z = x & y; ok = true; break;
-            case TT_OR:    z = x | y; ok = true; break;
-            case TT_XOR:   z = x ^ y; ok = true; break;
-            case TT_SLASH: if (y) z = x / y, ok = true; break;
-            case TT_REM:   if (y) z = x % y, ok = true; break;
-            case TT_SHL:   if (y >= 0 && y < 32) z = x << y, ok = true; break;
-            case TT_SHR:   if (y >= 0 && y < 32) z = x >> y, ok = true; break;
-            case TT_EQ:    z = x == y; ok = true; break;
-            case TT_NE:    z = x != y; ok = true; break;
-            case TT_LT:    z = x < y; ok = true; break;
-            case TT_GT:    z = x > y; ok = true; break;
-            case TT_LE:    z = x <= y; ok = true; break;
-            case TT_GE:    z = x >= y; ok = true; break;
+      if ((static_eval)(ndref(pn, 0), &nx) && (static_eval)(ndref(pn, 1), &ny)) {
+        if (nx.nt == NT_LITERAL && type_numerical(nx.ts) && ny.nt == NT_LITERAL && type_numerical(ny.ts)) {
+          numval_t vz; ts_t tz = numval_binop(pn->op, nx.ts, nx.val, ny.ts, ny.val, &vz);
+          if (tz != TS_VOID) {
+            ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
+            prn->ts = tz; prn->val = vz; ok = true;
           }
-          if (ok) {
-            ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); prn->ts = TS_INT;
-            chbsetf(&prn->data, "%d", z); 
-          } 
         }
       }
       ndfini(&nx), ndfini(&ny);
       return ok;
     } break;
+    case NT_COND: {
+      node_t nr; bool ok = false; int cond;
+      ndinit(&nr); assert(ndlen(pn) == 3);
+      if (static_eval_to_int(ndref(pn, 0), &cond)) {
+        if (cond) ok = (static_eval)(ndref(pn, 1), &nr) && type_numerical(nr.ts);
+        else ok = (static_eval)(ndref(pn, 2), &nr) && type_numerical(nr.ts);
+        if (ok) {
+          ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
+          prn->ts = nr.ts; prn->val = nr.val;
+        }
+      } 
+      ndfini(&nr);
+      return ok;
+    } break;
+    case NT_CAST: {
+      node_t nx; ts_t tc; bool ok = false;
+      ndinit(&nx);
+      assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
+      if ((tc = ndref(pn, 0)->ts) == TS_ENUM || type_numerical(tc)) {
+        if ((static_eval)(ndref(pn, 1), &nx) && type_numerical(nx.ts)) {
+          numval_t vc = nx.val; if (tc == TS_ENUM) tc = TS_INT;
+          numval_convert(tc, nx.ts, &vc);
+          ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
+          prn->ts = tc; prn->val = vc; ok = true;
+        }
+      }
+      ndfini(&nx);
+      return ok;
+    } break;
   }
   return false;
-}
-
-/* evaluate integer expression pn statically, putting result into pi (VERY limited) */
-bool static_eval_to_int(node_t *pn, int *pri)
-{
-  node_t nd; bool ok = false;
-  if (static_eval(pn, ndinit(&nd)) && nd.nt == NT_LITERAL && nd.ts == TS_INT) {
-    *pri = atoi(chbdata(&nd.data)), ok = true;
-  }
-  ndfini(&nd);
-  return ok;
 }
 
 /* expression compiler; returns type node (either made in ptn or taken from some other place)

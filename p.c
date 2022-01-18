@@ -345,7 +345,7 @@ void init_symbols(void)
   intern_symbol("volatile", TT_VOLATILE_KW, -1);
   intern_symbol("while", TT_WHILE_KW, -1);
   intern_symbol("bool", TT_TYPE_NAME, ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_INT;
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_CHAR;
   intern_symbol("true", TT_ENUM_NAME, 1);
   intern_symbol("false", TT_ENUM_NAME, 0);
   intern_symbol("wchar_t", TT_TYPE_NAME, ndblen(&g_nodes));
@@ -414,10 +414,13 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
     if (pn1->nt != NT_LITERAL || pn2->nt != NT_LITERAL) return false;
     if (pn1->ts != pn2->ts) return false;
     switch (pn1->ts) { 
-      case TS_INT: case TS_UINT: case TS_LONG: case TS_ULONG: break;
+      case TS_INT: case TS_LONG: case TS_LLONG:
+        return ptn1->val.i == ptn2->val.i;
+      case TS_UINT: case TS_ULONG: case TS_ULLONG:
+        return ptn1->val.u == ptn2->val.u;
+      case TS_VOID: return true;
       default: return false;
     }
-    if (!streql(chbdata(&pn1->data), chbdata(&pn2->data))) return false;
   }
   return true;
 }
@@ -1631,6 +1634,7 @@ void ndset(node_t *dst, nt_t nt, int pwsid, int startpos)
   dst->startpos = startpos;
   dst->name = 0;
   chbclear(&dst->data);
+  dst->val.u = 0;
   dst->op = TT_EOF;
   dst->ts = TS_VOID;
   dst->sc = SC_NONE;
@@ -1756,7 +1760,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       if (errno = 0, ul = strtoul(ns, NULL, 0), !errno && ul <= 0x7FFFFFFFUL) {
-        chbputlu(ul, &pn->data);
+        pn->val.i = (long)ul; /* no need for for sext: too small? */
       } else reprintf(pw, startpos, "signed int literal overflow"); 
       pn->ts = TS_INT;
       dropt(pw);
@@ -1765,7 +1769,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       if (errno = 0, ul = strtoul(ns, NULL, 0), !errno && ul <= 0xFFFFFFFFUL) {
-        chbputlu(ul, &pn->data);
+        pn->val.u = ul;
       } else reprintf(pw, startpos, "unsigned int literal overflow"); 
       pn->ts = TS_UINT;
       dropt(pw);
@@ -1780,7 +1784,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       char *ns = pw->tokstr; unsigned long long ull;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       if (errno = 0, ull = strtoull(ns, NULL, 0), !errno && ull <= 0x7FFFFFFFFFFFFFFFULL) {
-        chbputllu(ull, &pn->data);
+        pn->val.i = (long long)ull; /* no need for for sext */
       } else reprintf(pw, startpos, "signed long literal overflow"); 
       pn->ts = TS_LLONG;
       dropt(pw);
@@ -1789,20 +1793,26 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       char *ns = pw->tokstr; unsigned long long ull;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       if (errno = 0, ull = strtoull(ns, NULL, 0), !errno && ull <= 0xFFFFFFFFFFFFFFFFULL) {
-        chbputllu(ull, &pn->data);
+        pn->val.u = ull;
       } else reprintf(pw, startpos, "unsigned long literal overflow"); 
       pn->ts = TS_ULLONG;
       dropt(pw);
     } break;
     case TT_FLOAT: {
+      char *ns = pw->tokstr; double d;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      chbsets(&pn->data, pw->tokstr);
+      if (errno = 0, d = strtod(ns, NULL), !errno) {
+        pn->val.f = (float)d;
+      } else reprintf(pw, startpos, "invalid float literal"); 
       pn->ts = TS_FLOAT;
       dropt(pw);
     } break;
     case TT_DOUBLE: {
+      char *ns = pw->tokstr; double d;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      chbsets(&pn->data, pw->tokstr);
+      if (errno = 0, d = strtod(ns, NULL), !errno) {
+        pn->val.d = d;
+      } else reprintf(pw, startpos, "invalid double literal"); 
       pn->ts = TS_DOUBLE;
       dropt(pw);
     } break;
@@ -1810,7 +1820,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       if (errno = 0, ul = strtocc32(ns, NULL), !errno && ul <= 0x10FFFFUL) {
-        chbputlu(ul, &pn->data);
+        pn->val.i = ul; /* no sext: too small */
       } else reprintf(pw, startpos, "char literal overflow");
       pn->ts = TS_INT;
       dropt(pw);
@@ -1819,7 +1829,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       if (errno = 0, ul = strtocc32(ns, NULL), !errno && ul <= 0x10FFFFUL) {
-        chbputlu(ul, &pn->data);
+        pn->val.i = ul; /* no sext: too small */
       } else reprintf(pw, startpos, "long char literal overflow");
       pn->ts = TS_LONG;
       dropt(pw);
@@ -1838,7 +1848,8 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       while (*ns && (errno = 0, ul = strtocc32(ns, &ns), !errno && ul <= 0x10FFFFUL)) {
-        chbputlu(ul, &pn->data); if (*ns) chbputc(' ', &pn->data); /* in decimal, space-separated */
+        /* fixme: for now, put it in decimal, space-separated */
+        chbputlu(ul, &pn->data); if (*ns) chbputc(' ', &pn->data); 
       } 
       if (*ns) reprintf(pw, startpos+(ns-pw->tokstr), "long string literal char overflow");
       pn->ts = TS_LSTRING;
@@ -1849,9 +1860,10 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       pn->name = getid(pw);
     } break;
     case TT_ENUM_NAME: {
+      /* todo: cast to enum type for extra type checking */
       int info = 42; lookup_symbol(pw->tokstr, &info);
       ndset(pn, NT_LITERAL, pw->id, startpos);
-      pn->ts = TS_INT; chbputd(info, &pn->data);
+      pn->ts = TS_INT; pn->val.i = info;
       dropt(pw);
     } break;
     case TT_MACRO_NAME: {
@@ -2243,8 +2255,9 @@ void parse_enum_body(pws_t *pw, node_t *pn)
         if (!static_eval_to_int(pnv, &curval))
           neprintf(pnv, "invalid enum initializer (int constant expected)");
       }
+      /* todo: wrap in cast to enum type for extra type checking? */
       ndset(pnv, NT_LITERAL, pw->id, pni->startpos);
-      pnv->ts = TS_INT; chbputd(curval, &pnv->data);
+      pnv->ts = TS_INT; pnv->val.i = curval;
       intern_symbol(symname(pni->name), TT_ENUM_NAME, curval);  
       if (peekt(pw) == TT_COMMA) dropt(pw);
       curval += 1; 
@@ -3113,8 +3126,30 @@ static void dump(node_t *pn, FILE* fp, int indent)
       fprintf(fp, "(null");
     } break;
     case NT_LITERAL: {
+      chbuf_t cb; chbinit(&cb);
       fprintf(fp, "(literal %s ", ts_name(pn->ts));
-      fdumpss(chbdata(&pn->data), fp); /* fixme: stops at \0 */
+      switch (pn->ts) {
+        case TS_STRING: case TS_LSTRING:
+          fdumpss(chbdata(&pn->data), fp); /* fixme: stops at \0 */
+          break;
+        case TS_FLOAT: 
+          fprintf(fp, "%.9g", (double)pn->val.f);
+          break;
+        case TS_DOUBLE:
+          fprintf(fp, "%.17g", pn->val.d);
+          break;
+        case TS_INT: case TS_LONG: case TS_LLONG:
+          chbputll(pn->val.i, &cb);
+          fputs(chbdata(&cb), fp);
+          break;          
+        case TS_UINT: case TS_ULONG: case TS_ULLONG:
+          chbputllu(pn->val.u, &cb);
+          fputs(chbdata(&cb), fp);
+          break;
+        default: /* no such literals */
+          assert(false); 
+      }    
+      chbfini(&cb);
     } break;
     case NT_IDENTIFIER: {
       fputs(symname(pn->name), fp);

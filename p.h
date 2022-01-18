@@ -97,6 +97,12 @@ typedef enum ts_tag {
   TS_PTR,    TS_ARRAY,   TS_FUNCTION
 } ts_t;
 
+/* numerical value */
+typedef union numval_tag {
+  long long i; unsigned long long u; 
+  float f; double d;
+} numval_t;
+
 /* grammar node data type */
 typedef enum nt_tag {
   NT_NULL = 0,    /* NOP */
@@ -137,7 +143,8 @@ typedef struct node_tag {
   int pwsid;      /* id of origin pws */
   int startpos;   /* start position in origin pws */
   sym_t name;     /* IDENTIFIER/TYPE/VARDECL/FUNDEF */
-  chbuf_t data;   /* LITERAL; data is in utf-8 */
+  chbuf_t data;   /* LITERAL (string); data is in utf-8 */
+  numval_t val;   /* LITERAL (numeric); type defined by ts */
   tt_t op;        /* POSTFIX/PREFIX/INFIX; op is tt of an operator */
   ts_t ts;        /* TYPE/LITERAL */
   sc_t sc;        /* VARDECL/FUNDEF/IMPORT */

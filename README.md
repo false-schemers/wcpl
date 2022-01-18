@@ -27,9 +27,17 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - bit fields
 - free-form `switch`: nothing but cases in curly braces after test will be supported
 - labels and `goto`
-- setjmp/longjmp (not in WASM model)
- 
+- `setjmp`/`longjmp` (not in WASM model)
 
+
+# Installation
+
+Here's how you can compile WCPL on a unix box; instructions for other
+systems/compilers are similar:
+
+```
+gcc -o wcpl [wcpl].c 
+```
 
 
 
