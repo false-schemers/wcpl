@@ -824,6 +824,14 @@ void chbputf(chbuf_t* pb, const char *fmt, ...)
   va_end(args);
 }
 
+void chbput4le(unsigned v, chbuf_t* pb)
+{
+  chbputc(v & 0xFF, pb); v >>= 8;
+  chbputc(v & 0xFF, pb); v >>= 8;
+  chbputc(v & 0xFF, pb); v >>= 8;
+  chbputc(v & 0xFF, pb);
+}
+
 char* chbset(chbuf_t* pb, const char *s, size_t n)
 {
   bufclear(pb);

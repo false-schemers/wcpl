@@ -140,6 +140,7 @@ extern void chbputz(size_t v, chbuf_t* pb);
 extern void chbputg(double v, chbuf_t* pb);
 extern void chbputvf(chbuf_t* pb, const char *fmt, va_list ap);
 extern void chbputf(chbuf_t* pb, const char *fmt, ...);
+extern void chbput4le(unsigned v, chbuf_t* pb);
 extern char* chbset(chbuf_t* pb, const char *s, size_t n);
 extern char* chbsets(chbuf_t* pb, const char *s);
 extern char* chbsetf(chbuf_t* pb, const char *fmt, ...);

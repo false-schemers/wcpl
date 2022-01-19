@@ -1854,8 +1854,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       while (*ns && (errno = 0, ul = strtocc32(ns, &ns), !errno && ul <= 0x10FFFFUL)) {
-        /* fixme: for now, put it in decimal, space-separated */
-        chbputlu(ul, &pn->data); if (*ns) chbputc(' ', &pn->data); 
+        chbput4le(ul, &pn->data); /* 4 bytes, in LE order */
       } 
       if (*ns) reprintf(pw, startpos+(ns-pw->tokstr), "long string literal char overflow");
       pn->ts = TS_LSTRING;
@@ -2996,12 +2995,12 @@ void n2eprintf(node_t *pn, node_t *pn2, const char *fmt, ...)
 
 /* dump nodes in s-expression format */
 
-static void fdumpss(const char *str, FILE* fp)
+static void fdumpss(const char *str, size_t n, FILE* fp)
 {
   chbuf_t cb = mkchb();
   chbputc('\"', &cb);
-  while (*str) {
-    int c = *str & 0xFF;
+  while (n > 0) {
+    int c = *str & 0xFF; const char *s;
     unsigned long uc;
     /* check for control chars manually */
     if (c <= 0x1F) {
@@ -3016,18 +3015,20 @@ static void fdumpss(const char *str, FILE* fp)
           chbputs(buf, &cb);
         } break;
       }
-      ++str;
+      ++str; --n;
       continue;
     } else if (c == '\"' || c == '\\') {
       switch (c) {
         case '\"' : chbputs("\\\"", &cb); break;
         case '\\' : chbputs("\\\\", &cb); break;
       }
-      ++str;
+      ++str; --n;
       continue;
     }
     /* get next unicode char */
-    uc = unutf8((unsigned char **)&str);
+    s = str; uc = unutf8((unsigned char **)&str);
+    assert(str-s <= (ptrdiff_t)n);
+    if (s+n < str) break; n -= (str-s);
     if (uc <= 0x1F) {
       /* should have been taken care of above! */
       assert(false);
@@ -3040,6 +3041,21 @@ static void fdumpss(const char *str, FILE* fp)
     }
   }
   chbputc('\"', &cb);
+  fputs(chbdata(&cb), fp);
+  chbfini(&cb);
+}
+
+static void fdumpv32(const char *str, size_t n, FILE* fp)
+{
+  chbuf_t cb = mkchb(); size_t i;
+  chbputs("#u32(", &cb);
+  for (i = 0; i+4 <= n; i += 4) {
+    /* stored in le order */
+    unsigned u = str[i] | (str[i+1] << 8) | (str[i+2] << 16) | (str[i+3] << 24);
+    if (i) chbputc(' ', &cb);
+    chbputu(u, &cb);
+  }
+  chbputc(')', &cb);
   fputs(chbdata(&cb), fp);
   chbfini(&cb);
 }
@@ -3065,12 +3081,14 @@ static char *ts_name(ts_t ts)
     case TS_STRING: s = "string"; break; 
     case TS_LSTRING: s = "lstring"; break; 
     case TS_ENUM: s = "enum"; break; 
+    case TS_ARRAY: s = "array"; break; 
     case TS_STRUCT: s = "struct"; break; 
     case TS_UNION: s = "union"; break; 
-    case TS_PTR: s = "ptr"; break; 
-    case TS_ARRAY: s = "array"; break; 
     case TS_FUNCTION: s = "function"; break; 
-    default: assert(false);
+    case TS_PTR: s = "ptr"; break; 
+    default: 
+    if (TS_PTR < ts && ts <= TS_SPTR_MAX) s = "sptr";
+    else assert(false);
   }
   return s;
 }
@@ -3150,8 +3168,11 @@ static void dump(node_t *pn, FILE* fp, int indent)
       chbuf_t cb; chbinit(&cb);
       fprintf(fp, "(literal %s ", ts_name(pn->ts));
       switch (pn->ts) {
-        case TS_STRING: case TS_LSTRING:
-          fdumpss(chbdata(&pn->data), fp); /* fixme: stops at \0 */
+        case TS_STRING:
+          fdumpss(chbdata(&pn->data), chblen(&pn->data), fp);
+          break;
+        case TS_LSTRING:
+          fdumpv32(chbdata(&pn->data), chblen(&pn->data), fp);
           break;
         case TS_FLOAT: 
           fprintf(fp, "%.9g", (double)pn->val.f);
@@ -3167,8 +3188,14 @@ static void dump(node_t *pn, FILE* fp, int indent)
           chbputllu(pn->val.u, &cb);
           fputs(chbdata(&cb), fp);
           break;
-        default: /* no such literals */
-          assert(false); 
+        default:
+          if (TS_PTR < pn->ts && pn->ts <= TS_SPTR_MAX) {
+            fprintf(fp, "%d at ", (int)(pn->ts - TS_PTR));
+            chbputllu(pn->val.u, &cb);
+            fputs(chbdata(&cb), fp);  
+          } else {
+            assert(false); 
+          }
       }    
       chbfini(&cb);
     } break;

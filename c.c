@@ -43,7 +43,7 @@ void fini_compiler(void)
   dsmelt_t *pde; size_t i;
   buffini(&g_bases);
   chbfini(&g_dseg);
-  for (pde = (dsmelt_t*)(&g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) chbfini(&pde[i].cb);
+  for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) chbfini(&pde[i].cb);
   buffini(&g_dsmap);
   fini_workspaces();
   fini_symbols();
@@ -61,8 +61,8 @@ size_t dseg_intern(size_t align, chbuf_t *pcb)
     size_t addr = chblen(&g_dseg), n = addr % align;
     if (n > 0) bufresize(&g_dseg, (addr = addr+(align-n)));
     chbcat(&g_dseg, pcb);
-    pe = bufnewbk(&g_dsmap); pe->addr = addr;
-    chbicpy(&pe->cb, pcb);
+    pe = bufnewbk(&g_dsmap); 
+    chbicpy(&pe->cb, pcb); pe->addr = addr; 
     bufqsort(&g_dsmap, chbuf_cmp);
     return addr;
   } 
@@ -127,9 +127,24 @@ static bool envlookup(env_t *penv, const char *v, size_t *pdepth)
 
 /* type predicates and operations */
 
+static bool ts_spointer(ts_t ts) 
+{
+  return TS_PTR < ts && ts <= TS_SPTR_MAX;
+}
+
 static bool ts_numerical(ts_t ts) 
 {
   return TS_CHAR <= ts && ts <= TS_DOUBLE;
+}
+
+static bool ts_ptrdiff(ts_t ts) 
+{
+  return TS_CHAR <= ts && ts <= TS_ULONG; /* can be TS_ULLONG in wasm32? */
+}
+
+static bool ts_difforsptr(ts_t ts) 
+{
+  return ts_spointer(ts) || ts_ptrdiff(ts);
 }
 
 static bool ts_unsigned(ts_t ts) 
@@ -240,6 +255,7 @@ void numval_convert(ts_t tsto, ts_t tsfrom, numval_t *pnv)
   }
 }
 
+/* unary operation with a number */
 ts_t numval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
 {
   ts_t tz = ts_integral_promote(tx);
@@ -291,6 +307,18 @@ ts_t numval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
   return tz;
 }  
 
+/* unary operation with a sized pointer */
+ts_t spval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
+{
+  assert(ts_spointer(tx));
+  switch (op) {
+    case TT_PLUS:  pvz->u = vx.u; return tx;
+    case TT_NOT:   pvz->i = vx.u == 0; return TS_INT;
+    default:       return TS_VOID;
+  }
+}
+
+/* binary operation between two numbers */
 ts_t numval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t *pvz)
 {
   ts_t tz = ts_arith_common(tx, ty);
@@ -379,6 +407,36 @@ ts_t numval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t 
   }
   return tz;
 }  
+
+/* binary operation between two pointer/ptrdiff arguments (at least one is a pointer) */
+ts_t dspval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t *pvz)
+{
+  ts_t tz = TS_VOID;
+  if (op == TT_PLUS && ts_spointer(tx) && ts_ptrdiff(ty)) {
+    numval_convert(TS_LONG, ty, &vy);
+    tz = tx; pvz->u = vx.u + vy.i * (tx-TS_PTR); 
+  } else if (op == TT_PLUS && ts_ptrdiff(tx) && ts_spointer(ty)) {
+    numval_convert(TS_LONG, tx, &vx);
+    tz = ty; pvz->u = vy.u + vx.i * (ty-TS_PTR); 
+  } else if (op == TT_MINUS && ts_spointer(tx) && ts_ptrdiff(ty)) {
+    numval_convert(TS_LONG, ty, &vy);
+    tz = tx; pvz->u = vx.u - vy.i * (tx-TS_PTR); 
+  } else if (op == TT_MINUS && ts_spointer(tx) && ts_spointer(ty) && tx == ty) {
+    tz = TS_LONG; pvz->i = (vx.u - vy.u)/(tx-TS_PTR); 
+  } else if (ts_spointer(tx) && ts_spointer(ty) && tx == ty) {
+    unsigned long long x = vx.u, y = vy.u;
+    switch (op) {
+      case TT_EQ:    pvz->i = x == y; tz = TS_INT; break;
+      case TT_NE:    pvz->i = x != y; tz = TS_INT; break;
+      case TT_LT:    pvz->i = x < y;  tz = TS_INT; break;
+      case TT_GT:    pvz->i = x > y;  tz = TS_INT; break;
+      case TT_LE:    pvz->i = x <= y; tz = TS_INT; break;
+      case TT_GE:    pvz->i = x >= y; tz = TS_INT; break;
+      default:       tz = TS_VOID; break;
+    }
+  }
+  return tz;
+}
 
 /* calc size/align for ptn; prn is NULL or reference node for errors */
 void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl)
@@ -516,6 +574,21 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld)
   return 0; /* won't happen */
 }
 
+/* get ts from type node; measure the pointers to return TS_SPTR... */
+static ts_t type_extended_ts(node_t *ptn)
+{
+  assert(ptn && ptn->nt == NT_TYPE);
+  if (ptn->ts == TS_PTR) {
+    size_t size = 0, align = 0; 
+    assert(ndlen(ptn) == 1);
+    measure_type(ndref(ptn, 0), ptn, &size, &align, 0);
+    if (size > 0 && size <= TS_SPTR_MAX-TS_PTR)
+      return (ts_t)(TS_PTR+size);
+  }
+  return ptn->ts;
+}
+
+
 /* evaluate integer expression pn statically, putting result into pi */
 bool static_eval_to_int(node_t *pn, int *pri)
 {
@@ -550,10 +623,13 @@ bool static_eval(node_t *pn, node_t *prn)
       if (ts_numerical(pn->ts)) {
         ndcpy(prn, pn);
         return true;
-      }
-      /* todo: string literals are actually known fixed addresses in data segment
-       * so they are in fact ULONGs, but some math with them (p+n, n+p, p-p) 
-       * depends on pointer type */
+      } else if (pn->ts == TS_STRING || pn->ts == TS_LSTRING) {
+        size_t eltsz = (pn->ts == TS_STRING ? 1 : 4), align = eltsz;
+        ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
+        prn->ts = TS_PTR + eltsz; /* 'sized' pointer */
+        prn->val.u = dseg_intern(align, &pn->data);
+        return true;
+      }        
     } break;
     case NT_INTRCALL: {
       if (pn->intr == INTR_SIZEOF || pn->intr == INTR_ALIGNOF) {
@@ -575,8 +651,15 @@ bool static_eval(node_t *pn, node_t *prn)
       node_t nx = mknd(); bool ok = false; 
       assert(ndlen(pn) == 1); 
       if ((static_eval)(ndref(pn, 0), &nx)) {
-        if (nx.nt == NT_LITERAL && ts_numerical(nx.ts)) {
+        assert(nx.nt == NT_LITERAL);
+        if (ts_numerical(nx.ts)) {
           numval_t vz; ts_t tz = numval_unop(pn->op, nx.ts, nx.val, &vz);
+          if (tz != TS_VOID) {
+            ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
+            prn->ts = tz; prn->val = vz; ok = true;
+          }
+        } else if (ts_spointer(nx.ts)) {
+          numval_t vz; ts_t tz = spval_unop(pn->op, nx.ts, nx.val, &vz);
           if (tz != TS_VOID) {
             ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
             prn->ts = tz; prn->val = vz; ok = true;
@@ -590,8 +673,15 @@ bool static_eval(node_t *pn, node_t *prn)
       node_t nx = mknd(), ny = mknd(); bool ok = false;
       assert(ndlen(pn) == 2); 
       if ((static_eval)(ndref(pn, 0), &nx) && (static_eval)(ndref(pn, 1), &ny)) {
-        if (nx.nt == NT_LITERAL && ts_numerical(nx.ts) && ny.nt == NT_LITERAL && ts_numerical(ny.ts)) {
+        assert(nx.nt == NT_LITERAL && ny.nt == NT_LITERAL);
+        if (ts_numerical(nx.ts) && ts_numerical(ny.ts)) {
           numval_t vz; ts_t tz = numval_binop(pn->op, nx.ts, nx.val, ny.ts, ny.val, &vz);
+          if (tz != TS_VOID) {
+            ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
+            prn->ts = tz; prn->val = vz; ok = true;
+          }
+        } else if (ts_difforsptr(nx.ts) && ts_difforsptr(ny.ts)) {
+          numval_t vz; ts_t tz = dspval_binop(pn->op, nx.ts, nx.val, ny.ts, ny.val, &vz);
           if (tz != TS_VOID) {
             ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
             prn->ts = tz; prn->val = vz; ok = true;
@@ -605,8 +695,9 @@ bool static_eval(node_t *pn, node_t *prn)
       node_t nr = mknd(); bool ok = false; int cond;
       assert(ndlen(pn) == 3);
       if (static_eval_to_int(ndref(pn, 0), &cond)) {
-        if (cond) ok = (static_eval)(ndref(pn, 1), &nr) && ts_numerical(nr.ts);
-        else ok = (static_eval)(ndref(pn, 2), &nr) && ts_numerical(nr.ts);
+        if (cond) ok = (static_eval)(ndref(pn, 1), &nr);
+        else ok = (static_eval)(ndref(pn, 2), &nr);
+        if (ok && !ts_numerical(nr.ts) && !ts_spointer(nr.ts)) ok = false;
         if (ok) {
           ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
           prn->ts = nr.ts; prn->val = nr.val;
@@ -618,13 +709,22 @@ bool static_eval(node_t *pn, node_t *prn)
     case NT_CAST: {
       node_t nx = mknd(); ts_t tc; bool ok = false;
       assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
-      tc = ndref(pn, 0)->ts; 
-      if (ts_numerical(tc)) {
-        if ((static_eval)(ndref(pn, 1), &nx) && ts_numerical(nx.ts)) {
-          numval_t vc = nx.val; if (tc == TS_ENUM) tc = TS_INT;
-          numval_convert(tc, nx.ts, &vc);
+      tc = type_extended_ts(ndref(pn, 0)); 
+      if ((ts_numerical(tc) || ts_spointer(tc)) && (static_eval)(ndref(pn, 1), &nx)) {
+        if (ts_numerical(tc) && ts_numerical(nx.ts)) {
+          numval_t vc = nx.val; numval_convert(tc, nx.ts, &vc);
           ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
           prn->ts = tc; prn->val = vc; ok = true;
+        } else if (ts_spointer(tc) && ts_numerical(nx.ts)) {
+          numval_t vc = nx.val; numval_convert(TS_ULONG, nx.ts, &vc);
+          ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
+          prn->ts = tc; prn->val = vc; ok = true;
+        } else if (ts_numerical(tc) && ts_spointer(nx.ts)) {
+          numval_t vc = nx.val; numval_convert(tc, TS_ULONG, &vc);
+          ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
+          prn->ts = tc; prn->val = vc; ok = true;
+        } else if (ts_spointer(tc) && ts_spointer(nx.ts)) {
+          prn->ts = tc; prn->val = nx.val; ok = true;
         }
       }
       ndfini(&nx);
