@@ -1600,6 +1600,12 @@ static bool ahead(pws_t *pw, const char *tk)
 
 /* node_t grammar nodes */
 
+node_t mknd(void)
+{
+  node_t nd; ndinit(&nd);
+  return nd;
+}
+
 node_t* ndinit(node_t* pn)
 {
   memset(pn, 0, sizeof(node_t));
@@ -1966,7 +1972,7 @@ static bool postfix_operator_ahead(pws_t *pw)
 /* wrap node into NT_SUBSCRIPT node */
 void wrap_subscript(node_t *pn, node_t *psn)
 {
-  node_t nd; ndinit(&nd);
+  node_t nd = mknd();
   ndset(&nd, NT_SUBSCRIPT, pn->pwsid, pn->startpos);
   ndswap(pn, ndnewbk(&nd));
   ndswap(psn, ndnewbk(&nd));
@@ -1977,7 +1983,7 @@ void wrap_subscript(node_t *pn, node_t *psn)
 /* wrap expr node into NT_POSTFIX type node */
 void wrap_postfix_operator(node_t *pn, tt_t op, sym_t id)
 {
-  node_t nd; ndinit(&nd);
+  node_t nd = mknd();
   ndset(&nd, NT_POSTFIX, pn->pwsid, pn->startpos);
   ndswap(pn, ndnewbk(&nd));
   nd.op = op; nd.name = id;
@@ -1995,7 +2001,7 @@ static void parse_postfix_expr(pws_t *pw, node_t *pn)
   while (postfix_operator_ahead(pw)) {
     switch (pw->ctk) {
       case TT_LBRK: {
-        node_t nd; ndinit(&nd);
+        node_t nd = mknd();
         dropt(pw);
         parse_expr(pw, &nd);
         expect(pw, TT_RBRK, "]");
@@ -2003,7 +2009,7 @@ static void parse_postfix_expr(pws_t *pw, node_t *pn)
         ndfini(&nd);
       } break;      
       case TT_LPAR: {
-        node_t nd; ndinit(&nd);
+        node_t nd = mknd();
         dropt(pw);
         ndset(&nd, NT_CALL, pn->pwsid, pn->startpos);
         ndswap(pn, ndnewbk(&nd));
@@ -2032,7 +2038,7 @@ static void parse_postfix_expr(pws_t *pw, node_t *pn)
 /* wrap expr node into NT_PREFIX type node */
 void wrap_unary_operator(node_t *pn, int startpos, tt_t op)
 {
-  node_t nd; ndinit(&nd);
+  node_t nd = mknd();
   ndset(&nd, NT_PREFIX, pn->pwsid, startpos);
   ndswap(pn, ndnewbk(&nd));
   nd.op = op;
@@ -2061,7 +2067,7 @@ static void parse_unary_expr(pws_t *pw, node_t *pn)
 /* wrap expr node into NT_CAST type node */
 void wrap_cast(node_t *pcn, node_t *pn)
 {
-  node_t nd; ndinit(&nd);
+  node_t nd = mknd();
   ndset(&nd, NT_CAST, pcn->pwsid, pcn->startpos);
   ndswap(pcn, ndnewbk(&nd));
   ndswap(pn, ndnewbk(&nd));
@@ -2074,7 +2080,7 @@ static void parse_cast_expr(pws_t *pw, node_t *pn)
   int startpos = peekpos(pw);
   parse_unary_expr(pw, pn);
   if (pn->nt == NT_TYPE) {
-    node_t nd; ndinit(&nd);
+    node_t nd = mknd();
     if (peekt(pw) == TT_LBRC) parse_initializer(pw, &nd);
     else parse_cast_expr(pw, &nd);
     wrap_cast(pn, &nd);
@@ -2085,7 +2091,7 @@ static void parse_cast_expr(pws_t *pw, node_t *pn)
 /* wrap expr node into NT_INFIX with second expr */
 void wrap_binary(node_t *pn, tt_t op, node_t *pn2)
 {
-  node_t nd; ndinit(&nd);
+  node_t nd = mknd();
   ndset(&nd, NT_INFIX, pn->pwsid, pn->startpos);
   ndswap(pn, ndnewbk(&nd));
   ndswap(pn2, ndnewbk(&nd));
@@ -2129,7 +2135,7 @@ static void parse_binary_expr(pws_t *pw, node_t *pn, int deft)
     default: assert(false);
   }
   while ((op = getop(pw, deft)) != TT_EOF) {
-    node_t nd; ndinit(&nd);
+    node_t nd = mknd();
     switch (deft) {
       case 'm': parse_cast_expr(pw, &nd); break;
       case 'a': parse_binary_expr(pw, &nd, 'm'); break;
@@ -2151,7 +2157,7 @@ static void parse_binary_expr(pws_t *pw, node_t *pn, int deft)
 /* wrap expr node into NT_COND with second/third exprs */
 void wrap_conditional(node_t *pn, node_t *pn2, node_t *pn3)
 {
-  node_t nd; ndinit(&nd);
+  node_t nd = mknd();
   ndset(&nd, NT_COND, pn->pwsid, pn->startpos);
   ndswap(pn, ndnewbk(&nd));
   ndswap(pn2, ndnewbk(&nd));
@@ -2164,20 +2170,20 @@ static void parse_conditional_expr(pws_t *pw, node_t *pn)
 {
   parse_binary_expr(pw, pn, 'd');
   if (peekt(pw) == TT_QMARK) {
-    node_t ndt, ndf; ndinit(&ndt); ndinit(&ndf);
+    node_t ndt = mknd(), ndf = mknd();
     dropt(pw);
     parse_expr(pw, &ndt);
     expect(pw, TT_COLON, ":");
     parse_conditional_expr(pw, &ndf);
     wrap_conditional(pn, &ndt, &ndf);
-    ndfini(&ndt); ndfini(&ndf);
+    ndfini(&ndt), ndfini(&ndf);
   }
 }
 
 /* wrap expr node into NT_ASSIGN with second expr */
 void wrap_assignment(node_t *pn, tt_t op, node_t *pn2)
 {
-  node_t nd; ndinit(&nd);
+  node_t nd = mknd();
   ndset(&nd, NT_ASSIGN, pn->pwsid, pn->startpos);
   ndswap(pn, ndnewbk(&nd));
   ndswap(pn2, ndnewbk(&nd));
@@ -2196,7 +2202,7 @@ static void parse_assignment_expr(pws_t *pw, node_t *pn)
         case TT_XOR_ASN:  case TT_REM_ASN:  case TT_SLASH_ASN:
         case TT_STAR_ASN: case TT_PLUS_ASN: case TT_MINUS_ASN:
         case TT_SHL_ASN:  case TT_SHR_ASN: {
-          tt_t op; node_t nd; ndinit(&nd); 
+          tt_t op; node_t nd = mknd(); 
           op = pw->ctk; dropt(pw);
           parse_assignment_expr(pw, &nd);
           wrap_assignment(pn, op, &nd);
@@ -2210,7 +2216,7 @@ static void parse_assignment_expr(pws_t *pw, node_t *pn)
 /* wrap expr node into NT_COMMA with second expr */
 void wrap_comma(node_t *pn, node_t *pn2)
 {
-  node_t nd; ndinit(&nd);
+  node_t nd = mknd();
   ndset(&nd, NT_COMMA, pn->pwsid, pn->startpos);
   ndswap(pn, ndnewbk(&nd));
   ndswap(pn2, ndnewbk(&nd));
@@ -2222,7 +2228,7 @@ static void parse_expr(pws_t *pw, node_t *pn)
 {
   parse_assignment_expr(pw, pn);
   while (peekt(pw) == TT_COMMA) {
-    node_t nd; ndinit(&nd); 
+    node_t nd = mknd(); 
     dropt(pw);
     parse_assignment_expr(pw, &nd);
     wrap_comma(pn, &nd);
@@ -2263,7 +2269,6 @@ void parse_enum_body(pws_t *pw, node_t *pn)
         if (!static_eval_to_int(pnv, &curval))
           neprintf(pnv, "invalid enum initializer (int constant expected)");
       }
-      /* todo: wrap in cast to enum type for extra type checking? */
       ndset(pnv, NT_LITERAL, pw->id, pni->startpos);
       pnv->ts = TS_INT; pnv->val.i = curval;
       intern_symbol(symname(pni->name), TT_ENUM_NAME, curval);  
@@ -2386,7 +2391,7 @@ static void parse_base_type(pws_t *pw, node_t *pn)
 /* wrap type node into TS_PTR type node */
 void wrap_type_pointer(node_t *pn)
 {
-  node_t nd; ndinit(&nd);
+  node_t nd = mknd();
   ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos);
   nd.ts = TS_PTR;
   ndswap(pn, ndnewbk(&nd));
@@ -2397,7 +2402,7 @@ void wrap_type_pointer(node_t *pn)
 /* wrap type node and expr node into TS_ARRAY type node */
 void wrap_type_array(node_t *pn, node_t *pi)
 {
-  node_t nd; ndinit(&nd);
+  node_t nd = mknd();
   ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos);
   nd.ts = TS_ARRAY;
   ndswap(pn, ndnewbk(&nd));
@@ -2409,7 +2414,7 @@ void wrap_type_array(node_t *pn, node_t *pi)
 /* wrap type node and vec of type nodes into TS_FUNCTION type node */
 void wrap_type_function(node_t *pn, ndbuf_t *pnb)
 {
-  size_t i; node_t nd; ndinit(&nd);
+  size_t i; node_t nd = mknd();
   ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos);
   nd.ts = TS_FUNCTION;
   ndswap(pn, ndnewbk(&nd));
@@ -2461,7 +2466,7 @@ static void parse_postfix_declarator(pws_t *pw, node_t *pn)
   while (postfix_operator_ahead(pw)) {
     switch (pw->ctk) {
       case TT_LBRK: {
-        node_t nd; ndinit(&nd);
+        node_t nd = mknd();
         dropt(pw);
         if (peekt(pw) != TT_RBRK) parse_expr(pw, &nd); 
         else /* NT_NULL */;
@@ -2541,7 +2546,7 @@ static sym_t invert_declarator(node_t *prn, node_t *ptn)
           id = invert_declarator(ndref(prn, 0), ptn);
         } break;
         case TS_FUNCTION: {
-          node_t nd; ndinit(&nd);
+          node_t nd = mknd();
           assert(ndlen(prn) >= 1);
           ndswap(&nd, ndref(prn, 0));
           ndbrem(&prn->body, 0);
@@ -2559,7 +2564,7 @@ static sym_t invert_declarator(node_t *prn, node_t *ptn)
 
 static sym_t parse_declarator(pws_t *pw, node_t *ptn)
 {
-  sym_t id; node_t nd; ndinit(&nd);
+  sym_t id; node_t nd = mknd();
   parse_unary_declarator(pw, &nd);
   /* fixme: invert nd using ptn as a 'seed' type */
   id = invert_declarator(&nd, ptn);
@@ -2618,7 +2623,7 @@ static sc_t parse_decl(pws_t *pw, ndbuf_t *pnb)
     dropt(pw);
   }
   if (type_specifier_ahead(pw)) {
-    node_t tnd; ndinit(&tnd); 
+    node_t tnd = mknd();
     parse_base_type(pw, &tnd);
     while (peekt(pw) != TT_SEMICOLON && peekt(pw) != TT_LBRC) {
       parse_init_declarator(pw, sc, &tnd, pnb);
@@ -2767,7 +2772,7 @@ static void parse_top_decl(pws_t *pw, node_t *pn)
     if (peekt(pw) == TT_LBRC) {
       /* must be single function declaration */
       if (ndlen(pn) == 1 && ndref(pn, 0)->nt == NT_VARDECL) { 
-        node_t nd; ndinit(&nd);
+        node_t nd = mknd();
         ndswap(ndref(pn, 0), &nd);
         nd.nt = NT_FUNDEF;
         parse_stmt(pw, ndnewbk(&nd));

@@ -16,6 +16,14 @@
 
 /* globals */
 static buf_t g_bases;
+static chbuf_t g_dseg;
+static buf_t g_dsmap; /* of dsmelt_t, sorted by cb */
+
+/* g_dsmap element */
+typedef struct dsmelt_tag {
+  chbuf_t cb;
+  size_t addr;
+} dsmelt_t;
 
 /* initialization */
 void init_compiler(const char *larg, const char *lenv)
@@ -24,16 +32,43 @@ void init_compiler(const char *larg, const char *lenv)
   *(sym_t*)bufnewbk(&g_bases) = intern(""); 
   if (larg) *(sym_t*)bufnewbk(&g_bases) = intern(larg); 
   if (lenv) *(sym_t*)bufnewbk(&g_bases) = intern(lenv);
+  chbinit(&g_dseg); bufresize(&g_dseg, 16); /* reserve first 16 bytes */
+  bufinit(&g_dsmap, sizeof(dsmelt_t));
   init_workspaces();
   init_symbols();
 }
 
 void fini_compiler(void)
 {
+  dsmelt_t *pde; size_t i;
   buffini(&g_bases);
+  chbfini(&g_dseg);
+  for (pde = (dsmelt_t*)(&g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) chbfini(&pde[i].cb);
+  buffini(&g_dsmap);
   fini_workspaces();
   fini_symbols();
 }
+
+/* data segment operations */
+
+/* never returns 0 (first 16 bytes are reserved) */
+size_t dseg_intern(size_t align, chbuf_t *pcb)
+{
+  dsmelt_t *pe = bufbsearch(&g_dsmap, pcb, chbuf_cmp);
+  if (pe) {
+    return pe->addr;
+  } else {
+    size_t addr = chblen(&g_dseg), n = addr % align;
+    if (n > 0) bufresize(&g_dseg, (addr = addr+(align-n)));
+    chbcat(&g_dseg, pcb);
+    pe = bufnewbk(&g_dsmap); pe->addr = addr;
+    chbicpy(&pe->cb, pcb);
+    bufqsort(&g_dsmap, chbuf_cmp);
+    return addr;
+  } 
+}
+
+
 
 /* variable info */
 typedef struct vi_tag {
@@ -41,7 +76,6 @@ typedef struct vi_tag {
   node_t *ptn;  /* pointer to type node (stored elsewhere) */
   unsigned rno; /* REGISTER: LOCAL_GET/LOCAL_SET offset */
 } vi_t;
-
 
 /* environment */
 
@@ -114,7 +148,7 @@ static ts_t ts_integral_promote(ts_t ts)
   switch (ts) {
     case TS_CHAR: case TS_UCHAR: 
     case TS_SHORT: case TS_USHORT:
-    case TS_INT: case TS_ENUM:      return TS_INT;
+    case TS_INT:                    return TS_INT;
     case TS_UINT:                   return TS_UINT;
     /* fixme: should depend on wasm32/wasm64 model */
     case TS_LONG:                   return TS_INT;
@@ -147,7 +181,7 @@ unsigned long long integral_mask(ts_t ts, unsigned long long u)
       return u & 0x00000000000000FFull; 
     case TS_SHORT: case TS_USHORT:  
       return u & 0x000000000000FFFFull; 
-    case TS_INT: case TS_ENUM: case TS_UINT:                   
+    case TS_INT: case TS_UINT:                   
       return u & 0x00000000FFFFFFFFull; 
     /* fixme: should depend on wasm32/wasm64 model */
     case TS_LONG: case TS_ULONG:                  
@@ -168,7 +202,7 @@ long long integral_sext(ts_t ts, long long i)
     case TS_SHORT: case TS_USHORT:
       return (long long)((((unsigned long long)i & 0x000000000000FFFFull) 
                         ^ 0x0000000000008000ull) - 0x0000000000008000ull); 
-    case TS_INT: case TS_ENUM: case TS_UINT:                   
+    case TS_INT: case TS_UINT:                   
       return (long long)((((unsigned long long)i & 0x00000000FFFFFFFFull) 
                         ^ 0x0000000080000000ull) - 0x0000000080000000ull); 
     /* fixme: should depend on wasm32/wasm64 model */
@@ -372,7 +406,7 @@ void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int l
       break;
     case TS_LONG: case TS_ULONG:
     case TS_STRING: case TS_LSTRING:
-    case TS_PTR: 
+    case TS_PTR:
       /* wasm32; should be 8 for wasm64 */
       *psize = *palign = 4;
       break;
@@ -485,8 +519,8 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld)
 /* evaluate integer expression pn statically, putting result into pi */
 bool static_eval_to_int(node_t *pn, int *pri)
 {
-  node_t nd; bool ok = false;
-  if (static_eval(pn, ndinit(&nd)) && nd.nt == NT_LITERAL && ts_numerical(nd.ts)) {
+  node_t nd = mknd(); bool ok = false;
+  if (static_eval(pn, &nd) && nd.nt == NT_LITERAL && ts_numerical(nd.ts)) {
     numval_t v = nd.val; numval_convert(TS_INT, nd.ts, &v);
     *pri = (int)v.i, ok = true;
   }
@@ -517,6 +551,9 @@ bool static_eval(node_t *pn, node_t *prn)
         ndcpy(prn, pn);
         return true;
       }
+      /* todo: string literals are actually known fixed addresses in data segment
+       * so they are in fact ULONGs, but some math with them (p+n, n+p, p-p) 
+       * depends on pointer type */
     } break;
     case NT_INTRCALL: {
       if (pn->intr == INTR_SIZEOF || pn->intr == INTR_ALIGNOF) {
@@ -535,8 +572,7 @@ bool static_eval(node_t *pn, node_t *prn)
       }
     } break;
     case NT_PREFIX: {
-      node_t nx; bool ok = false; 
-      ndinit(&nx);
+      node_t nx = mknd(); bool ok = false; 
       assert(ndlen(pn) == 1); 
       if ((static_eval)(ndref(pn, 0), &nx)) {
         if (nx.nt == NT_LITERAL && ts_numerical(nx.ts)) {
@@ -551,8 +587,7 @@ bool static_eval(node_t *pn, node_t *prn)
       return ok;
     } break;
     case NT_INFIX: {
-      node_t nx, ny; bool ok = false;
-      ndinit(&nx), ndinit(&ny);
+      node_t nx = mknd(), ny = mknd(); bool ok = false;
       assert(ndlen(pn) == 2); 
       if ((static_eval)(ndref(pn, 0), &nx) && (static_eval)(ndref(pn, 1), &ny)) {
         if (nx.nt == NT_LITERAL && ts_numerical(nx.ts) && ny.nt == NT_LITERAL && ts_numerical(ny.ts)) {
@@ -567,8 +602,8 @@ bool static_eval(node_t *pn, node_t *prn)
       return ok;
     } break;
     case NT_COND: {
-      node_t nr; bool ok = false; int cond;
-      ndinit(&nr); assert(ndlen(pn) == 3);
+      node_t nr = mknd(); bool ok = false; int cond;
+      assert(ndlen(pn) == 3);
       if (static_eval_to_int(ndref(pn, 0), &cond)) {
         if (cond) ok = (static_eval)(ndref(pn, 1), &nr) && ts_numerical(nr.ts);
         else ok = (static_eval)(ndref(pn, 2), &nr) && ts_numerical(nr.ts);
@@ -581,10 +616,10 @@ bool static_eval(node_t *pn, node_t *prn)
       return ok;
     } break;
     case NT_CAST: {
-      node_t nx; ts_t tc; bool ok = false;
-      ndinit(&nx);
+      node_t nx = mknd(); ts_t tc; bool ok = false;
       assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
-      if ((tc = ndref(pn, 0)->ts) == TS_ENUM || ts_numerical(tc)) {
+      tc = ndref(pn, 0)->ts; 
+      if (ts_numerical(tc)) {
         if ((static_eval)(ndref(pn, 1), &nx) && ts_numerical(nx.ts)) {
           numval_t vc = nx.val; if (tc == TS_ENUM) tc = TS_INT;
           numval_convert(tc, nx.ts, &vc);
@@ -659,11 +694,13 @@ static void check_ftnd(node_t *ptn)
     node_t *ptni = ndref(ptn, i); 
     assert(ptni->nt == NT_VARDECL && ndlen(ptni) == 1 || ptni->nt == NT_TYPE);
     if (ptni->nt == NT_VARDECL) ptni = ndref(ptni, 0); assert(ptni->nt == NT_TYPE);
+    /* todo: allow sizeable structures/unions as immediate args/return values;
+     * they will be passed as pointers (extra arg for return value) */
     switch (ptni->ts) {
       case TS_VOID: /* ok if alone */ 
         if (i == 0) break; /* return type can be void */
         neprintf(ptn, "unexpected void function argument type");
-      case TS_INT: case TS_UINT:
+      case TS_INT: case TS_UINT: case TS_ENUM:
       case TS_LONG: case TS_ULONG:  
       case TS_PTR: case TS_ARRAY:
       case TS_LLONG: case TS_ULLONG:  
@@ -720,7 +757,7 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
 #endif  
   check_ftnd(ndref(pn, 0));
   { /* post appropriate vardecl for later use */
-    node_t nd; ndinit(&nd);
+    node_t nd = mknd();
     ndset(&nd, NT_VARDECL, pn->pwsid, pn->startpos);
     nd.name = pn->name; ndcpy(ndnewbk(&nd), ndref(pn, 0)); 
     post_vardecl(mainmod, &nd); 
@@ -814,8 +851,7 @@ static void process_top_node(sym_t mainmod, node_t *pn, module_t *pm)
 /* parse/process include file and its includes */
 static void process_include(pws_t *pw, int startpos, sym_t name, module_t *pm)
 {
-  pws_t *pwi; node_t nd;
-  ndinit(&nd);
+  pws_t *pwi; node_t nd = mknd();
   pwi = pws_from_modname(name, &g_bases);
   if (pwi) {
     /* this should be workspace #1... */
@@ -839,8 +875,7 @@ static void process_include(pws_t *pw, int startpos, sym_t name, module_t *pm)
 /* parse/process module file and its includes; return module name on success */
 static sym_t process_module(const char *fname, module_t *pm)
 {
-  pws_t *pw; node_t nd; sym_t mod = 0;
-  ndinit(&nd);
+  pws_t *pw; node_t nd = mknd(); sym_t mod = 0;
   pw = newpws(fname);
   if (pw) {
     /* this should be workspace #0 */

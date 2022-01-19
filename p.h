@@ -88,13 +88,14 @@ typedef enum sc_tag {
 
 /* base type specifier */
 typedef enum ts_tag {
-  /* pseudo-types: */    TS_VOID,    TS_ETC, 
-  TS_CHAR,   TS_UCHAR,   TS_SHORT,   TS_USHORT,
-  TS_INT,    TS_UINT,    TS_LONG,    TS_ULONG,
-  TS_LLONG,  TS_ULLONG,  TS_FLOAT,   TS_DOUBLE,
-  /* literals only: */   TS_STRING,  TS_LSTRING, 
-  TS_ENUM,   TS_STRUCT,  TS_UNION,
-  TS_PTR,    TS_ARRAY,   TS_FUNCTION
+  /* pseudo-types: */        TS_VOID,     TS_ETC, 
+  TS_CHAR,     TS_UCHAR,     TS_SHORT,    TS_USHORT,
+  TS_INT,      TS_UINT,      TS_LONG,     TS_ULONG,
+  TS_LLONG,    TS_ULLONG,    TS_FLOAT,    TS_DOUBLE,
+  TS_STRING,   TS_LSTRING,   TS_ENUM,     TS_ARRAY,
+  TS_STRUCT,   TS_UNION,     TS_FUNCTION, TS_PTR,
+  /* 'sized' pointer types (not used in nodes) */
+  TS_SPTR_MIN, TS_SPTR_MAX = TS_SPTR_MIN + 4096
 } ts_t;
 
 /* numerical value */
@@ -159,6 +160,7 @@ typedef struct node_tag {
   ndbuf_t body;   /* SUBSCRIPT/CALL/CAST/UNARY/BINARY/... */
 } node_t;
 
+extern node_t mknd(void);
 extern node_t* ndinit(node_t* pn);
 extern void ndicpy(node_t* mem, const node_t* pn);
 extern void ndfini(node_t* pn);

@@ -856,12 +856,36 @@ char* chbdata(chbuf_t* pb)
   return pb->buf; 
 }
 
+void chbcat(chbuf_t* pb, const chbuf_t* pcb)
+{
+  size_t i = chblen(pb), n = chblen(pcb);
+  bufresize(pb, i+n);
+  memcpy((char*)pb->buf+i, (char*)pcb->buf, n);
+}
+
 dstr_t chbclose(chbuf_t* pb)
 {
   dstr_t s;
   *(char*)bufnewbk(pb) = 0;
   s = pb->buf; pb->buf = NULL; /* pb is finalized */
   return s; 
+}
+
+int chbuf_cmp(const void *p1, const void *p2)
+{
+  chbuf_t *pcb1 = (chbuf_t *)p1, *pcb2 = (chbuf_t *)p2; 
+  const unsigned char *pc1, *pc2;
+  size_t n1, n2, i = 0;
+  assert(pcb1); assert(pcb2);
+  n1 = chblen(pcb1), n2 = chblen(pcb2);
+  pc1 = pcb1->buf, pc2 = pcb2->buf;
+  while (i < n1 && i < n2) {
+    int d = (int)*pc1++ - (int)*pc2++;
+    if (d < 0) return -1; if (d > 0) return 1;
+    ++i; 
+  }
+  if (n1 < n2) return -1; if (n1 > n2) return 1;
+  return 0;
 }
 
 char *fgetlb(chbuf_t *pcb, FILE *fp)

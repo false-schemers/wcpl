@@ -144,7 +144,9 @@ extern char* chbset(chbuf_t* pb, const char *s, size_t n);
 extern char* chbsets(chbuf_t* pb, const char *s);
 extern char* chbsetf(chbuf_t* pb, const char *fmt, ...);
 extern char* chbdata(chbuf_t* pb);
+extern void chbcat(chbuf_t* pb, const chbuf_t* pcb);
 extern dstr_t chbclose(chbuf_t* pb);
+extern int chbuf_cmp(const void *p1, const void *p2);
 extern char* fgetlb(chbuf_t *pcb, FILE *fp);
 extern char *wcsto8cb(const wchar_t *wstr, int rc, chbuf_t *pcb);
 
