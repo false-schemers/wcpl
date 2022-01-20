@@ -1080,6 +1080,15 @@ void compile_module(const char *fname)
       }
     }
   }
+  /* use contents of g_dseg as passive data segment */
+  if (chblen(&g_dseg) > 16) { /* the reserved part */
+    size_t dsoff = 16, dslen = chblen(&g_dseg) - 16;
+    dseg_t *pds = dsegbnewbk(&m.datadefs, DS_ACTIVE); /* #0 */
+    inscode_t *pic;
+    chbset(&pds->data, chbdata(&g_dseg)+dsoff, dslen);
+    pic = icbnewbk(&pds->code), pic->in = IN_I32_CONST, pic->arg.u = dsoff;
+    pic = icbnewbk(&pds->code), pic->in = IN_END; 
+  }
   /* add reloc entries for functions defined in mainmod */
   for (i = fino; i < entblen(&m.funcdefs); ++i) {
     entry_t *pe = entbref(&m.funcdefs, i);

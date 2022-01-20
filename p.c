@@ -1845,7 +1845,8 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       while (*ns && (errno = 0, ul = strtocc32(ns, &ns), !errno && ul <= 0x10FFFFUL)) {
         chbputlc(ul, &pn->data); /* in utf-8 */
-      } 
+      }
+      chbputc(0, &pn->data); /* terminating zero char, C-style */
       if (*ns) reprintf(pw, startpos+(ns-pw->tokstr), "string literal char overflow");
       pn->ts = TS_STRING;
       dropt(pw);
@@ -1855,7 +1856,8 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       while (*ns && (errno = 0, ul = strtocc32(ns, &ns), !errno && ul <= 0x10FFFFUL)) {
         chbput4le(ul, &pn->data); /* 4 bytes, in LE order */
-      } 
+      }
+      chbput4le(0, &pn->data); /* terminating zero wchar, C-style */
       if (*ns) reprintf(pw, startpos+(ns-pw->tokstr), "long string literal char overflow");
       pn->ts = TS_LSTRING;
       dropt(pw);
