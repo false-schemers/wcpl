@@ -93,9 +93,7 @@ typedef enum ts_tag {
   TS_INT,      TS_UINT,      TS_LONG,     TS_ULONG,
   TS_LLONG,    TS_ULLONG,    TS_FLOAT,    TS_DOUBLE,
   TS_STRING,   TS_LSTRING,   TS_ENUM,     TS_ARRAY,
-  TS_STRUCT,   TS_UNION,     TS_FUNCTION, TS_PTR,
-  /* 'sized' pointer types (not used in nodes) */
-  TS_SPTR_MIN, TS_SPTR_MAX = TS_SPTR_MIN + 4096
+  TS_STRUCT,   TS_UNION,     TS_FUNCTION, TS_PTR
 } ts_t;
 
 /* numerical value */
@@ -165,7 +163,7 @@ extern node_t* ndinit(node_t* pn);
 extern void ndicpy(node_t* mem, const node_t* pn);
 extern void ndfini(node_t* pn);
 extern void ndcpy(node_t* pn, const node_t* pr);
-extern void ndset(node_t *dst, nt_t nt, int pwsid, int startpos);
+extern node_t *ndset(node_t *dst, nt_t nt, int pwsid, int startpos);
 extern void ndclear(node_t* pn);
 #define ndswap(pn1, pn2) memswap(pn1, pn2, sizeof(node_t))
 #define ndbinit(mem) bufinit(mem, sizeof(node_t))
@@ -180,6 +178,8 @@ extern void ndbclear(ndbuf_t* pb);
 #define ndlen(pn) ndblen(&(pn)->body)
 #define ndref(pn, i) ndbref(&(pn)->body, i)
 #define ndnewbk(pn) ndbnewbk(&(pn)->body)
+#define ndpushbk(pn, psn) ndbpushbk(&(pn)->body, psn)
+extern node_t *ndinsbk(node_t *pn, nt_t nt);
 
 /* parse single top-level declaration/definition */
 extern bool parse_top_form(pws_t *pw, node_t *pn);

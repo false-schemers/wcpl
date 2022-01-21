@@ -18,11 +18,13 @@
 static buf_t g_bases;
 static chbuf_t g_dseg;
 static buf_t g_dsmap; /* of dsmelt_t, sorted by cb */
+static node_t g_dsty; /* NT_TYPE TS_STRUCT */
 
 /* g_dsmap element */
 typedef struct dsmelt_tag {
   chbuf_t cb;
   size_t addr;
+  size_t id;
 } dsmelt_t;
 
 /* initialization */
@@ -32,7 +34,8 @@ void init_compiler(const char *larg, const char *lenv)
   *(sym_t*)bufnewbk(&g_bases) = intern(""); 
   if (larg) *(sym_t*)bufnewbk(&g_bases) = intern(larg); 
   if (lenv) *(sym_t*)bufnewbk(&g_bases) = intern(lenv);
-  chbinit(&g_dseg); bufresize(&g_dseg, 16); /* reserve first 16 bytes */
+  chbinit(&g_dseg);
+  ndinit(&g_dsty); ndset(&g_dsty, NT_TYPE, -1, -1); g_dsty.ts = TS_STRUCT; 
   bufinit(&g_dsmap, sizeof(dsmelt_t));
   init_workspaces();
   init_symbols();
@@ -43,31 +46,45 @@ void fini_compiler(void)
   dsmelt_t *pde; size_t i;
   buffini(&g_bases);
   chbfini(&g_dseg);
+  ndfini(&g_dsty);
   for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) chbfini(&pde[i].cb);
   buffini(&g_dsmap);
   fini_workspaces();
   fini_symbols();
 }
 
+
 /* data segment operations */
 
-/* never returns 0 (first 16 bytes are reserved) */
-size_t dseg_intern(size_t align, chbuf_t *pcb)
+/* intern the string literal, convert node to &($dp)->$foo */
+node_t *convert_strlit_to_dsegref(node_t *pn)
 {
-  dsmelt_t *pe = bufbsearch(&g_dsmap, pcb, chbuf_cmp);
-  if (pe) {
-    return pe->addr;
-  } else {
+  dsmelt_t *pe; node_t *psn; sym_t fs;
+  assert(pn->nt == NT_LITERAL && (pn->ts == TS_STRING || pn->ts == TS_LSTRING));
+  pe = bufbsearch(&g_dsmap, &pn->data, chbuf_cmp);
+  if (!pe) {
+    /* add data to g_dseg */
+    size_t align = pn->ts == TS_STRING ? 1 : 4;
     size_t addr = chblen(&g_dseg), n = addr % align;
     if (n > 0) bufresize(&g_dseg, (addr = addr+(align-n)));
-    chbcat(&g_dseg, pcb);
+    chbcat(&g_dseg, &pn->data);
     pe = bufnewbk(&g_dsmap); 
-    chbicpy(&pe->cb, pcb); pe->addr = addr; 
+    chbicpy(&pe->cb, &pn->data); pe->addr = addr; 
+    pe->id = buflen(&g_dsmap);
+    fs = internf("$%s%d", pn->ts == TS_STRING ? "str " : "lstr", (int)pe->id);
     bufqsort(&g_dsmap, chbuf_cmp);
-    return addr;
-  } 
+    /* ann new field to g_dsty */
+    psn = ndinsbk(&g_dsty, NT_VARDECL); psn->name = fs;
+    psn = ndinsbk(psn, NT_TYPE); psn->ts = (pn->ts == TS_STRING) ? TS_CHAR : TS_INT;
+    psn = ndinsbk(psn, NT_LITERAL); psn->ts = TS_UINT; psn->val.u = addr; 
+  } else {
+    fs = internf("$%s%d", pn->ts == TS_STRING ? "str " : "lstr", (int)pe->id);
+  }
+  ndset(pn, NT_PREFIX, pn->pwsid, pn->startpos); pn->op = TT_AND;
+  psn = ndinsbk(pn, NT_POSTFIX); psn->op = TT_ARROW; psn->name = fs;
+  psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = intern("$dp");
+  return pn;
 }
-
 
 
 /* variable info */
@@ -127,24 +144,9 @@ static bool envlookup(env_t *penv, const char *v, size_t *pdepth)
 
 /* type predicates and operations */
 
-static bool ts_spointer(ts_t ts) 
-{
-  return TS_PTR < ts && ts <= TS_SPTR_MAX;
-}
-
 static bool ts_numerical(ts_t ts) 
 {
   return TS_CHAR <= ts && ts <= TS_DOUBLE;
-}
-
-static bool ts_ptrdiff(ts_t ts) 
-{
-  return TS_CHAR <= ts && ts <= TS_ULONG; /* can be TS_ULLONG in wasm32? */
-}
-
-static bool ts_difforsptr(ts_t ts) 
-{
-  return ts_spointer(ts) || ts_ptrdiff(ts);
 }
 
 static bool ts_unsigned(ts_t ts) 
@@ -307,17 +309,6 @@ ts_t numval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
   return tz;
 }  
 
-/* unary operation with a sized pointer */
-ts_t spval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
-{
-  assert(ts_spointer(tx));
-  switch (op) {
-    case TT_PLUS:  pvz->u = vx.u; return tx;
-    case TT_NOT:   pvz->i = vx.u == 0; return TS_INT;
-    default:       return TS_VOID;
-  }
-}
-
 /* binary operation between two numbers */
 ts_t numval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t *pvz)
 {
@@ -407,36 +398,6 @@ ts_t numval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t 
   }
   return tz;
 }  
-
-/* binary operation between two pointer/ptrdiff arguments (at least one is a pointer) */
-ts_t dspval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t *pvz)
-{
-  ts_t tz = TS_VOID;
-  if (op == TT_PLUS && ts_spointer(tx) && ts_ptrdiff(ty)) {
-    numval_convert(TS_LONG, ty, &vy);
-    tz = tx; pvz->u = vx.u + vy.i * (tx-TS_PTR); 
-  } else if (op == TT_PLUS && ts_ptrdiff(tx) && ts_spointer(ty)) {
-    numval_convert(TS_LONG, tx, &vx);
-    tz = ty; pvz->u = vy.u + vx.i * (ty-TS_PTR); 
-  } else if (op == TT_MINUS && ts_spointer(tx) && ts_ptrdiff(ty)) {
-    numval_convert(TS_LONG, ty, &vy);
-    tz = tx; pvz->u = vx.u - vy.i * (tx-TS_PTR); 
-  } else if (op == TT_MINUS && ts_spointer(tx) && ts_spointer(ty) && tx == ty) {
-    tz = TS_LONG; pvz->i = (vx.u - vy.u)/(tx-TS_PTR); 
-  } else if (ts_spointer(tx) && ts_spointer(ty) && tx == ty) {
-    unsigned long long x = vx.u, y = vy.u;
-    switch (op) {
-      case TT_EQ:    pvz->i = x == y; tz = TS_INT; break;
-      case TT_NE:    pvz->i = x != y; tz = TS_INT; break;
-      case TT_LT:    pvz->i = x < y;  tz = TS_INT; break;
-      case TT_GT:    pvz->i = x > y;  tz = TS_INT; break;
-      case TT_LE:    pvz->i = x <= y; tz = TS_INT; break;
-      case TT_GE:    pvz->i = x >= y; tz = TS_INT; break;
-      default:       tz = TS_VOID; break;
-    }
-  }
-  return tz;
-}
 
 /* calc size/align for ptn; prn is NULL or reference node for errors */
 void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl)
@@ -574,21 +535,6 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld)
   return 0; /* won't happen */
 }
 
-/* get ts from type node; measure the pointers to return TS_SPTR... */
-static ts_t type_extended_ts(node_t *ptn)
-{
-  assert(ptn && ptn->nt == NT_TYPE);
-  if (ptn->ts == TS_PTR) {
-    size_t size = 0, align = 0; 
-    assert(ndlen(ptn) == 1);
-    measure_type(ndref(ptn, 0), ptn, &size, &align, 0);
-    if (size > 0 && size <= TS_SPTR_MAX-TS_PTR)
-      return (ts_t)(TS_PTR+size);
-  }
-  return ptn->ts;
-}
-
-
 /* evaluate integer expression pn statically, putting result into pi */
 bool static_eval_to_int(node_t *pn, int *pri)
 {
@@ -623,13 +569,7 @@ bool static_eval(node_t *pn, node_t *prn)
       if (ts_numerical(pn->ts)) {
         ndcpy(prn, pn);
         return true;
-      } else if (pn->ts == TS_STRING || pn->ts == TS_LSTRING) {
-        size_t eltsz = (pn->ts == TS_STRING ? 1 : 4), align = eltsz;
-        ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
-        prn->ts = TS_PTR + eltsz; /* 'sized' pointer */
-        prn->val.u = dseg_intern(align, &pn->data);
-        return true;
-      }        
+      }
     } break;
     case NT_INTRCALL: {
       if (pn->intr == INTR_SIZEOF || pn->intr == INTR_ALIGNOF) {
@@ -658,12 +598,6 @@ bool static_eval(node_t *pn, node_t *prn)
             ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
             prn->ts = tz; prn->val = vz; ok = true;
           }
-        } else if (ts_spointer(nx.ts)) {
-          numval_t vz; ts_t tz = spval_unop(pn->op, nx.ts, nx.val, &vz);
-          if (tz != TS_VOID) {
-            ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
-            prn->ts = tz; prn->val = vz; ok = true;
-          }
         }
       }
       ndfini(&nx);
@@ -680,12 +614,6 @@ bool static_eval(node_t *pn, node_t *prn)
             ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
             prn->ts = tz; prn->val = vz; ok = true;
           }
-        } else if (ts_difforsptr(nx.ts) && ts_difforsptr(ny.ts)) {
-          numval_t vz; ts_t tz = dspval_binop(pn->op, nx.ts, nx.val, ny.ts, ny.val, &vz);
-          if (tz != TS_VOID) {
-            ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
-            prn->ts = tz; prn->val = vz; ok = true;
-          }
         }
       }
       ndfini(&nx), ndfini(&ny);
@@ -697,7 +625,7 @@ bool static_eval(node_t *pn, node_t *prn)
       if (static_eval_to_int(ndref(pn, 0), &cond)) {
         if (cond) ok = (static_eval)(ndref(pn, 1), &nr);
         else ok = (static_eval)(ndref(pn, 2), &nr);
-        if (ok && !ts_numerical(nr.ts) && !ts_spointer(nr.ts)) ok = false;
+        if (ok && !ts_numerical(nr.ts)) ok = false;
         if (ok) {
           ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
           prn->ts = nr.ts; prn->val = nr.val;
@@ -709,23 +637,11 @@ bool static_eval(node_t *pn, node_t *prn)
     case NT_CAST: {
       node_t nx = mknd(); ts_t tc; bool ok = false;
       assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
-      tc = type_extended_ts(ndref(pn, 0)); 
-      if ((ts_numerical(tc) || ts_spointer(tc)) && (static_eval)(ndref(pn, 1), &nx)) {
-        if (ts_numerical(tc) && ts_numerical(nx.ts)) {
-          numval_t vc = nx.val; numval_convert(tc, nx.ts, &vc);
-          ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
-          prn->ts = tc; prn->val = vc; ok = true;
-        } else if (ts_spointer(tc) && ts_numerical(nx.ts)) {
-          numval_t vc = nx.val; numval_convert(TS_ULONG, nx.ts, &vc);
-          ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
-          prn->ts = tc; prn->val = vc; ok = true;
-        } else if (ts_numerical(tc) && ts_spointer(nx.ts)) {
-          numval_t vc = nx.val; numval_convert(tc, TS_ULONG, &vc);
-          ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
-          prn->ts = tc; prn->val = vc; ok = true;
-        } else if (ts_spointer(tc) && ts_spointer(nx.ts)) {
-          prn->ts = tc; prn->val = nx.val; ok = true;
-        }
+      tc = ndref(pn, 0)->ts; 
+      if (ts_numerical(tc) && (static_eval)(ndref(pn, 1), &nx) && ts_numerical(nx.ts)) {
+        numval_t vc = nx.val; numval_convert(tc, nx.ts, &vc);
+        ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
+        prn->ts = tc; prn->val = vc; ok = true;
       }
       ndfini(&nx);
       return ok;
@@ -859,7 +775,7 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
   { /* post appropriate vardecl for later use */
     node_t nd = mknd();
     ndset(&nd, NT_VARDECL, pn->pwsid, pn->startpos);
-    nd.name = pn->name; ndcpy(ndnewbk(&nd), ndref(pn, 0)); 
+    nd.name = pn->name; ndpushbk(&nd, ndref(pn, 0)); 
     post_vardecl(mainmod, &nd); 
     ndfini(&nd); 
   }
@@ -1081,7 +997,8 @@ void compile_module(const char *fname)
     }
   }
   /* use contents of g_dseg as passive data segment */
-  if (chblen(&g_dseg) > 16) { /* the reserved part */
+  /* fixme: global var $dp should be inited to the base address of dseg, and dsoff be taken from it! */
+  if (chblen(&g_dseg) > 0) { 
     size_t dsoff = 16, dslen = chblen(&g_dseg) - 16;
     dseg_t *pds = dsegbnewbk(&m.datadefs, DS_ACTIVE); /* #0 */
     inscode_t *pic;

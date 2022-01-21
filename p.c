@@ -447,7 +447,7 @@ const node_t *post_symbol(sym_t mod, node_t *pvn)
   info = (int)ndblen(&g_nodes); pin = ndbnewbk(&g_nodes);
   ndset(pin, NT_IMPORT, pvn->pwsid, pvn->startpos);
   pin->name = mod; pin->sc = SC_NONE; /* changed to SC_EXTERN on reference */
-  ndcpy(ndnewbk(pin), ndref(pvn, 0));
+  ndpushbk(pin, ndref(pvn, 0));
   intern_symbol(symname(pvn->name), TT_IDENTIFIER, info);
   return pin;
 } 
@@ -1633,7 +1633,7 @@ void ndcpy(node_t* pn, const node_t* pr)
   ndicpy(pn, pr);
 }
 
-void ndset(node_t *dst, nt_t nt, int pwsid, int startpos)
+node_t *ndset(node_t *dst, nt_t nt, int pwsid, int startpos)
 {
   dst->nt = nt;
   dst->pwsid = pwsid;
@@ -1645,12 +1645,18 @@ void ndset(node_t *dst, nt_t nt, int pwsid, int startpos)
   dst->ts = TS_VOID;
   dst->sc = SC_NONE;
   ndbclear(&dst->body);
+  return dst;
 }
 
 void ndclear(node_t* pn)
 {
   ndfini(pn);
   ndinit(pn);
+}
+
+node_t *ndinsbk(node_t *pn, nt_t nt)
+{
+  return ndset(ndnewbk(pn), nt, pn->pwsid, pn->startpos);
 }
 
 void ndbicpy(ndbuf_t* mem, const ndbuf_t* pb)
@@ -3088,9 +3094,7 @@ static char *ts_name(ts_t ts)
     case TS_UNION: s = "union"; break; 
     case TS_FUNCTION: s = "function"; break; 
     case TS_PTR: s = "ptr"; break; 
-    default: 
-    if (TS_PTR < ts && ts <= TS_SPTR_MAX) s = "sptr";
-    else assert(false);
+    default: assert(false);
   }
   return s;
 }
@@ -3190,14 +3194,7 @@ static void dump(node_t *pn, FILE* fp, int indent)
           chbputllu(pn->val.u, &cb);
           fputs(chbdata(&cb), fp);
           break;
-        default:
-          if (TS_PTR < pn->ts && pn->ts <= TS_SPTR_MAX) {
-            fprintf(fp, "%d at ", (int)(pn->ts - TS_PTR));
-            chbputllu(pn->val.u, &cb);
-            fputs(chbdata(&cb), fp);  
-          } else {
-            assert(false); 
-          }
+        default: assert(false); 
       }    
       chbfini(&cb);
     } break;
