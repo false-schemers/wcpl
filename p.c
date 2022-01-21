@@ -17,39 +17,19 @@
 
 /* module names and files */
 
-char *path_filename(const char *path)
-{
-  char *s1, *s2, *s3, *s = (char*)path;
-  s1 = strrchr(path, '\\'), s2 = strrchr(path, '/'), s3 = strrchr(path, ':');
-  if (s1 && s < s1+1) s = s1+1; 
-  if (s2 && s < s2+1) s = s2+1; 
-  if (s3 && s < s3+1) s = s3+1;
-  return s;
-}
-
 sym_t base_from_path(const char *path)
 {
-  char *f = path_filename(path), *z = (char*)path + strlen(path); 
-  sym_t bp = 0;
-  if (f < z) {
-    chbuf_t cb; chbinit(&cb); 
-    bp = intern(chbset(&cb, path, f-path));
-    chbfini(&cb);
-  }
+  chbuf_t cb = mkchb(); char *fn = getfname(path);
+  sym_t bp = intern(chbset(&cb, path, fn-path));
+  chbfini(&cb);
   return bp;
 }
 
 sym_t modname_from_path(const char *path)
 {
-  char *e, *s = path_filename(path), *z = (char*)path + strlen(path); 
-  sym_t mod = 0;
-  if (!(e = strrchr(path, '.')) || e < s) e = z;
-  assert(s <= e);
-  if (s < e) {
-    chbuf_t cb; chbinit(&cb); 
-    mod = intern(chbset(&cb, s, e-s));
-    chbfini(&cb);
-  }
+  chbuf_t cb = mkchb(); char *fn = getfname(path);
+  sym_t mod = intern(chbset(&cb, fn, spanfbase(fn)));  
+  chbfini(&cb);
   return mod;
 }
 
@@ -119,7 +99,6 @@ void closepws(pws_t *pw)
   }
 }
 
-
 static void freepws(pws_t *pw)
 {
   if (pw) {
@@ -146,7 +125,6 @@ void fini_workspaces(void)
   }
   buffini(&g_pwsbuf);
 }
-
 
 /* convert global position into 1-based line + 0-based offset */
 static void pos2lnoff(pws_t *pw, int gci, int *pln1, int *poff0)
@@ -2998,7 +2976,6 @@ void n2eprintf(node_t *pn, node_t *pn2, const char *fmt, ...)
   if (pn2) neprintf(pn2, "(original definition)");
   else exit(1);
 }
-
 
 
 /* dump nodes in s-expression format */

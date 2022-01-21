@@ -13,8 +13,18 @@
 #include "l.h"
 
 /* globals */
+static const char *g_progname = NULL;  /* program name for messages */
+static const char *g_usage = NULL;  /* usage string for messages */
+int g_wlevel = 0; /* warnings below this level are ignored */
+int g_verbosity = 0; /* how verbose are we? */
+int g_quietness = 0; /* how quiet are we? */
+/* AT&T-like option parser */
+int eoptind = 1; /* start*/
+int eopterr = 1; /* throw errors by default */
+int eoptopt = 0;
+char* eoptarg = 0;
+int eoptich = 0;
 
-int g_verbosity = 0;
 
 /* common utility functions */
 
@@ -23,8 +33,8 @@ void exprintf(const char *fmt, ...)
   va_list args;
 
   fflush(stdout);
-  //if (progname() != NULL)
-  //  fprintf(stderr, "%s: ", progname());
+  if (progname() != NULL)
+    fprintf(stderr, "%s: ", progname());
 
   va_start(args, fmt);
   vfprintf(stderr, fmt, args);
@@ -62,6 +72,13 @@ char *exstrdup(const char *s)
 {
   char *t = (char *)exmalloc(strlen(s)+1);
   strcpy(t, s);
+  return t;
+}
+
+char *exstrndup(const char* s, size_t n)
+{
+  char *t = (char *)exmalloc(n+1);
+  strncpy(t, s, n); t[n] = '\0';
   return t;
 }
 
@@ -1072,3 +1089,305 @@ void clearsyms(void)
     g_symt.sz = g_symt.u = g_symt.maxu = 0;
   }
 }
+
+
+/* path name components */
+
+/* returns trailing file name */
+char *getfname(const char *path)
+{
+  char *s1, *s2, *s3, *s = (char*)path;
+  s1 = strrchr(path, '\\'), s2 = strrchr(path, '/'), s3 = strrchr(path, ':');
+  if (s1 && s < s1+1) s = s1+1; 
+  if (s2 && s < s2+1) s = s2+1; 
+  if (s3 && s < s3+1) s = s3+1;
+  return s;
+}
+
+/* returns file base (up to, but not including last .) */
+size_t spanfbase(const char* path)
+{
+  char* fn; char* pc;
+  assert(path);
+  fn = getfname(path); 
+  if ((pc = strrchr(path, '.')) != NULL && pc >= fn)
+    return pc-path;
+  return strlen(path);
+}
+
+/* returns trailing file extension ("" or ".foo") */
+char* getfext(const char* path)
+{
+  char* fn; char* pc;
+  assert(path);
+  fn = getfname(path); 
+  if ((pc = strrchr(path, '.')) != NULL && pc >= fn)
+    return (char*)pc;
+  return (char*)(path+strlen(path));
+}
+
+
+
+/* warnings and -w */
+
+void setwlevel(int level)
+{
+  g_wlevel = level;
+}
+
+int getwlevel(void)
+{
+  int n;
+  n = g_wlevel;
+  return n;
+}
+
+/* verbose output and -v */
+void setverbosity(int v)
+{
+  g_verbosity = v;
+}
+
+int getverbosity(void)
+{
+  int v;
+  v = g_verbosity;
+  return v;
+}
+
+void incverbosity(void)
+{
+  ++g_verbosity;
+}
+
+static void verbosenfa(int n, const char *fmt, va_list args)
+{
+  int v;
+  v = g_verbosity;
+  if (n > v) return;
+  fflush(stdout);
+  vfprintf(stderr, fmt, args);
+}
+
+void verbosenf(int n, const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  verbosenfa(n, fmt, args);
+  va_end(args);
+}
+
+void verbosef(const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  verbosenfa(1, fmt, args);
+  va_end(args);
+}
+
+void vverbosef(const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  verbosenfa(2, fmt, args);
+  va_end(args);
+}
+
+void vvverbosef(const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  verbosenfa(3, fmt, args);
+  va_end(args);
+}
+
+
+/* logger and -q */
+
+void setquietness(int q)
+{
+  g_quietness = q;
+}
+
+int getquietness(void)
+{
+  int q;
+  q = g_quietness;
+  return q;
+}
+
+void incquietness(void)
+{
+  ++g_quietness;
+}
+
+static void lognfa(int n, const char *fmt, va_list args)
+{
+  if (n <= g_quietness) return;
+  fflush(stdout);
+  vfprintf(stderr, fmt, args);
+  fflush(stderr);
+}
+
+void logenf(int n, const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  lognfa(n, fmt, args);
+  va_end(args);
+}
+
+/* ordinary stderr log: shut up by -q */
+void logef(const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  lognfa(1, fmt, args);
+  va_end(args);
+}
+
+/* loud stderr log: shut up by -qq */
+void llogef(const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  lognfa(2, fmt, args);
+  va_end(args);
+}
+
+/* very loud stderr log: shut up by -qqq */
+void lllogef(const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  lognfa(3, fmt, args);
+  va_end(args);
+}
+
+/* progname: return stored name of program */
+const char *progname(void)
+{
+  const char *str;
+  str = g_progname;
+  return str;
+}
+
+/* setprogname: set stored name of program */
+void setprogname(const char *str)
+{
+  char *pname;
+  assert(str);
+  str = getfname(str);
+  pname = exstrndup(str, spanfbase(str));
+  g_progname = pname;
+}
+
+/* usage: return stored usage string */
+const char *usage(void)
+{
+  const char *s;
+  s = g_usage;
+  return s;
+}
+
+/* setusage: set stored usage string */
+void setusage(const char *str)
+{
+  g_usage = exstrdup(str);
+}
+
+/* eusage: report wrong usage */
+void eusage(const char *fmt, ...)
+{
+  va_list args;
+
+  fflush(stdout);
+  if (progname() != NULL)
+    fprintf(stderr, "%s: ", progname());
+
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+
+  if (fmt[0] != '\0' && fmt[strlen(fmt)-1] == ':')
+    fprintf(stderr, " %s", strerror(errno));
+  fprintf(stderr, "\n");
+
+  if (progname() != NULL && usage() != NULL)
+    fprintf(stderr, "usage: %s %s\n", progname(), usage());
+
+  exit(1);
+}
+
+void eoptreset(void)
+{
+  eoptind = 1;
+  eopterr = 1;
+  eoptopt = 0;
+  eoptarg = 0;
+  eoptich = 0;
+}
+
+int egetopt(int argc, char* argv[], const char* opts)
+{
+  char c, *popt;
+
+  /* set the name of the program if it isn't done already */
+  if (progname() == 0) setprogname(argv[0]);
+
+  /* check if it's time to stop */
+  if (eoptich == 0) { 
+    if (eoptind >= argc) 
+      return EOF; 
+    if (argv[eoptind][0] != '-' ||
+        argv[eoptind][1] == '\0')
+      return EOF;
+    if (strcmp(argv[eoptind], "--") == 0) {
+      ++eoptind;
+      return EOF;
+    }
+  }
+
+  /* get next option char */
+  c = argv[eoptind][++eoptich];
+
+  /* check if it's legal */
+  if (c == ':' || (popt = strchr(opts, c)) == 0) {
+    if (eopterr) {
+      eusage("illegal option: -%c", c);
+    }
+    if (argv[eoptind][++eoptich] == '\0') {
+      ++eoptind; 
+      eoptich = 0;
+    }
+    eoptopt = c;
+    return '?';
+  }
+
+  /* check if it should be accompanied by arg */
+  if (popt[1] == ':') {
+    if (argv[eoptind][++eoptich] != '\0') {
+      eoptarg  = argv[eoptind++] + eoptich;
+    } else if (++eoptind >= argc) {
+      if (eopterr) {
+        eusage("option -%c requires an argument", c);
+      }
+      eoptich = 0;
+      eoptopt = c;
+      return '?';
+    } else {
+      eoptarg = argv[eoptind++];
+    }
+    eoptich = 0;
+  } else {
+    if (argv[eoptind][eoptich + 1] == '\0') {
+      ++eoptind;
+      eoptich = 0;
+    }
+    eoptarg  = 0;
+  }
+
+  /* eoptopt, eoptind and eoptarg are updated */
+  return c;
+}
+

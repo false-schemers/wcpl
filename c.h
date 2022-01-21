@@ -6,11 +6,11 @@
 /* compiler */
 
 /* compiler initialization (including symbols and workstaces) */
-extern void init_compiler(const char *larg, const char *lenv);
+extern void init_compiler(dsbuf_t *plibv);
 extern void fini_compiler(void);
 
-/* compile module file */
-extern void compile_module(const char *fname);
+/* compile module file to .wasm output file (if not NULL) */
+extern void compile_module(const char *ifname, const char *ofname);
 
 /* calc size/align for ptn; prn is NULL or reference node for errors, use 0 for lvl */
 extern void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl);

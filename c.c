@@ -28,12 +28,14 @@ typedef struct dsmelt_tag {
 } dsmelt_t;
 
 /* initialization */
-void init_compiler(const char *larg, const char *lenv)
+void init_compiler(dsbuf_t *plibv)
 {
+  size_t i;
   bufinit(&g_bases, sizeof(sym_t));
-  *(sym_t*)bufnewbk(&g_bases) = intern(""); 
-  if (larg) *(sym_t*)bufnewbk(&g_bases) = intern(larg); 
-  if (lenv) *(sym_t*)bufnewbk(&g_bases) = intern(lenv);
+  for (i = 0; i < dsblen(plibv); ++i) {
+    dstr_t *pds = dsbref(plibv, i);
+    *(sym_t*)bufnewbk(&g_bases) = intern(*pds);
+  } 
   chbinit(&g_dseg);
   ndinit(&g_dsty); ndset(&g_dsty, NT_TYPE, -1, -1); g_dsty.ts = TS_STRUCT; 
   bufinit(&g_dsmap, sizeof(dsmelt_t));
@@ -950,14 +952,16 @@ static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
   return pfs;
 }
 
-/* compile module file */
-void compile_module(const char *fname)
+/* compile module file to .wasm output file (if not NULL) */
+void compile_module(const char *ifname, const char *ofname)
 {
   module_t m; size_t i; sym_t mod;
   size_t fino = 0, gino = 0; /* insertion indices */
   funcsig_t fs;
   modinit(&m); fsinit(&fs);
-  mod = process_module(fname, &m); assert(mod);
+  
+  mod = process_module(ifname, &m); assert(mod);
+  
   /* at this point, function/global tables are filled with mainmod definitions */
   /* walk g_syminfo/g_nodes to insert imports actually referenced in the code */
   for (i = 0; i < buflen(&g_syminfo); ++i) {
@@ -996,6 +1000,7 @@ void compile_module(const char *fname)
       }
     }
   }
+  
   /* use contents of g_dseg as passive data segment */
   /* fixme: global var $dp should be inited to the base address of dseg, and dsoff be taken from it! */
   if (chblen(&g_dseg) > 0) { 
@@ -1024,14 +1029,19 @@ void compile_module(const char *fname)
   }
   /* sort reloctab by symbol before emitting */
   bufqsort(&m.reloctab, sym_cmp);
+
   /* emit wasm (use relocations) */
-  //emit_module(&mod);
+  if (ofname) {
+    freopen(ofname, "wb", stdout);
+    emit_module(&m);
+  }
+
   /* done */
   fsfini(&fs);
   modfini(&m); 
 }
 
-
+#if 0
 void emit_test_module(void)
 {
   module_t mod;
@@ -1087,21 +1097,52 @@ void emit_test_module(void)
   /* done */
   modfini(&mod); 
 }
+#endif
 
 int main(int argc, char **argv)
 {
-  if (argc == 1 || argc == 3 && streql(argv[1], "-L")) {
-    const char *larg = argc >= 3 ? argv[2] : NULL; 
-    const char *lenv = getenv("WCPL_LIBRARY_PATH");
-    init_compiler(larg, lenv);
-    compile_module("-");
-    fini_compiler();
-  } else if (argc == 2) {
-    freopen(argv[1], "wb", stdout);
-    emit_test_module();
-  } else {
-    exprintf("missing output file argument");
+  int opt;
+  const char *ifile_arg = "-";
+  const char *ofile_arg = NULL;
+  const char *lpath;
+  dsbuf_t libv; 
+  
+  dsbinit(&libv);
+  lpath = ""; dsbpushbk(&libv, (dstr_t*)&lpath);
+  if ((lpath = getenv("WCPL_LIBRARY_PATH")) != NULL) dsbpushbk(&libv, (dstr_t*)&lpath);
+
+  setprogname(argv[0]);
+  setusage
+    ("[OPTIONS] [infile]\n"
+     "options are:\n"
+     "  -w        Suppress warnings\n"
+     "  -v        Increase verbosity\n"
+     "  -q        Suppress logging ('quiet')\n"
+     "  -i ifile  Input file; defaults to - (stdout)\n"
+     "  -o ofile  Output file; defaults to a.wasm\n"
+     "  -L path   Add library path\n"
+     "  -h        This help");
+  while ((opt = egetopt(argc, argv, "wvqi:o:L:h")) != EOF) {
+    switch (opt) {
+      case 'w':  setwlevel(3); break;
+      case 'v':  incverbosity(); break;
+      case 'q':  incquietness(); break;
+      case 'i':  ifile_arg = eoptarg; break;
+      case 'o':  ofile_arg = eoptarg; break;
+      case 'L':  dsbpushbk(&libv, &eoptarg); break;
+      case 'h':  eusage("WCPL 0.01 built on "__DATE__);
+    }
   }
+
+  /* get optional script file and argument list */
+  if (eoptind < argc) ifile_arg = argv[eoptind++];
+  if (eoptind < argc) eusage("too many input files");
+
+  init_compiler(&libv);
+  compile_module(ifile_arg, ofile_arg);
+  fini_compiler();
+  
+  dsbfini(&libv);
   return EXIT_SUCCESS;
 }
 

@@ -22,8 +22,37 @@ typedef enum { false = 0, true = 1 } bool;
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #endif
 
-/* globals */
-extern int g_verbosity;
+/* argument parsing and usage */
+extern  void  setprogname(const char *s);
+extern  const char *progname(void);
+extern  void  setusage(const char *s);
+extern  const char *usage(void);
+extern  void  eusage(const char *fmt, ...);
+extern  const char *cutillit(void);
+/* warning levels */
+extern  void  setwlevel(int l);
+extern  int   getwlevel(void);
+/* logging */
+extern  void  setquietness(int q);
+extern  int   getquietness(void);
+extern  void  incquietness(void);
+extern  void  logenf(int n, const char *fmt, ...);
+extern  void  logef(const char *fmt, ...);
+extern  void  llogef(const char *fmt, ...);
+extern  void  lllogef(const char *fmt, ...);
+/* verbosity (debug-style logging) */
+extern  void  setverbosity(int n);
+extern  int   getverbosity(void);
+extern  void  incverbosity(void);
+extern  void  verbosenf(int n, const char *fmt, ...);
+extern  void  verbosef(const char *fmt, ...);
+extern  void  vverbosef(const char *fmt, ...);
+extern  void  vvverbosef(const char *fmt, ...);
+/* AT&T-like option parser */
+extern  int   eoptind, eopterr, eoptopt, eoptich;
+extern  char  *eoptarg;
+extern  int   egetopt(int argc, char* argv[], const char* opts);
+extern  void  eoptreset(void); /* reset getopt globals */
 
 /* common utility functions */
 extern void exprintf(const char *fmt, ...);
@@ -31,6 +60,7 @@ extern void *exmalloc(size_t n);
 extern void *excalloc(size_t n, size_t s);
 extern void *exrealloc(void *m, size_t n);
 extern char *exstrdup(const char *s);
+extern char *exstrndup(const char* s, size_t n);
 extern char *strprf(const char *str, const char *prefix);
 extern char *strsuf(const char *str, const char *suffix);
 extern bool streql(const char *s1, const char *s2);
@@ -168,5 +198,14 @@ extern const char *symname(sym_t s);
 extern sym_t internf(const char *fmt, ...);
 /* reset symbol table */
 extern void clearsyms(void);
+
+/* path name components */
+/* returns trailing file name */
+extern char *getfname(const char *path);
+/* returns file base (up to, but not including last .) */
+extern size_t spanfbase(const char* path);
+/* returns trailing file extension ("" or ".foo") */
+extern char* getfext(const char* path);
+
 
 #endif /* ndef _L_H_INCLUDED */
