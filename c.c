@@ -700,6 +700,8 @@ static void fundef_check_type(node_t *ptn)
       case TS_VOID:
         if (i == 0) break; /* return type can be void */
         neprintf(ptn, "unexpected void function argument type");
+      case TS_CHAR: case TS_UCHAR:   /* ok but widened to int */
+      case TS_SHORT: case TS_USHORT: /* ok but widened to int */
       case TS_INT: case TS_UINT: case TS_ENUM:
       case TS_LONG: case TS_ULONG:  
       case TS_LLONG: case TS_ULLONG:  
@@ -782,6 +784,7 @@ static void expr_hoist_locals(node_t *pn, henv_t *phe, ndbuf_t *plb)
       expr_hoist_locals(ndref(pn, 0), phe, plb);
       if (pn->op == TT_AND && ndref(pn, 0)->nt == NT_IDENTIFIER) {
         /* address-of var is taken: mark it as auto */
+        /* fixme? parameters and globals are not marked */
         sym_t name = ndref(pn, 0)->name; size_t i;
         for (i = 0; i < ndblen(plb); ++i) {
           node_t *pndi = ndbref(plb, i); 
@@ -792,6 +795,9 @@ static void expr_hoist_locals(node_t *pn, henv_t *phe, ndbuf_t *plb)
           else pndi->sc = SC_AUTO;
         }
       } 
+    } break;
+    case NT_TYPE: {
+      /* no vars here */
     } break;
     default: {
       size_t i;
@@ -830,6 +836,173 @@ static void fundef_hoist_locals(node_t *pdn)
   ndbfini(&locals); buffini(&he.idmap);
 }
 
+/* local variable info for wasmify */
+typedef struct vi_tag {
+  sym_t name;  /* var name in source code (possibly after renaming) */
+  sc_t sc;     /* SC_REGISTER or SC_AUTO only */
+  sym_t reg;   /* REGISTER: actual register name; AUTO: pointer register name */
+  sym_t fld;   /* AUTO: 0 or field name (if reg is struct/union pointer) */
+  ts_t cast;   /* TS_VOID or TS_CHAR..TS_USHORT for widened vars */
+} vi_t;
+
+/* convert to wasm conventions, simplify */
+static void expr_wasmify(node_t *pn, buf_t *pvib)
+{
+  switch (pn->nt) {
+    case NT_IDENTIFIER: {
+      vi_t *pvi = bufbsearch(pvib, &pn->name, sym_cmp);
+      if (pvi) {
+        if (pvi->sc == SC_AUTO && !pvi->fld) { /* indirect */
+          pn->name = pvi->reg;
+          wrap_unary_operator(pn, pn->startpos, TT_STAR);
+        } else if (pvi->sc == SC_AUTO) { /* ->fld */
+          pn->name = pvi->reg;
+          wrap_postfix_operator(pn, TT_ARROW, pvi->fld);
+        } else { /* in register, just fix name */
+          pn->name = pvi->reg;
+        }
+        if (pvi->cast != TS_VOID) { /* add narrowing cast */
+          node_t cn = mknd(); ndset(&cn, NT_TYPE, -1, -1); cn.ts = pvi->cast;
+          ndswap(&cn, pn); wrap_cast(pn, &cn); ndfini(&cn);
+        }
+      } /* else global */
+    } break;
+    case NT_TYPE: {
+      /* no vars here */
+    } break;
+    default: {
+      size_t i;
+      for (i = 0; i < ndlen(pn); ++i) {
+        expr_wasmify(ndref(pn, i), pvib);
+      }
+    } break;
+  }
+}
+
+/* convert to wasm conventions, simplify */
+static void fundef_wasmify(node_t *pdn)
+{
+  /* special registers (scalar/poiner vars with internal names): 
+   * $rp (result pointer), $fp (frame pointer), %ap (... data pointer)?
+   * $i32 $u32 $i64 $u64 $f32 $f64 $ptr (temporaries) */
+  node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
+  buf_t vib = mkbuf(sizeof(vi_t)); node_t frame = mknd();
+  size_t i; 
+  
+  /* init frame structure, in case there are auto locals*/
+  ndset(&frame, NT_TYPE, pdn->pwsid, pdn->startpos);
+  frame.ts = TS_STRUCT;
+  
+  /* wasmify function signature and collect arg vars */
+  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
+  for (i = 0; i < ndlen(ptn); ++i) {
+    node_t *pdni = ndref(ptn, i), *ptni = pdni; sym_t name = 0; ts_t cast = TS_VOID; 
+    if (pdni->nt == NT_VARDECL) name = ptni->name, ptni = ndref(pdni, 0); 
+    switch (ptni->ts) {
+      case TS_VOID: /* ok if alone */ 
+        assert(i == 0); /* we have checked earlier: this is return type */
+        break;
+      case TS_CHAR:  case TS_UCHAR:  case TS_SHORT: case TS_USHORT: case TS_ENUM: 
+        cast = ptni->ts; ptni->ts = TS_INT;
+      case TS_INT:   case TS_UINT:   case TS_LONG:  case TS_ULONG:  
+      case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: case TS_PTR: {
+        if (i != 0 && name != 0) {
+          vi_t *pvi = bufsearch(&vib, &name, sym_cmp);
+          if (pvi != NULL) n2eprintf(ndref(ptn, i), pdn, "duplicate id: %s", symname(name));
+          pvi = bufnewbk(&vib); pvi->name = name, pvi->sc = SC_REGISTER;
+          pvi->reg = name, pvi->cast = cast;
+        }
+      } break;
+      case TS_ARRAY: case TS_STRUCT: case TS_UNION: { 
+        if (i == 0) { /* return value: insert $rp as first arg */
+          node_t *prn = ndinsnew(ptn, 1), *pn; ptni = ndref(ptn, 0); /* re-fetch */
+          ndset(prn, NT_VARDECL, ptni->pwsid, ptni->startpos);
+          pn = ndinsbk(prn, NT_TYPE), pn->ts = TS_VOID; ndswap(pn, ptni);
+          wrap_type_pointer(prn); prn->name = intern("$rp");
+        } else { /* parameter: passed as pointer */
+          if (name != 0) {
+            vi_t *pvi = bufnewbk(&vib); pvi->name = name, pvi->sc = SC_AUTO;
+            pvi->reg = internf("$p%s", symname(name));
+            assert(pdni->nt == NT_VARDECL); /* patch in place */
+            pdni->name = pvi->reg;
+            if (ptni->ts == TS_ARRAY) flatten_type_array(ptni);
+            else wrap_type_pointer(ptni);
+          }
+        }
+      } break;
+      default:
+        neprintf(ptn, "function arguments of this type are not supported");
+    }
+  }
+
+  /* wasmify hoisted vardefs collect arg vars */
+  assert(pbn->nt == NT_BLOCK);
+  for (i = 0; i < ndlen(pbn); /* bump i */) {
+    node_t *pdni = ndref(pbn, i), *ptni; sym_t name; ts_t cast = TS_VOID;
+    if (pdni->nt != NT_VARDECL) break; /* statements may follow */
+    name = pdni->name, ptni = ndref(pdni, 0); 
+    switch (ptni->ts) {
+      case TS_CHAR:  case TS_UCHAR:  case TS_SHORT: case TS_USHORT: case TS_ENUM: 
+        cast = ptni->ts;
+      case TS_INT:   case TS_UINT:   case TS_LONG:  case TS_ULONG:  
+      case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: case TS_PTR: {
+        if (pdni->sc == SC_AUTO) { /* field in $fp frame struct */
+          node_t *pvn = ndnewbk(&frame); vi_t *pvi = bufnewbk(&vib);
+          ndset(pvn, NT_VARDECL, pdni->pwsid, pdni->startpos);
+          pvn->name = name; ndpushbk(pvn, ptni);
+          pvi->name = name, pvi->sc = SC_AUTO;
+          pvi->reg = intern("$fp"); pvi->fld = name;
+          ndrem(pbn, i);
+        } else { /* normal register var */
+          vi_t *pvi = bufnewbk(&vib); pvi->name = name, pvi->sc = SC_REGISTER;
+          if (cast != TS_VOID) ptni->ts = TS_INT;
+          pvi->reg = name, pvi->cast = cast;
+          ++i;
+        }
+      } break;
+      case TS_ARRAY: case TS_STRUCT: case TS_UNION: { 
+        node_t *pvn = ndnewbk(&frame); vi_t *pvi = bufnewbk(&vib);
+        ndset(pvn, NT_VARDECL, pdni->pwsid, pdni->startpos);
+        pvn->name = name; ndpushbk(pvn, ptni);
+        pvi->name = name, pvi->sc = SC_AUTO;
+        pvi->reg = intern("$fp"); pvi->fld = name;
+        ndrem(pbn, i); 
+      } break;
+      default: {
+        assert(false);
+        ++i;
+      } break;
+    }
+  }
+  
+  /* see if we need to insert $fp init & local */
+  if (ndlen(&frame) > 0) {
+    node_t *pin = ndinsnew(pbn, i), *psn;
+    ndset(pin, NT_ASSIGN, pbn->pwsid, pbn->startpos);
+    pin->op = TT_ASN;
+    psn = ndinsbk(pin, NT_IDENTIFIER); psn->name = intern("$fp");
+    psn = ndinsbk(pin, NT_INTRCALL); psn->name = intern("alloca"), psn->intr = INTR_ALLOCA;
+    psn = ndinsbk(psn, NT_INTRCALL); psn->name = intern("sizeof"), psn->intr = INTR_SIZEOF;
+    ndpushbk(psn, &frame);
+    pin = ndinsnew(pbn, i);
+    ndset(pin, NT_VARDECL, pbn->pwsid, pbn->startpos);
+    pin->name = intern("$fp"); wrap_type_pointer(ndpushbk(pin, &frame));
+    i += 2; /* skip inserted nodes */ 
+  }
+  
+  /* sort vib by name for faster lookup in wasmify_expr */
+  bufqsort(&vib, sym_cmp);
+
+  for (/* use current i */; i < ndlen(pbn); ++i) {
+    node_t *pni = ndref(pbn, i);
+    expr_wasmify(pni, &vib);
+  }
+  
+  ndfini(&frame);
+  buffini(&vib);
+}
+
+
 /* process function definition in main module */
 static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
 {
@@ -853,11 +1026,13 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
   fprintf(stderr, "fundef_hoist_locals ==>\n");
   dump_node(pn, stderr);
 #endif  
-  /* convert to wasm conventions
-  fundef_wasmify(pn); */
-  { /* todo: compile to function */
-    /* ... */
-  }
+  /* convert to wasm conventions, normalize */
+  fundef_wasmify(pn);
+#ifdef _DEBUG
+  fprintf(stderr, "fundef_wasmify ==>\n");
+  dump_node(pn, stderr);
+#endif  
+  /* todo: compile */
 }
 
 /* process top-level intrinsic call */

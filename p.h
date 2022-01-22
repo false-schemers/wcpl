@@ -157,10 +157,10 @@ typedef struct node_tag {
 } node_t;
 
 extern node_t mknd(void);
-extern node_t* ndinit(node_t* pn);
-extern void ndicpy(node_t* mem, const node_t* pn);
+extern node_t *ndinit(node_t* pn);
+extern node_t *ndicpy(node_t* mem, const node_t* pn);
 extern void ndfini(node_t* pn);
-extern void ndcpy(node_t* pn, const node_t* pr);
+extern node_t *ndcpy(node_t* pn, const node_t* pr);
 extern node_t *ndset(node_t *dst, nt_t nt, int pwsid, int startpos);
 extern void ndclear(node_t* pn);
 extern void ndrem(node_t* pn, size_t i);
@@ -207,6 +207,8 @@ extern void wrap_type_pointer(node_t *pn);
 extern void wrap_type_array(node_t *pn, node_t *pi);
 /* wrap type node and vec of type nodes into TS_FUNCTION type node */
 extern void wrap_type_function(node_t *pn, ndbuf_t *pnb);
+/* flatten TS_ARRAY type node into TS_PTR type node */
+extern void flatten_type_array(node_t *pn);
 
 /* parse single top-level declaration/definition */
 extern bool parse_top_form(pws_t *pw, node_t *pn);

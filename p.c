@@ -1592,11 +1592,12 @@ node_t* ndinit(node_t* pn)
   return pn;
 }
 
-void ndicpy(node_t* mem, const node_t* pn)
+node_t *ndicpy(node_t* mem, const node_t* pn)
 {
   memcpy(mem, pn, sizeof(node_t));
   chbicpy(&mem->data, &pn->data);
   ndbicpy(&mem->body, &pn->body);
+  return mem;
 }
 
 void ndfini(node_t* pn)
@@ -1605,10 +1606,11 @@ void ndfini(node_t* pn)
   ndbfini(&pn->body);
 }
 
-void ndcpy(node_t* pn, const node_t* pr)
+node_t *ndcpy(node_t* pn, const node_t* pr)
 {
   ndfini(pn);
   ndicpy(pn, pr);
+  return pn;
 }
 
 node_t *ndset(node_t *dst, nt_t nt, int pwsid, int startpos)
@@ -2400,6 +2402,15 @@ void wrap_type_array(node_t *pn, node_t *pi)
   ndswap(pi, ndnewbk(&nd));
   ndswap(pn, &nd);
   ndfini(&nd);
+}
+
+/* flatten TS_ARRAY type node into TS_PTR type node */
+void flatten_type_array(node_t *pn)
+{
+  size_t len = ndlen(pn);
+  assert(pn->ts == TS_ARRAY && len == 1 || len == 2);
+  if (len == 2) ndbrem(&pn->body, 1);
+  pn->ts = TS_PTR;
 }
 
 /* wrap type node and vec of type nodes into TS_FUNCTION type node */
