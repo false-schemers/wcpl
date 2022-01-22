@@ -918,7 +918,7 @@ static void fundef_wasmify(node_t *pdn)
           node_t *prn = ndinsnew(ptn, 1), *pn; ptni = ndref(ptn, 0); /* re-fetch */
           ndset(prn, NT_VARDECL, ptni->pwsid, ptni->startpos);
           pn = ndinsbk(prn, NT_TYPE), pn->ts = TS_VOID; ndswap(pn, ptni);
-          wrap_type_pointer(prn); prn->name = intern("$rp");
+          wrap_type_pointer(pn); prn->name = intern("$rp");
         } else { /* parameter: passed as pointer */
           if (name != 0) {
             vi_t *pvi = bufnewbk(&vib); pvi->name = name, pvi->sc = SC_AUTO;

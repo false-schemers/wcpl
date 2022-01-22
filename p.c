@@ -1686,6 +1686,19 @@ static sym_t getid(pws_t *pw)
   return id; 
 }
 
+/* get an identifier or any id-like name, even reserved one */ 
+static sym_t gettag(pws_t *pw) 
+{ 
+  sym_t id = 0; tt_t tt = peekt(pw);
+  if (tt == TT_IDENTIFIER || 
+      (TT_AUTO_KW <= tt && tt <= TT_WHILE_KW) ||
+      (TT_TYPE_NAME <= tt && tt <= TT_INTR_NAME)) {
+    id = intern(pw->tokstr);
+    dropt(pw);
+  } else reprintf(pw, pw->pos, "tag or name expected");  
+  return id; 
+}
+
 static bool type_specifier_ahead(pws_t *pw)
 {
   switch (peekt(pw)) {
@@ -2016,8 +2029,9 @@ static void parse_postfix_expr(pws_t *pw, node_t *pn)
         ndfini(&nd);
       } break;        
       case TT_DOT: case TT_ARROW: {
+        tt_t op = pw->ctk;
         dropt(pw);
-        wrap_postfix_operator(pn, pw->ctk, getid(pw));
+        wrap_postfix_operator(pn, op, gettag(pw));
       } break;
       case TT_PLUS_PLUS: case TT_MINUS_MINUS: {
         dropt(pw);
