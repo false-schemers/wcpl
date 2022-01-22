@@ -2052,6 +2052,27 @@ void wrap_unary_operator(node_t *pn, int startpos, tt_t op)
   ndswap(pn, &nd);
   ndfini(&nd);
 }
+
+/* flatten node into its argument #0 */
+void flatten_lift_arg0(node_t *pn)
+{
+  node_t nd = mknd();
+  assert(ndlen(pn) >= 1);
+  ndswap(&nd, ndref(pn, 0));
+  ndswap(&nd, pn);  
+  ndfini(&nd);
+}
+
+/* flatten node into its argument #1 */
+void flatten_lift_arg1(node_t *pn)
+{
+  node_t nd = mknd();
+  assert(ndlen(pn) >= 2);
+  ndswap(&nd, ndref(pn, 1));
+  ndswap(&nd, pn);  
+  ndfini(&nd);
+}
+
  
 static void parse_unary_expr(pws_t *pw, node_t *pn)
 {
@@ -2202,6 +2223,20 @@ void wrap_assignment(node_t *pn, tt_t op, node_t *pn2)
 static void parse_assignment_expr(pws_t *pw, node_t *pn)
 {
   parse_conditional_expr(pw, pn);
+#if 1
+  switch (peekt(pw)) {
+    case TT_ASN:      case TT_AND_ASN:  case TT_OR_ASN:
+    case TT_XOR_ASN:  case TT_REM_ASN:  case TT_SLASH_ASN:
+    case TT_STAR_ASN: case TT_PLUS_ASN: case TT_MINUS_ASN:
+    case TT_SHL_ASN:  case TT_SHR_ASN: {
+      tt_t op; node_t nd = mknd(); 
+      op = pw->ctk; dropt(pw);
+      parse_assignment_expr(pw, &nd);
+      wrap_assignment(pn, op, &nd);
+      ndfini(&nd);
+    }
+  }
+#else /* limited ? */
   switch (pn->nt) {
     case NT_IDENTIFIER: case NT_SUBSCRIPT: case NT_PREFIX: {
       switch (peekt(pw)) {
@@ -2218,6 +2253,7 @@ static void parse_assignment_expr(pws_t *pw, node_t *pn)
       }
     }
   }
+#endif
 }
 
 /* wrap expr node into NT_COMMA with second expr */

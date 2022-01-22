@@ -209,6 +209,10 @@ extern void wrap_type_array(node_t *pn, node_t *pi);
 extern void wrap_type_function(node_t *pn, ndbuf_t *pnb);
 /* flatten TS_ARRAY type node into TS_PTR type node */
 extern void flatten_type_array(node_t *pn);
+/* flatten node into its argument #0 */
+extern void flatten_lift_arg0(node_t *pn);
+/* flatten node into its argument #1 */
+extern void flatten_lift_arg1(node_t *pn);
 
 /* parse single top-level declaration/definition */
 extern bool parse_top_form(pws_t *pw, node_t *pn);

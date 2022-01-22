@@ -845,7 +845,44 @@ typedef struct vi_tag {
   ts_t cast;   /* TS_VOID or TS_CHAR..TS_USHORT for widened vars */
 } vi_t;
 
-/* convert to wasm conventions, simplify */
+/* add temporary register ($b $ub $s $us $i $u $l $ul $ll $ull $f $d $p) */
+static sym_t add_temp_reg(ts_t ts, node_t *pbn, buf_t *pvib)
+{
+  sym_t name = 0; const char *s = NULL;
+  ts_t cast = TS_VOID;
+  switch (ts) {
+    case TS_CHAR:   s = "$b";   cast = ts; ts = TS_INT; break;
+    case TS_UCHAR:  s = "$ub";  cast = ts; ts = TS_INT; break;
+    case TS_SHORT:  s = "$s";   cast = ts; ts = TS_INT; break;
+    case TS_USHORT: s = "$us";  cast = ts; ts = TS_INT; break;
+    case TS_INT:    s = "$i";   break;
+    case TS_UINT:   s = "$u";   break;
+    case TS_LONG:   s = "$l";   break;
+    case TS_ULONG:  s = "$ul";  break;
+    case TS_LLONG:  s = "$ll";  break;
+    case TS_ULLONG: s = "$ull"; break;
+    case TS_FLOAT:  s = "$i";   break;
+    case TS_DOUBLE: s = "$i";   break;
+    case TS_PTR:    s = "$p";   break;
+    default: assert(false);
+  }
+  name = intern(s);
+  if (bufsearch(pvib, &name, sym_cmp) == NULL) {
+    node_t *pin = ndinsnew(pbn, 0), *ptn;
+    vi_t *pvi = bufnewbk(pvib); 
+    pvi->name = name, pvi->sc = SC_REGISTER;
+    pvi->reg = name, pvi->cast = cast;
+    ndset(pin, NT_VARDECL, pbn->pwsid, pbn->startpos);
+    pin->name = name; ptn = ndinsbk(pin, NT_TYPE); 
+    if (ts == TS_PTR) ptn->ts = TS_VOID, wrap_type_pointer(ptn);
+    else ptn->ts = ts;
+    /* resort to keep using bsearch */
+    bufqsort(pvib, sym_cmp);
+  }
+  return name;
+}
+
+/* convert to wasm conventions, simplify (get rid of . and []) */
 static void expr_wasmify(node_t *pn, buf_t *pvib)
 {
   switch (pn->nt) {
@@ -868,8 +905,26 @@ static void expr_wasmify(node_t *pn, buf_t *pvib)
       } /* else global */
     } break;
     case NT_TYPE: {
-      /* no vars here */
+      /* nothing of interest in here */
     } break;
+    case NT_SUBSCRIPT: { /* x[y] => *(x + y) */
+      assert(ndlen(pn) == 2);
+      expr_wasmify(ndref(pn, 0), pvib);
+      expr_wasmify(ndref(pn, 1), pvib);
+      pn->nt = NT_INFIX, pn->op = TT_PLUS;
+      wrap_unary_operator(pn, pn->startpos, TT_STAR);
+    } break;
+    case NT_POSTFIX: {
+      assert(ndlen(pn) == 1);
+      expr_wasmify(ndref(pn, 0), pvib);
+      if (pn->op == TT_DOT) { /* (*x).y => x->y; x.y => (&x)->y */
+        node_t *psn = ndref(pn, 0);
+        if (psn->nt == NT_PREFIX && psn->op == TT_STAR) flatten_lift_arg0(psn);
+        else wrap_unary_operator(psn, psn->startpos, TT_AND);
+        pn->op = TT_ARROW;
+      } 
+    } break;
+    /* todo: split combo assignments using tmp registers */
     default: {
       size_t i;
       for (i = 0; i < ndlen(pn); ++i) {
@@ -884,7 +939,7 @@ static void fundef_wasmify(node_t *pdn)
 {
   /* special registers (scalar/poiner vars with internal names): 
    * $rp (result pointer), $fp (frame pointer), %ap (... data pointer)?
-   * $i32 $u32 $i64 $u64 $f32 $f64 $ptr (temporaries) */
+   * $b $ub $s $us $i $u $l $ul $ll $ull $f $d $p (temporaries) */
   node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
   buf_t vib = mkbuf(sizeof(vi_t)); node_t frame = mknd();
   size_t i; 
@@ -907,9 +962,7 @@ static void fundef_wasmify(node_t *pdn)
       case TS_INT:   case TS_UINT:   case TS_LONG:  case TS_ULONG:  
       case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: case TS_PTR: {
         if (i != 0 && name != 0) {
-          vi_t *pvi = bufsearch(&vib, &name, sym_cmp);
-          if (pvi != NULL) n2eprintf(ndref(ptn, i), pdn, "duplicate id: %s", symname(name));
-          pvi = bufnewbk(&vib); pvi->name = name, pvi->sc = SC_REGISTER;
+          vi_t *pvi = bufnewbk(&vib); pvi->name = name, pvi->sc = SC_REGISTER;
           pvi->reg = name, pvi->cast = cast;
         }
       } break;
@@ -935,7 +988,7 @@ static void fundef_wasmify(node_t *pdn)
     }
   }
 
-  /* wasmify hoisted vardefs collect arg vars */
+  /* wasmify hoisted vardefs, collect arg vars */
   assert(pbn->nt == NT_BLOCK);
   for (i = 0; i < ndlen(pbn); /* bump i */) {
     node_t *pdni = ndref(pbn, i), *ptni; sym_t name; ts_t cast = TS_VOID;
