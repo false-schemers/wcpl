@@ -4,8 +4,6 @@
 #define _P_H_INCLUDED
 
 /* module names and files */
-
-extern char *path_filename(const char *path);
 extern sym_t base_from_path(const char *path);
 extern sym_t modname_from_path(const char *fname);
 extern struct pws_tag *pws_from_modname(sym_t mod, buf_t *pbases);
@@ -165,6 +163,7 @@ extern void ndfini(node_t* pn);
 extern void ndcpy(node_t* pn, const node_t* pr);
 extern node_t *ndset(node_t *dst, nt_t nt, int pwsid, int startpos);
 extern void ndclear(node_t* pn);
+extern void ndrem(node_t* pn, size_t i);
 #define ndswap(pn1, pn2) memswap(pn1, pn2, sizeof(node_t))
 #define ndbinit(mem) bufinit(mem, sizeof(node_t))
 extern void ndbicpy(buf_t* mem, const ndbuf_t* pb);
@@ -173,13 +172,41 @@ extern void ndbclear(ndbuf_t* pb);
 #define ndblen(pb) buflen(pb)
 #define ndbref(pb, i) ((node_t*)bufref(pb, i))
 #define ndbnewbk(pb) ndinit(bufnewbk(pb))
+#define ndbinsnew(pb, i) ndinit(bufins(pb, i))
 #define ndbpushbk(pb, pn) ndicpy(bufnewbk(pb), pn)
 #define ndbrem(pb, i) do { ndbuf_t *_pb = pb; size_t _i = i; ndfini(bufref(_pb, _i)); bufrem(_pb, _i); } while(0)
 #define ndlen(pn) ndblen(&(pn)->body)
 #define ndref(pn, i) ndbref(&(pn)->body, i)
 #define ndnewbk(pn) ndbnewbk(&(pn)->body)
 #define ndpushbk(pn, psn) ndbpushbk(&(pn)->body, psn)
+#define ndinsnew(pn, i) ndbinsnew(&(pn)->body, i)
 extern node_t *ndinsbk(node_t *pn, nt_t nt);
+
+/* simple comparison of NT_TYPE nodes for equivalence */
+extern bool same_type(const node_t *pctn1, const node_t *pctn2);
+
+/* wrap node into NT_SUBSCRIPT node */
+extern void wrap_subscript(node_t *pn, node_t *psn);
+/* wrap expr node into NT_POSTFIX type node */
+extern void wrap_postfix_operator(node_t *pn, tt_t op, sym_t id);
+/* wrap expr node into NT_PREFIX type node */
+extern void wrap_unary_operator(node_t *pn, int startpos, tt_t op);
+/* wrap expr node into NT_CAST type node */
+extern void wrap_cast(node_t *pcn, node_t *pn);
+/* wrap expr node into NT_INFIX with second expr */
+extern void wrap_binary(node_t *pn, tt_t op, node_t *pn2);
+/* wrap expr node into NT_COND with second/third exprs */
+extern void wrap_conditional(node_t *pn, node_t *pn2, node_t *pn3);
+/* wrap expr node into NT_ASSIGN with second expr */
+extern void wrap_assignment(node_t *pn, tt_t op, node_t *pn2);
+/* wrap expr node into NT_COMMA with second expr */
+extern void wrap_comma(node_t *pn, node_t *pn2);
+/* wrap type node into TS_PTR type node */
+extern void wrap_type_pointer(node_t *pn);
+/* wrap type node and expr node into TS_ARRAY type node */
+extern void wrap_type_array(node_t *pn, node_t *pi);
+/* wrap type node and vec of type nodes into TS_FUNCTION type node */
+extern void wrap_type_function(node_t *pn, ndbuf_t *pnb);
 
 /* parse single top-level declaration/definition */
 extern bool parse_top_form(pws_t *pw, node_t *pn);

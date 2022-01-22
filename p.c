@@ -1632,6 +1632,12 @@ void ndclear(node_t* pn)
   ndinit(pn);
 }
 
+void ndrem(node_t* pn, size_t i)
+{
+  ndfini(bufref(&pn->body, i));
+  bufrem(&pn->body, i);
+}
+
 node_t *ndinsbk(node_t *pn, nt_t nt)
 {
   return ndset(ndnewbk(pn), nt, pn->pwsid, pn->startpos);
@@ -2973,7 +2979,7 @@ void n2eprintf(node_t *pn, node_t *pn2, const char *fmt, ...)
   }
   vrprintf(pw, startpos, fmt, args); 
   va_end(args);
-  if (pn2) neprintf(pn2, "(original definition)");
+  if (pn2) neprintf(pn2, "(original location)");
   else exit(1);
 }
 
@@ -3033,7 +3039,7 @@ static void fdumpss(const char *str, size_t n, FILE* fp)
 static void fdumpv32(const char *str, size_t n, FILE* fp)
 {
   chbuf_t cb = mkchb(); size_t i;
-  chbputs("#u32(", &cb);
+  chbputs("#(", &cb); /* #u32? */
   for (i = 0; i+4 <= n; i += 4) {
     /* stored in le order */
     unsigned u = str[i] | (str[i+1] << 8) | (str[i+2] << 16) | (str[i+3] << 24);

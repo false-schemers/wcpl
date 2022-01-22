@@ -89,61 +89,6 @@ node_t *convert_strlit_to_dsegref(node_t *pn)
 }
 
 
-/* variable info */
-typedef struct vi_tag {
-  sc_t sc;      /* SC_REGISTER or SC_AUTO only */
-  node_t *ptn;  /* pointer to type node (stored elsewhere) */
-  unsigned rno; /* REGISTER: LOCAL_GET/LOCAL_SET offset */
-} vi_t;
-
-/* environment */
-
-/* environment (frame) data type */ 
-typedef struct env_tag {
-  dsbuf_t frame;
-  void *pdata; /* pass-specific */ 
-  struct env_tag *up; 
-} env_t;
-
-static env_t mkenv(env_t *up)
-{
-  env_t e; 
-  memset(&e, 0, sizeof(env_t)); 
-  dsbinit(&e.frame);
-  e.up = up;
-  return e;
-}
-
-static void envfini(env_t *penv)
-{
-  assert(penv);
-  dsbfini(&penv->frame);
-}
-
-static void envpushbk(env_t *penv, const char *v)
-{
-  dsbpushbk(&penv->frame, (dstr_t*)&v); /* allocated at back */
-}
-
-static bool envlookup(env_t *penv, const char *v, size_t *pdepth)
-{
-  size_t depth = 0;
-  if (!v) return false;
-  while (penv) {
-    size_t i;
-    for (i = 0; i < dsblen(&penv->frame); ++i) {
-      dstr_t *pds = dsbref(&penv->frame, i);
-      if (streql(*pds, v)) {
-        if (pdepth) *pdepth = depth + i;
-        return true;
-      }
-    }
-    depth += i;
-    penv = penv->up;
-  }
-  return false;
-}
-
 /* type predicates and operations */
 
 static bool ts_numerical(ts_t ts) 
@@ -562,10 +507,9 @@ bool static_eval(node_t *pn, node_t *prn)
 #define static_eval(pn, prn) __static_eval(pn, prn)
 #endif
 
-/* evaluate pn expression statically, putting result into prn (VERY limited) */
+/* evaluate pn expression statically, putting result into prn (numbers only) */
 bool static_eval(node_t *pn, node_t *prn)
 {
-  /* for now, deal with ints only */
   switch (pn->nt) {
     case NT_LITERAL: {
       if (ts_numerical(pn->ts)) {
@@ -652,39 +596,44 @@ bool static_eval(node_t *pn, node_t *prn)
   return false;
 }
 
-/* expression compiler; returns type node (either made in ptn or taken from some other place)
- * compilation adds instructions to code buffer pcb; instructions should grow stack by exactly
- * n positions (1 or 0 -- use drop) */
-static node_t *compile_expr(const node_t *pn, env_t *penv, icbuf_t *pcb, size_t retc, node_t *ptn)
+/* check if node can be evaluated statically (numbers only) */
+static bool static_constant(node_t *pn)
 {
   switch (pn->nt) {
-    case NT_LITERAL: {
-    } break; 
-    case NT_IDENTIFIER: {
-    } break; 
-    case NT_SUBSCRIPT: {
-    } break; 
-    case NT_CALL: {
-    } break; 
-    case NT_INTRCALL: {
-    } break; 
-    case NT_CAST: {
-    } break; 
-    case NT_PREFIX: {
-    } break; 
-    case NT_INFIX: {
-    } break; 
-    case NT_COND: {
-    } break; 
-    case NT_ASSIGN: {
-    } break; 
-    case NT_COMMA: {
-    } break;
-    default: {
-      //neprintf(pn, "can't compile as an expression");
-    } break; 
+    case NT_LITERAL: 
+      return ts_numerical(pn->ts);
+    case NT_INTRCALL:
+      switch (pn->intr) {
+        case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF:
+          return true;
+      }
+      return false;
+    case NT_PREFIX:
+      assert(ndlen(pn) == 1); 
+      switch (pn->op) {
+        case TT_PLUS:  case TT_MINUS: case TT_TILDE: case TT_NOT:
+          return static_constant(ndref(pn, 0));
+      }
+      return false;
+    case NT_INFIX: 
+      assert(ndlen(pn) == 2); 
+      switch (pn->op) {
+        case TT_PLUS:  case TT_MINUS: case TT_STAR:  case TT_AND:
+        case TT_OR:    case TT_XOR:   case TT_SLASH: case TT_REM:
+        case TT_SHL:   case TT_SHR:   case TT_EQ:    case TT_NE:
+        case TT_LT:    case TT_GT:    case TT_LE:    case TT_GE:
+          return static_constant(ndref(pn, 0)) && static_constant(ndref(pn, 1));
+      } 
+      return false;
+    case NT_COND:
+      assert(ndlen(pn) == 3); 
+      return static_constant(ndref(pn, 0)) && 
+             static_constant(ndref(pn, 1)) && static_constant(ndref(pn, 2));
+    case NT_CAST: 
+      assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
+      return ts_numerical(ndref(pn, 0)->ts) && static_constant(ndref(pn, 1));
   }
-  return NULL; /* won't happen */
+  return false;
 }
 
 
@@ -701,33 +650,6 @@ static void post_vardecl(sym_t mod, node_t *pn)
   fprintf(stderr, "%s =>\n", symname(pn->name));
   dump_node(pin, stderr);
 #endif
-}
-
-/* check if this function type is legal in wasm */
-static void check_ftnd(node_t *ptn)
-{
-  size_t i;
-  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
-  for (i = 0; i < ndlen(ptn); ++i) {
-    node_t *ptni = ndref(ptn, i); 
-    assert(ptni->nt == NT_VARDECL && ndlen(ptni) == 1 || ptni->nt == NT_TYPE);
-    if (ptni->nt == NT_VARDECL) ptni = ndref(ptni, 0); assert(ptni->nt == NT_TYPE);
-    /* todo: allow sizeable structures/unions as immediate args/return values;
-     * they will be passed as pointers (extra arg for return value) */
-    switch (ptni->ts) {
-      case TS_VOID: /* ok if alone */ 
-        if (i == 0) break; /* return type can be void */
-        neprintf(ptn, "unexpected void function argument type");
-      case TS_INT: case TS_UINT: case TS_ENUM:
-      case TS_LONG: case TS_ULONG:  
-      case TS_PTR: case TS_ARRAY:
-      case TS_LLONG: case TS_ULLONG:  
-      case TS_FLOAT: case TS_DOUBLE:
-        break;
-      default:
-        neprintf(ptn, "function arguments of this type are not supported");
-    }
-  }
 }
 
 /* check if this expression will produce valid const code */
@@ -765,15 +687,159 @@ static void process_vardecl(sym_t mainmod, node_t *pdn, node_t *pin, module_t *p
   /* todo: compile to global */
 }
 
+/* check if this function type is legal in wasm */
+static void fundef_check_type(node_t *ptn)
+{
+  size_t i;
+  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
+  for (i = 0; i < ndlen(ptn); ++i) {
+    node_t *ptni = ndref(ptn, i); 
+    assert(ptni->nt == NT_VARDECL && ndlen(ptni) == 1 || ptni->nt == NT_TYPE);
+    if (ptni->nt == NT_VARDECL) ptni = ndref(ptni, 0); assert(ptni->nt == NT_TYPE);
+    switch (ptni->ts) {
+      case TS_VOID:
+        if (i == 0) break; /* return type can be void */
+        neprintf(ptn, "unexpected void function argument type");
+      case TS_INT: case TS_UINT: case TS_ENUM:
+      case TS_LONG: case TS_ULONG:  
+      case TS_LLONG: case TS_ULLONG:  
+      case TS_FLOAT: case TS_DOUBLE:
+      case TS_PTR: 
+        break;
+      case TS_ARRAY: /* passed as pointer */
+        if (i != 0) break; 
+        neprintf(ptn, "unexpected array function return type");
+      case TS_STRUCT: case TS_UNION: /* passed as pointer */
+        break;
+      default:
+        neprintf(ptn, "function arguments of this type are not supported");
+    }
+  }
+}
+
+/* hoist_locals environment data type */ 
+typedef struct henv_tag {
+  buf_t idmap; /* pairs of symbols <old, new> */
+  struct henv_tag *up; 
+} henv_t;
+
+/* return new name given oname; 0 if not found */
+static sym_t henv_lookup(sym_t oname, henv_t *phe, int *pupc)
+{
+  if (pupc) *pupc = 0;
+  while (phe) {
+    sym_t *pon = bufsearch(&phe->idmap, &oname, sym_cmp);
+    if (pon) return pon[1];
+    phe = phe->up; if (pupc) *pupc += 1;
+  }
+  return 0;
+}
+
+/* hoist definitions of local vars to plb renaming them if needed;
+ * also, mark local vars which addresses are taken as 'auto' */
+static void expr_hoist_locals(node_t *pn, henv_t *phe, ndbuf_t *plb)
+{
+  switch (pn->nt) {
+    case NT_IDENTIFIER: {
+      sym_t nname = henv_lookup(pn->name, phe, NULL);
+      if (nname) pn->name = nname; /* else global */
+    } break;
+    case NT_BLOCK: {
+      size_t i;
+      henv_t he; he.up = phe; bufinit(&he.idmap, 2*sizeof(sym_t));
+      for (i = 0; i < ndlen(pn); ++i) {
+        node_t *pni = ndref(pn, i);
+        if (pni->nt == NT_VARDECL) {
+          sym_t nname = pni->name; int upc;
+          /* see if in needs to be renamed */
+          if (henv_lookup(pni->name, &he, &upc)) {
+            if (upc) { /* normal shadowing */
+              sym_t *pon = bufnewbk(&he.idmap);
+              nname = internf("%s#%d", symname(pni->name), (int)buflen(plb));
+              pon[0] = pni->name, pon[1] = nname; 
+            } else {
+              n2eprintf(pni, pn, "duplicate variable declaration in the same scope"); 
+            }
+          } else {
+            sym_t *pon = bufnewbk(&he.idmap);
+            pon[0] = pon[1] = nname; 
+          }
+          /* hoist vardecl to plb */
+          pni->name = nname;
+          ndswap(pni, ndbnewbk(plb));
+          ndrem(pn, i); --i; 
+        } else {
+          expr_hoist_locals(pni, &he, plb);
+        }
+      }
+      buffini(&he.idmap);    
+    } break;
+    case NT_VARDECL: {
+      neprintf(pn, "unexpected variable declaration");
+    } break;
+    case NT_PREFIX: {
+      assert(ndlen(pn) == 1);
+      expr_hoist_locals(ndref(pn, 0), phe, plb);
+      if (pn->op == TT_AND && ndref(pn, 0)->nt == NT_IDENTIFIER) {
+        /* address-of var is taken: mark it as auto */
+        sym_t name = ndref(pn, 0)->name; size_t i;
+        for (i = 0; i < ndblen(plb); ++i) {
+          node_t *pndi = ndbref(plb, i); 
+          assert(pndi->nt == NT_VARDECL);
+          if (pndi->name != name) continue;
+          if (pndi->sc == SC_REGISTER) 
+            n2eprintf(pn, pndi, "cannot take address of register var");
+          else pndi->sc = SC_AUTO;
+        }
+      } 
+    } break;
+    default: {
+      size_t i;
+      for (i = 0; i < ndlen(pn); ++i) {
+        expr_hoist_locals(ndref(pn, i), phe, plb);
+      }
+    } break;
+  }
+}
+
+/* hoist all locals to the start of the top block, mark &vars as auto */
+static void fundef_hoist_locals(node_t *pdn)
+{
+  size_t i;
+  node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
+  ndbuf_t locals; henv_t he;
+  ndbinit(&locals); he.up = NULL; bufinit(&he.idmap, 2*sizeof(sym_t));
+  /* init env with parameter names mapped to themselves */
+  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
+  for (i = 0; i < ndlen(ptn); ++i) {
+    node_t *ptni = ndref(ptn, i); 
+    sym_t name = (ptni->nt == NT_VARDECL) ? ptni->name : 0;
+    if (name) {
+      sym_t *pon = bufsearch(&he.idmap, &name, sym_cmp);
+      if (pon) n2eprintf(ptni, pdn, "duplicate parameter id: %s", symname(name));
+      else pon = bufnewbk(&he.idmap), pon[0] = pon[1] = name; 
+    }
+  }
+  /* go over body looking for blocks w/vardecls and var refs */
+  assert(pbn->nt == NT_BLOCK);
+  expr_hoist_locals(pbn, &he, &locals);
+  /* now re-insert decls at the beginning */
+  for (i = 0; i < ndblen(&locals); ++i) {
+    ndswap(ndinsnew(pbn, i), ndbref(&locals, i));
+  }
+  ndbfini(&locals); buffini(&he.idmap);
+}
+
 /* process function definition in main module */
 static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
 {
   assert(pn->nt == NT_FUNDEF && pn->name && ndlen(pn) == 2);
   assert(ndref(pn, 0)->nt == NT_TYPE && ndref(pn, 0)->ts == TS_FUNCTION);
 #ifdef _DEBUG
+  fprintf(stderr, "process_fundef:\n");
   dump_node(pn, stderr);
 #endif  
-  check_ftnd(ndref(pn, 0));
+  fundef_check_type(ndref(pn, 0));
   { /* post appropriate vardecl for later use */
     node_t nd = mknd();
     ndset(&nd, NT_VARDECL, pn->pwsid, pn->startpos);
@@ -781,8 +847,15 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
     post_vardecl(mainmod, &nd); 
     ndfini(&nd); 
   }
+  /* hoist local variables */
+  fundef_hoist_locals(pn);
+#ifdef _DEBUG
+  fprintf(stderr, "fundef_hoist_locals ==>\n");
+  dump_node(pn, stderr);
+#endif  
+  /* convert to wasm conventions
+  fundef_wasmify(pn); */
   { /* todo: compile to function */
-    //unsigned fno = entblen(&pm->funcdefs);
     /* ... */
   }
 }
