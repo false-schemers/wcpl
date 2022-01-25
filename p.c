@@ -354,6 +354,7 @@ void init_symbols(void)
   intern_symbol("alignof", TT_INTR_NAME, INTR_ALIGNOF);
   intern_symbol("offsetof", TT_INTR_NAME, INTR_OFFSETOF);
   intern_symbol("alloca", TT_INTR_NAME, INTR_ALLOCA);
+  intern_symbol("freea", TT_INTR_NAME, INTR_FREEA);
   intern_symbol("static_assert", TT_INTR_NAME, INTR_SASSERT);
 }
 
@@ -1587,7 +1588,7 @@ node_t mknd(void)
 node_t* ndinit(node_t* pn)
 {
   memset(pn, 0, sizeof(node_t));
-  chbinit(&pn->data);
+  bufinit(&pn->data, sizeof(char)); /* chbuf by default */
   ndbinit(&pn->body);
   return pn;
 }
@@ -1595,14 +1596,14 @@ node_t* ndinit(node_t* pn)
 node_t *ndicpy(node_t* mem, const node_t* pn)
 {
   memcpy(mem, pn, sizeof(node_t));
-  chbicpy(&mem->data, &pn->data);
+  buficpy(&mem->data, &pn->data);
   ndbicpy(&mem->body, &pn->body);
   return mem;
 }
 
 void ndfini(node_t* pn)
 {
-  chbfini(&pn->data);
+  buffini(&pn->data);
   ndbfini(&pn->body);
 }
 
@@ -1619,7 +1620,7 @@ node_t *ndset(node_t *dst, nt_t nt, int pwsid, int startpos)
   dst->pwsid = pwsid;
   dst->startpos = startpos;
   dst->name = 0;
-  chbclear(&dst->data);
+  bufclear(&dst->data);
   dst->val.u = 0;
   dst->op = TT_EOF;
   dst->ts = TS_VOID;
@@ -1638,6 +1639,11 @@ void ndrem(node_t* pn, size_t i)
 {
   ndfini(bufref(&pn->body, i));
   bufrem(&pn->body, i);
+}
+
+node_t *ndinsfr(node_t *pn, nt_t nt)
+{
+  return ndset(ndinsnew(pn, 0), nt, pn->pwsid, pn->startpos);
 }
 
 node_t *ndinsbk(node_t *pn, nt_t nt)
@@ -1670,6 +1676,242 @@ void ndbclear(ndbuf_t* pb)
   pnd = (node_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) ndfini(pnd+i);
   bufclear(pb);
+}
+
+
+/* node pool */
+
+static buf_t g_npbuf;
+
+void init_nodepool(void)
+{
+  bufinit(&g_npbuf, sizeof(node_t*));
+}
+
+void fini_nodepool(void)
+{
+  size_t i;
+  for (i = 0; i < buflen(&g_npbuf); ++i) {
+    node_t **ppn = bufref(&g_npbuf, i);
+    ndfini(*ppn); free(*ppn);
+  }
+  buffini(&g_npbuf);
+}
+
+void clear_nodepool(void)
+{
+  fini_nodepool();
+  init_nodepool();
+}
+
+node_t *npalloc(void)
+{
+  node_t *pn = exmalloc(sizeof(node_t)), **ppn;
+  ndinit(pn);
+  ppn = bufnewbk(&g_npbuf); *ppn = pn;
+  return pn;
+}
+
+node_t *npnew(nt_t nt, int pwsid, int startpos)
+{
+  node_t *pn = npalloc();
+  pn->nt = nt; pn->pwsid = pwsid; pn->startpos = startpos;
+  return pn;
+}
+
+node_t *npdup(const node_t *pr)
+{
+  return ndcpy(npalloc(), pr); 
+}
+
+
+/* node builders */
+
+/* wrap node into nt node as a subnode */
+node_t *wrap_node(node_t *pn, nt_t nt)
+{
+  node_t nd = mknd();
+  ndset(&nd, nt, pn->pwsid, pn->startpos);
+  ndswap(pn, ndnewbk(&nd));
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
+}
+
+/* wrap type node into TS_PTR type node */
+node_t *wrap_type_pointer(node_t *pn)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos);
+  nd.ts = TS_PTR;
+  ndswap(pn, ndnewbk(&nd));
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
+}
+
+/* wrap type node and expr node into TS_ARRAY type node */
+node_t *wrap_type_array(node_t *pn, node_t *pi)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos);
+  nd.ts = TS_ARRAY;
+  ndswap(pn, ndnewbk(&nd));
+  ndswap(pi, ndnewbk(&nd));
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
+}
+
+/* flatten TS_ARRAY type node into TS_PTR type node */
+node_t *flatten_type_array(node_t *pn)
+{
+  size_t len = ndlen(pn);
+  assert(pn->ts == TS_ARRAY && len == 1 || len == 2);
+  if (len == 2) ndbrem(&pn->body, 1);
+  pn->ts = TS_PTR;
+  return pn;
+}
+
+/* wrap type node and vec of type nodes into TS_FUNCTION type node */
+node_t *wrap_type_function(node_t *pn, ndbuf_t *pnb)
+{
+  size_t i; node_t nd = mknd();
+  ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos);
+  nd.ts = TS_FUNCTION;
+  ndswap(pn, ndnewbk(&nd));
+  if (pnb) for (i = 0; i < ndblen(pnb); ++i) {
+    node_t *pni = ndbref(pnb, i);
+    /* treat (void) as () */
+    if (i+1 == ndblen(pnb) && pni->nt == NT_VARDECL && 
+        ndlen(pni) == 1 && ndref(pni, 0)->nt == NT_TYPE && 
+        ndref(pni, 0)->ts == TS_VOID) break;
+    ndswap(pni, ndnewbk(&nd));
+  }
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
+}
+
+/* wrap node into NT_SUBSCRIPT node */
+node_t *wrap_subscript(node_t *pn, node_t *psn)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_SUBSCRIPT, pn->pwsid, pn->startpos);
+  ndswap(pn, ndnewbk(&nd));
+  ndswap(psn, ndnewbk(&nd));
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
+}
+
+/* wrap expr node into NT_POSTFIX type node */
+node_t *wrap_postfix_operator(node_t *pn, tt_t op, sym_t id)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_POSTFIX, pn->pwsid, pn->startpos);
+  ndswap(pn, ndnewbk(&nd));
+  nd.op = op; nd.name = id;
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
+}
+
+/* wrap expr node into NT_PREFIX type node */
+node_t *wrap_unary_operator(node_t *pn, int startpos, tt_t op)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_PREFIX, pn->pwsid, startpos);
+  ndswap(pn, ndnewbk(&nd));
+  nd.op = op;
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
+}
+
+/* flatten node into its argument #0 */
+node_t *lift_arg0(node_t *pn)
+{
+  node_t nd = mknd();
+  assert(ndlen(pn) >= 1);
+  ndswap(&nd, ndref(pn, 0));
+  ndswap(&nd, pn);  
+  ndfini(&nd);
+  return pn;
+}
+
+/* flatten node into its argument #1 */
+node_t *lift_arg1(node_t *pn)
+{
+  node_t nd = mknd();
+  assert(ndlen(pn) >= 2);
+  ndswap(&nd, ndref(pn, 1));
+  ndswap(&nd, pn);  
+  ndfini(&nd);
+  return pn;
+}
+
+/* wrap expr node into NT_CAST type node */
+node_t *wrap_cast(node_t *pcn, node_t *pn)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_CAST, pcn->pwsid, pcn->startpos);
+  ndswap(pcn, ndnewbk(&nd));
+  ndswap(pn, ndnewbk(&nd));
+  ndswap(pcn, &nd);
+  ndfini(&nd);
+  return pn;
+}
+
+/* wrap expr node into NT_INFIX with second expr */
+node_t *wrap_binary(node_t *pn, tt_t op, node_t *pn2)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_INFIX, pn->pwsid, pn->startpos);
+  ndswap(pn, ndnewbk(&nd));
+  ndswap(pn2, ndnewbk(&nd));
+  nd.op = op;
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
+}
+
+/* wrap expr node into NT_COND with second/third exprs */
+node_t *wrap_conditional(node_t *pn, node_t *pn2, node_t *pn3)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_COND, pn->pwsid, pn->startpos);
+  ndswap(pn, ndnewbk(&nd));
+  ndswap(pn2, ndnewbk(&nd));
+  ndswap(pn3, ndnewbk(&nd));
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
+}
+
+/* wrap expr node into NT_ASSIGN with second expr */
+node_t *wrap_assignment(node_t *pn, tt_t op, node_t *pn2)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_ASSIGN, pn->pwsid, pn->startpos);
+  ndswap(pn, ndnewbk(&nd));
+  ndswap(pn2, ndnewbk(&nd));
+  nd.op = op;
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
+}
+
+/* wrap expr node into NT_COMMA with second expr */
+node_t *wrap_comma(node_t *pn, node_t *pn2)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_COMMA, pn->pwsid, pn->startpos);
+  ndswap(pn, ndnewbk(&nd));
+  ndswap(pn2, ndnewbk(&nd));
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
 }
 
 
@@ -1920,7 +2162,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       if (intr == INTR_NONE) 
         reprintf(pw, startpos, "use of undefined intrinsic??");
       ndset(pn, NT_INTRCALL, pw->id, startpos);
-      pn->name = intern(pw->tokstr); dropt(pw);
+      dropt(pw);
       pn->intr = (intr_t)intr;
       switch (intr) {
         case INTR_SIZEOF: case INTR_ALIGNOF: { /* (type) */
@@ -1955,7 +2197,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           expect(pw, TT_RPAR, ")"); 
           if ((intr == INTR_ALLOCA && n != 1) || 
               (intr == INTR_SASSERT && !(n == 1 || n == 2)))  
-           reprintf(pw, startpos, "unexpected arguments for %s", symname(pn->name));
+           reprintf(pw, startpos, "unexpected arguments for %s", intr_name(pn->intr));
         } break;
         default: assert(false);
       }
@@ -1973,28 +2215,6 @@ static bool postfix_operator_ahead(pws_t *pw)
       return true;
   }
   return false;
-}
-
-/* wrap node into NT_SUBSCRIPT node */
-void wrap_subscript(node_t *pn, node_t *psn)
-{
-  node_t nd = mknd();
-  ndset(&nd, NT_SUBSCRIPT, pn->pwsid, pn->startpos);
-  ndswap(pn, ndnewbk(&nd));
-  ndswap(psn, ndnewbk(&nd));
-  ndswap(pn, &nd);
-  ndfini(&nd);
-}
-
-/* wrap expr node into NT_POSTFIX type node */
-void wrap_postfix_operator(node_t *pn, tt_t op, sym_t id)
-{
-  node_t nd = mknd();
-  ndset(&nd, NT_POSTFIX, pn->pwsid, pn->startpos);
-  ndswap(pn, ndnewbk(&nd));
-  nd.op = op; nd.name = id;
-  ndswap(pn, &nd);
-  ndfini(&nd);
 }
 
 static void parse_postfix_expr(pws_t *pw, node_t *pn)
@@ -2041,38 +2261,6 @@ static void parse_postfix_expr(pws_t *pw, node_t *pn)
     }  
   }
 }
-
-/* wrap expr node into NT_PREFIX type node */
-void wrap_unary_operator(node_t *pn, int startpos, tt_t op)
-{
-  node_t nd = mknd();
-  ndset(&nd, NT_PREFIX, pn->pwsid, startpos);
-  ndswap(pn, ndnewbk(&nd));
-  nd.op = op;
-  ndswap(pn, &nd);
-  ndfini(&nd);
-}
-
-/* flatten node into its argument #0 */
-void flatten_lift_arg0(node_t *pn)
-{
-  node_t nd = mknd();
-  assert(ndlen(pn) >= 1);
-  ndswap(&nd, ndref(pn, 0));
-  ndswap(&nd, pn);  
-  ndfini(&nd);
-}
-
-/* flatten node into its argument #1 */
-void flatten_lift_arg1(node_t *pn)
-{
-  node_t nd = mknd();
-  assert(ndlen(pn) >= 2);
-  ndswap(&nd, ndref(pn, 1));
-  ndswap(&nd, pn);  
-  ndfini(&nd);
-}
-
  
 static void parse_unary_expr(pws_t *pw, node_t *pn)
 {
@@ -2092,17 +2280,6 @@ static void parse_unary_expr(pws_t *pw, node_t *pn)
   }
 }  
 
-/* wrap expr node into NT_CAST type node */
-void wrap_cast(node_t *pcn, node_t *pn)
-{
-  node_t nd = mknd();
-  ndset(&nd, NT_CAST, pcn->pwsid, pcn->startpos);
-  ndswap(pcn, ndnewbk(&nd));
-  ndswap(pn, ndnewbk(&nd));
-  ndswap(pcn, &nd);
-  ndfini(&nd);
-}
-
 static void parse_cast_expr(pws_t *pw, node_t *pn)
 {
   int startpos = peekpos(pw);
@@ -2114,18 +2291,6 @@ static void parse_cast_expr(pws_t *pw, node_t *pn)
     wrap_cast(pn, &nd);
     ndfini(&nd);
   }
-}
-
-/* wrap expr node into NT_INFIX with second expr */
-void wrap_binary(node_t *pn, tt_t op, node_t *pn2)
-{
-  node_t nd = mknd();
-  ndset(&nd, NT_INFIX, pn->pwsid, pn->startpos);
-  ndswap(pn, ndnewbk(&nd));
-  ndswap(pn2, ndnewbk(&nd));
-  nd.op = op;
-  ndswap(pn, &nd);
-  ndfini(&nd);
 }
 
 static tt_t getop(pws_t *pw, int deft)
@@ -2182,18 +2347,6 @@ static void parse_binary_expr(pws_t *pw, node_t *pn, int deft)
   }
 }
 
-/* wrap expr node into NT_COND with second/third exprs */
-void wrap_conditional(node_t *pn, node_t *pn2, node_t *pn3)
-{
-  node_t nd = mknd();
-  ndset(&nd, NT_COND, pn->pwsid, pn->startpos);
-  ndswap(pn, ndnewbk(&nd));
-  ndswap(pn2, ndnewbk(&nd));
-  ndswap(pn3, ndnewbk(&nd));
-  ndswap(pn, &nd);
-  ndfini(&nd);
-}
-
 static void parse_conditional_expr(pws_t *pw, node_t *pn)
 {
   parse_binary_expr(pw, pn, 'd');
@@ -2206,18 +2359,6 @@ static void parse_conditional_expr(pws_t *pw, node_t *pn)
     wrap_conditional(pn, &ndt, &ndf);
     ndfini(&ndt), ndfini(&ndf);
   }
-}
-
-/* wrap expr node into NT_ASSIGN with second expr */
-void wrap_assignment(node_t *pn, tt_t op, node_t *pn2)
-{
-  node_t nd = mknd();
-  ndset(&nd, NT_ASSIGN, pn->pwsid, pn->startpos);
-  ndswap(pn, ndnewbk(&nd));
-  ndswap(pn2, ndnewbk(&nd));
-  nd.op = op;
-  ndswap(pn, &nd);
-  ndfini(&nd);
 }
 
 static void parse_assignment_expr(pws_t *pw, node_t *pn)
@@ -2254,17 +2395,6 @@ static void parse_assignment_expr(pws_t *pw, node_t *pn)
     }
   }
 #endif
-}
-
-/* wrap expr node into NT_COMMA with second expr */
-void wrap_comma(node_t *pn, node_t *pn2)
-{
-  node_t nd = mknd();
-  ndset(&nd, NT_COMMA, pn->pwsid, pn->startpos);
-  ndswap(pn, ndnewbk(&nd));
-  ndswap(pn2, ndnewbk(&nd));
-  ndswap(pn, &nd);
-  ndfini(&nd);
 }
 
 static void parse_expr(pws_t *pw, node_t *pn)
@@ -2355,7 +2485,7 @@ void parse_sru_body(pws_t *pw, ts_t sru, node_t *pn)
   }  
   for (i = 0; i < ndlen(pn); ++i) {
     node_t *pni = ndref(pn, i);
-    if (pni->nt != NT_VARDECL) 
+    if (pni->nt == NT_VARDECL && ndlen(pni) > 1) 
       reprintf(pw, pni->startpos, "unexpected initializer in struct/union"); 
   }
   if (!pn->name && !ndlen(pn)) {
@@ -2429,57 +2559,6 @@ static void parse_base_type(pws_t *pw, node_t *pn)
   else if (un) parse_sru_body(pw, TS_UNION, pn);
   else if (ty) load_typedef_type(pw, pn, tn);
   else assert(false);
-}
-
-/* wrap type node into TS_PTR type node */
-void wrap_type_pointer(node_t *pn)
-{
-  node_t nd = mknd();
-  ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos);
-  nd.ts = TS_PTR;
-  ndswap(pn, ndnewbk(&nd));
-  ndswap(pn, &nd);
-  ndfini(&nd);
-}
-
-/* wrap type node and expr node into TS_ARRAY type node */
-void wrap_type_array(node_t *pn, node_t *pi)
-{
-  node_t nd = mknd();
-  ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos);
-  nd.ts = TS_ARRAY;
-  ndswap(pn, ndnewbk(&nd));
-  ndswap(pi, ndnewbk(&nd));
-  ndswap(pn, &nd);
-  ndfini(&nd);
-}
-
-/* flatten TS_ARRAY type node into TS_PTR type node */
-void flatten_type_array(node_t *pn)
-{
-  size_t len = ndlen(pn);
-  assert(pn->ts == TS_ARRAY && len == 1 || len == 2);
-  if (len == 2) ndbrem(&pn->body, 1);
-  pn->ts = TS_PTR;
-}
-
-/* wrap type node and vec of type nodes into TS_FUNCTION type node */
-void wrap_type_function(node_t *pn, ndbuf_t *pnb)
-{
-  size_t i; node_t nd = mknd();
-  ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos);
-  nd.ts = TS_FUNCTION;
-  ndswap(pn, ndnewbk(&nd));
-  if (pnb) for (i = 0; i < ndblen(pnb); ++i) {
-    node_t *pni = ndbref(pnb, i);
-    /* treat (void) as () */
-    if (i+1 == ndblen(pnb) && pni->nt == NT_VARDECL && 
-        ndlen(pni) == 1 && ndref(pni, 0)->nt == NT_TYPE && 
-        ndref(pni, 0)->ts == TS_VOID) break;
-    ndswap(pni, ndnewbk(&nd));
-  }
-  ndswap(pn, &nd);
-  ndfini(&nd);
 }
 
 static void parse_primary_declarator(pws_t *pw, node_t *pn)
@@ -3015,7 +3094,7 @@ void parse_translation_unit(pws_t *pw, ndbuf_t *pnb)
 }
 
 /* report node error, possibly printing location information, and exit */
-void neprintf(node_t *pn, const char *fmt, ...)
+void neprintf(const node_t *pn, const char *fmt, ...)
 {
   pws_t *pw = NULL; int startpos = -1;
   va_list args;
@@ -3029,7 +3108,7 @@ void neprintf(node_t *pn, const char *fmt, ...)
   exit(1);
 }
 
-void n2eprintf(node_t *pn, node_t *pn2, const char *fmt, ...)
+void n2eprintf(const node_t *pn, const node_t *pn2, const char *fmt, ...)
 {
   pws_t *pw = NULL; int startpos = -1;
   va_list args;
@@ -3112,9 +3191,9 @@ static void fdumpv32(const char *str, size_t n, FILE* fp)
   chbfini(&cb);
 }
 
-static char *ts_name(ts_t ts)
+const char *ts_name(ts_t ts)
 {
-  char *s = "?";
+  const char *s = "?";
   switch (ts) {
     case TS_VOID: s = "void"; break;
     case TS_ETC: s = "etc"; break;  
@@ -3143,9 +3222,9 @@ static char *ts_name(ts_t ts)
   return s;
 }
 
-static char *sc_name(sc_t sc)
+const char *sc_name(sc_t sc)
 {
-  char *s = "?";
+  const char *s = "?";
   switch (sc) {
     case SC_NONE: s = ""; break; 
     case SC_EXTERN: s = "extern"; break; 
@@ -3157,15 +3236,31 @@ static char *sc_name(sc_t sc)
   return s;
 }
 
-static char *op_name(tt_t op)
+const char *intr_name(intr_t intr)
 {
-  char *s = "?";
+  const char *s = "?";
+  switch (intr) {
+    case INTR_NONE: s = ""; break; 
+    case INTR_ALLOCA: s = "alloca"; break; 
+    case INTR_FREEA: s = "freea"; break; 
+    case INTR_SIZEOF: s = "sizeof"; break; 
+    case INTR_ALIGNOF: s = "alignof"; break; 
+    case INTR_OFFSETOF: s = "offsetof"; break; 
+    case INTR_SASSERT: s = "static_assert"; break; 
+    default: assert(false);
+  }
+  return s;
+}
+
+const char *op_name(tt_t op)
+{
+  const char *s = "?";
   switch (op) {
     case TT_PLUS: s = "+"; break; 
     case TT_MINUS: s = "-"; break; 
     case TT_AND_AND: s = "&&"; break; 
     case TT_OR_OR: s = "||"; break; 
-    case TT_NOT: s = "not"; break; 
+    case TT_NOT: s = "!"; break; 
     case TT_AND: s = "&"; break; 
     case TT_AND_ASN: s = "&="; break; 
     case TT_OR: s = "|"; break; 
@@ -3199,7 +3294,6 @@ static char *op_name(tt_t op)
   }
   return s;
 }
-
 
 static void dump(node_t *pn, FILE* fp, int indent)
 {
@@ -3253,7 +3347,7 @@ static void dump(node_t *pn, FILE* fp, int indent)
       fprintf(fp, "(call");
     } break;
     case NT_INTRCALL: {
-      fprintf(fp, "(intrcall %s", symname(pn->name));
+      fprintf(fp, "(intrcall %s", intr_name(pn->intr));
     } break;
     case NT_CAST: {
       fprintf(fp, "(cast");
@@ -3317,7 +3411,7 @@ static void dump(node_t *pn, FILE* fp, int indent)
       else fprintf(fp, "(type %s %s", ts_name(pn->ts), symname(pn->name));
     } break;
     case NT_VARDECL: {
-      char *s = sc_name(pn->sc);
+      const char *s = sc_name(pn->sc);
       if (!pn->name) fprintf(fp, "(vardecl %s", s);
       else fprintf(fp, "(vardecl %s %s", symname(pn->name), s);
     } break;
@@ -3325,7 +3419,7 @@ static void dump(node_t *pn, FILE* fp, int indent)
       fprintf(fp, "(display");
     } break;
     case NT_FUNDEF: {
-      char *s = sc_name(pn->sc);
+      const char *s = sc_name(pn->sc);
       fprintf(fp, "(fundef %s %s", symname(pn->name), s);
     } break;
     case NT_TYPEDEF: {
@@ -3338,7 +3432,7 @@ static void dump(node_t *pn, FILE* fp, int indent)
       fprintf(fp, "(include %s", symname(pn->name));
     } break;
     case NT_IMPORT: {
-      char *s = sc_name(pn->sc);
+      const char *s = sc_name(pn->sc);
       if (!pn->name) fprintf(fp, "(import %s", s);
       else fprintf(fp, "(import %s %s", symname(pn->name), s);
     } break;
