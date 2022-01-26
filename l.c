@@ -810,6 +810,9 @@ void chbputvf(chbuf_t* pb, const char *fmt, va_list ap)
     } else if (fmt[0] == 'l' && fmt[1] == 'd') {
       long ld = va_arg(ap, long);
       chbputld(ld, pb); fmt += 2;
+    } else if (fmt[0] == 'l' && fmt[1] == 'l' && fmt[2] == 'd') {
+      long long lld = va_arg(ap, long long);
+      chbputll(lld, pb); fmt += 3;
     } else if (fmt[0] == 't') {
       ptrdiff_t t = va_arg(ap, ptrdiff_t);
       chbputt(t, pb); fmt += 1;
@@ -819,6 +822,9 @@ void chbputvf(chbuf_t* pb, const char *fmt, va_list ap)
     } else if (fmt[0] == 'l' && fmt[1] == 'u') {
       unsigned long lu = va_arg(ap, unsigned long);
       chbputlu(lu, pb); fmt += 2;
+    } else if (fmt[0] == 'l' && fmt[1] == 'l' && fmt[2] == 'u') {
+      unsigned long long llu = va_arg(ap, unsigned long long);
+      chbputllu(llu, pb); fmt += 3;
     } else if (fmt[0] == 'z') {
       size_t z = va_arg(ap, size_t);
       chbputz(z, pb); fmt += 1;

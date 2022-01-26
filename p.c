@@ -13,6 +13,7 @@
 #include "l.h"
 #include "p.h"
 #include "c.h"
+#include "w.h"
 
 
 /* module names and files */
@@ -291,6 +292,7 @@ void init_symbols(void)
   node_t *pn;
   bufinit(&g_syminfo, sizeof(int)*3);
   ndbinit(&g_nodes);
+  intern_symbol("asm", TT_ASM_KW, -1);
   intern_symbol("auto", TT_AUTO_KW, -1);
   intern_symbol("break", TT_BREAK_KW, -1);
   intern_symbol("case", TT_CASE_KW, -1);
@@ -1616,11 +1618,13 @@ node_t *ndcpy(node_t* pn, const node_t* pr)
 
 node_t *ndset(node_t *dst, nt_t nt, int pwsid, int startpos)
 {
+  size_t esz = (nt == NT_ACODE) ? sizeof(inscode_t) : sizeof(char);
   dst->nt = nt;
   dst->pwsid = pwsid;
   dst->startpos = startpos;
   dst->name = 0;
-  bufclear(&dst->data);
+  if (esz == dst->data.esz) bufclear(&dst->data);
+  else { buffini(&dst->data); bufinit(&dst->data, esz); }
   dst->val.u = 0;
   dst->op = TT_EOF;
   dst->ts = TS_VOID;
@@ -1966,6 +1970,7 @@ static bool storage_class_specifier_ahead(pws_t *pw)
 
 /* defined below */
 static void parse_expr(pws_t *pw, node_t *pn);
+static void parse_asm_code(pws_t *pw, node_t *pn, node_t *ptn);
 static void parse_cast_expr(pws_t *pw, node_t *pn);
 static void parse_unary_expr(pws_t *pw, node_t *pn);
 static void parse_assignment_expr(pws_t *pw, node_t *pn);
@@ -2280,15 +2285,146 @@ static void parse_unary_expr(pws_t *pw, node_t *pn)
   }
 }  
 
+static unsigned long long parse_asm_unsigned(pws_t *pw)
+{
+  node_t xnd = mknd(), lnd = mknd(); bool ok = false;
+  int startpos = peekpos(pw);
+  parse_primary_expr(pw, &xnd);
+  if (static_eval(&xnd, &lnd) && lnd.nt == NT_LITERAL) {
+    switch (lnd.ts) {
+      case TS_UINT: case TS_ULONG: case TS_ULLONG: {
+        unsigned long long ull = lnd.val.u;
+        ndfini(&xnd), ndfini(&lnd);
+        return ull;
+      }
+    }
+  }
+  reprintf(pw, startpos, "unsigned argument expected");  
+  ndfini(&xnd), ndfini(&lnd);
+  return 0;
+}
+
+static double parse_asm_double(pws_t *pw)
+{
+  node_t xnd = mknd(), lnd = mknd(); bool ok = false;
+  int startpos = peekpos(pw);
+  parse_primary_expr(pw, &xnd);
+  if (static_eval(&xnd, &lnd) && lnd.nt == NT_LITERAL) {
+    switch (lnd.ts) {
+      case TS_FLOAT: case TS_DOUBLE: {
+        double d = lnd.ts == TS_FLOAT ? lnd.val.f : lnd.val.d;
+        ndfini(&xnd), ndfini(&lnd);
+        return d;
+      }
+    }
+  }
+  reprintf(pw, startpos, "floating-point argument expected");  
+  ndfini(&xnd), ndfini(&lnd);
+  return 0;
+}
+
+static void parse_asm_instr(pws_t *pw, node_t *pan)
+{
+  if (peekt(pw) == TT_LPAR) {
+    /* nested asm */
+    node_t nd = mknd(), *psn = ndnewbk(pan);
+    inscode_t *pic = bufnewbk(&pan->data);
+    sym_t id; int startpos = peekpos(pw);
+    pic->in = IN_PLACEHOLDER;
+    expect(pw, TT_LPAR, "(");
+    parse_base_type(pw, &nd);
+    id = parse_declarator(pw, &nd); 
+    if (id) reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+    expect(pw, TT_RPAR, ")");
+    parse_asm_code(pw, psn, &nd);
+    ndfini(&nd);
+  } else {
+    /* regular instr */
+    inscode_t *pic = bufnewbk(&pan->data);
+    chbuf_t cb = mkchb(); tt_t tt; instr_t in;
+    tt = peekt(pw);
+    if (tt == TT_IDENTIFIER || 
+      (TT_AUTO_KW <= tt && tt <= TT_WHILE_KW) ||
+      (TT_TYPE_NAME <= tt && tt <= TT_INTR_NAME)) {
+      chbputs(pw->tokstr, &cb); dropt(pw);
+      if (peekt(pw) == TT_DOT) {
+        chbputc('.', &cb); dropt(pw);
+        tt = peekt(pw);
+        if (tt == TT_IDENTIFIER || 
+          (TT_AUTO_KW <= tt && tt <= TT_WHILE_KW) ||
+          (TT_TYPE_NAME <= tt && tt <= TT_INTR_NAME)) {
+          chbputs(pw->tokstr, &cb); dropt(pw);
+        }
+      }
+    }
+    if (!chblen(&cb)) reprintf(pw, pw->pos, "instruction name expected");
+    in = name_instr(chbdata(&cb));
+    if (in == IN_PLACEHOLDER) reprintf(pw, pw->pos, "unknown instruction");
+    pic->in = in;
+    switch (instr_sig(in)) {
+      case INSIG_NONE:
+        break;
+      case INSIG_BT:   case INSIG_L:   
+      case INSIG_X:    case INSIG_T:
+      case INSIG_I32:  case INSIG_I64:
+        if (peekt(pw) == TT_IDENTIFIER) pic->relkey = getid(pw);
+        else pic->arg.u = parse_asm_unsigned(pw);
+        break;
+      case INSIG_X_Y:  case INSIG_MEMARG:
+        if (peekt(pw) == TT_IDENTIFIER) pic->relkey = getid(pw);
+        else pic->arg.u = parse_asm_unsigned(pw);
+        pic->argu2 = (unsigned)parse_asm_unsigned(pw);
+        break;
+      case INSIG_F32:
+        pic->arg.f = (float)parse_asm_double(pw);
+        break;
+      case INSIG_F64:
+        pic->arg.d = parse_asm_double(pw);
+        break;
+      case INSIG_LS_L:
+        assert(false); /* fixme */
+      default:
+        assert(false);     
+    } 
+    chbfini(&cb);
+  }
+}
+
+static void parse_asm_code(pws_t *pw, node_t *pn, node_t *ptn)
+{
+  assert(ptn->nt == NT_TYPE);
+  ndset(pn, NT_ACODE, pw->id, pw->pos);
+  ndswap(ptn, ndnewbk(pn));
+  expect(pw, TT_ASM_KW, "asm");
+  expect(pw, TT_LPAR, "(");
+  while (peekt(pw) != TT_RPAR) {
+    parse_asm_instr(pw, pn);
+    if (peekt(pw) == TT_COMMA) dropt(pw);
+    else break;
+  }
+  expect(pw, TT_RPAR, ")");
+}
+
 static void parse_cast_expr(pws_t *pw, node_t *pn)
 {
   int startpos = peekpos(pw);
   parse_unary_expr(pw, pn);
   if (pn->nt == NT_TYPE) {
     node_t nd = mknd();
-    if (peekt(pw) == TT_LBRC) parse_initializer(pw, &nd);
-    else parse_cast_expr(pw, &nd);
-    wrap_cast(pn, &nd);
+    switch (peekt(pw)) {
+      case TT_LBRC: { 
+        parse_initializer(pw, &nd);
+        wrap_cast(pn, &nd);
+      } break;
+      case TT_ASM_KW: {
+        ndswap(pn, &nd);
+        parse_asm_code(pw, pn, &nd);
+      } break;
+      default: {
+        parse_cast_expr(pw, &nd);
+        wrap_cast(pn, &nd);
+      } break;
+    }
     ndfini(&nd);
   }
 }
@@ -3372,6 +3508,27 @@ static void dump(node_t *pn, FILE* fp, int indent)
     case NT_COMMA: {
       fprintf(fp, "(comma");
     } break;
+    case NT_ACODE: {
+      size_t i, ri = 1; chbuf_t cb = mkchb();
+      fprintf(fp, "(acode\n");
+      dump(ndref(pn, 0), fp, indent+2);
+      assert(pn->data.esz == sizeof(inscode_t));
+      for (i = 0; i < buflen(&pn->data); ++i) {
+        inscode_t *pic = bufref(&pn->data, i);
+        if (pic->in == IN_PLACEHOLDER) {
+          assert(ri < ndlen(pn));
+          fputc('\n', fp);
+          dump(ndref(pn, ri), fp, indent+2);
+          ++ri;
+        } else {
+          const char *s = format_inscode(pic, &cb);
+          fprintf(fp, "\n#|           |# %*c(%s)", indent+2, ' ', s);
+        }
+      }  
+      fputs(")", fp);
+      chbfini(&cb);
+      goto out;
+    }
     case NT_BLOCK: {
       if (!pn->name) fprintf(fp, "(block");
       else fprintf(fp, "(block %s", symname(pn->name));
@@ -3440,14 +3597,14 @@ static void dump(node_t *pn, FILE* fp, int indent)
   }
   if (ndlen(pn) > 0) {
     for (i = 0; i < ndlen(pn); i += 1) {
-      fputs("\n", fp);
+      fputc('\n', fp);
       dump(ndref(pn, i), fp, indent+2);
     }
-    fputs(")", fp);
+    fputc(')', fp);
   } else {
-    fputs(")", fp);
+    fputc(')', fp);
   }
-  out: if (!indent) fputs("\n", fp);
+  out: if (!indent) fputc('\n', fp);
 }
 
 

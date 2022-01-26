@@ -26,15 +26,16 @@ typedef enum tt_tag {
   TT_LT,          TT_LE,          TT_GT,          TT_GE,
   TT_EQ,          TT_NE,          TT_DOT,         TT_ARROW,
   TT_ASN,         TT_QMARK,       TT_COLON,       TT_TILDE,
-  TT_AUTO_KW,     TT_BREAK_KW,    TT_CASE_KW,     TT_CHAR_KW,
-  TT_CONST_KW,    TT_CONTINUE_KW, TT_DEFAULT_KW,  TT_DO_KW,
-  TT_DOUBLE_KW,   TT_ELSE_KW,     TT_ENUM_KW,     TT_EXTERN_KW,
-  TT_FLOAT_KW,    TT_FOR_KW,      TT_GOTO_KW,     TT_IF_KW,
-  TT_INT_KW,      TT_LONG_KW,     TT_REGISTER_KW, TT_RETURN_KW,
-  TT_SHORT_KW,    TT_SIGNED_KW,   TT_STATIC_KW,   TT_STRUCT_KW,
-  TT_SWITCH_KW,   TT_TYPEDEF_KW,  TT_UNION_KW,    TT_UNSIGNED_KW, 
-  TT_VOID_KW,     TT_VOLATILE_KW, TT_WHILE_KW,    TT_TYPE_NAME,
-  TT_MACRO_NAME,  TT_ENUM_NAME,   TT_INTR_NAME,   TT_EOF = -1
+  TT_ASM_KW,      TT_AUTO_KW,     TT_BREAK_KW,    TT_CASE_KW,   
+  TT_CHAR_KW,     TT_CONST_KW,    TT_CONTINUE_KW, TT_DEFAULT_KW,
+  TT_DO_KW,       TT_DOUBLE_KW,   TT_ELSE_KW,     TT_ENUM_KW,
+  TT_EXTERN_KW,   TT_FLOAT_KW,    TT_FOR_KW,      TT_GOTO_KW,
+  TT_IF_KW,       TT_INT_KW,      TT_LONG_KW,     TT_REGISTER_KW,
+  TT_RETURN_KW,   TT_SHORT_KW,    TT_SIGNED_KW,   TT_STATIC_KW,
+  TT_STRUCT_KW,   TT_SWITCH_KW,   TT_TYPEDEF_KW,  TT_UNION_KW,
+  TT_UNSIGNED_KW, TT_VOID_KW,     TT_VOLATILE_KW, TT_WHILE_KW,    
+  TT_TYPE_NAME,   TT_MACRO_NAME,  TT_ENUM_NAME,   TT_INTR_NAME,   
+  TT_EOF = -1
 } tt_t;
 
 /* parser workspaces */
@@ -122,6 +123,7 @@ typedef enum nt_tag {
   NT_COND,        /* x ? y : z */
   NT_ASSIGN,      /* x op= y */
   NT_COMMA,       /* x, y */
+  NT_ACODE,       /* (t)asm(...) */
   NT_BLOCK,       /* {...} */
   NT_IF,          /* if (x) y else z */
   NT_SWITCH,      /* switch (x) {case ...} */
@@ -148,7 +150,7 @@ typedef struct node_tag {
   int pwsid;      /* id of origin pws */
   int startpos;   /* start position in origin pws */
   sym_t name;     /* IDENTIFIER/TYPE/VARDECL/FUNDEF/INTRCALL */
-  buf_t data;     /* LITERAL(chbuf) */
+  buf_t data;     /* LITERAL(chbuf)/ACODE(icbuf) */
   numval_t val;   /* LITERAL (numeric); type defined by ts */
   intr_t intr;    /* INTRCALL */
   tt_t op;        /* POSTFIX/PREFIX/INFIX; op is tt of an operator */
@@ -248,7 +250,7 @@ extern bool same_type(const node_t *ptn1, const node_t *ptn2);
 /* dump node in s-expression format */
 extern void dump_node(const node_t *pn, FILE *out);
 
-/* messaging help */
+/* messaging and debug help */
 extern const char *ts_name(ts_t ts);
 extern const char *sc_name(sc_t sc);
 extern const char *intr_name(intr_t intr);

@@ -265,14 +265,43 @@ typedef enum {
   IN_REF_IS_NULL = 0xD1, /* not in core-1 */
   IN_REF_FUNC /* x */ = 0xD2, /* not in core-1 */
   /* reserved: 0xD3..0xFB */
-  IN_EXTENDED_1 /* INX1_... */ = 0xFC, /* not in core-1 */
-  IN_EXTENDED_2 /* INX2_... */ = 0xFD, /* not in core-1 */
+  /* prefix byte for multibyte: 0xFC, not in core-1 */
+  /* prefix byte for multibyte: 0xFD, not in core-1 */
   /* reserved: 0xFE..0xFF */
+  /* extended (multibyte), not in core-1 */
+  IN_I32_TRUNC_SAT_F32_S = 0xFC00,
+  IN_I32_TRUNC_SAT_F32_U = 0xFC01,
+  IN_I32_TRUNC_SAT_F64_S = 0xFC02,
+  IN_I32_TRUNC_SAT_F64_U = 0xFC03,
+  IN_I64_TRUNC_SAT_F32_S = 0xFC04,
+  IN_I64_TRUNC_SAT_F32_U = 0xFC05,
+  IN_I64_TRUNC_SAT_F64_S = 0xFC06,
+  IN_I64_TRUNC_SAT_F64_U = 0xFC07,
+  IN_MEMORY_INIT /* x */ = 0xFC08,
+  IN_DATA_DROP /* x */   = 0xFC09,
+  IN_MEMORY_COPY         = 0xFC0A,
+  IN_MEMORY_FILL         = 0xFC0B,
+  IN_TABLE_INIT/* x y */ = 0xFC0C,
+  IN_ELEM_DROP /* x */   = 0xFC0D,
+  IN_TABLE_COPY/* x y */ = 0xFC0E,
+  IN_TABLE_GROW /* x */  = 0xFC0F,
+  IN_TABLE_SIZE /* x */  = 0xFC10,
+  IN_TABLE_FILL /* x */  = 0xFC11,
+  /* bunch of vector instructions follow */
+  /* ... */
+  IN_PLACEHOLDER = -1 /* for internal use */
 } instr_t;
 
+typedef enum {
+  INSIG_NONE = 0, 
+  INSIG_BT, INSIG_L, INSIG_LS_L,
+  INSIG_X, INSIG_X_Y, INSIG_T,
+  INSIG_I32, INSIG_I64,
+  INSIG_F32, INSIG_F64, 
+  INSIG_MEMARG
+} insig_t;
 
 /* low-level emits */
-
 extern void emit_header(void);
 extern void emit_section_start(secid_t si);
 extern void emit_section_bumpc(void);
@@ -292,7 +321,6 @@ extern void emit_in(instr_t in);
 
 
 /* mid-level representations */
-
 typedef buf_t vtbuf_t; 
 typedef struct funcsig_tag {
   /* todo: add hash */ 
@@ -315,7 +343,7 @@ typedef struct inscode_tag {
   sym_t relkey; /* 0 or relocation table key */
   instr_t in; 
   union { long long s; unsigned long long u; float f; double d; } arg;
-  unsigned align; 
+  unsigned argu2; 
 } inscode_t;
 
 typedef buf_t icbuf_t; 
@@ -395,7 +423,6 @@ extern void esegbfini(esegbuf_t* pb);
 
 
 /* mid-level emits */
-
 extern void emit_types(fsbuf_t *pfdb);
 extern void emit_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb);
 extern void emit_funcs(entbuf_t *pfdb);
@@ -411,7 +438,6 @@ extern void emit_datas(dsegbuf_t *pdsb, icbuf_t *prelb);
 
 
 /* top-level representations */
-
 typedef struct module_tag {
   fsbuf_t funcsigs;
   entbuf_t funcdefs; 
@@ -426,10 +452,13 @@ typedef struct module_tag {
 extern module_t* modinit(module_t* pm);
 extern void modfini(module_t* pm);
 
-
 /* top-level emits */
-
 extern void emit_module(module_t* pm);
 
+/* messaging and debug help */
+extern const char *instr_name(instr_t in);
+extern instr_t name_instr(const char *name);
+extern insig_t instr_sig(instr_t in);
+extern const char *format_inscode(inscode_t *pic, chbuf_t *pcb);
 
 #endif /* ndef _W_H_INCLUDED */

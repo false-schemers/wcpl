@@ -19,6 +19,7 @@ static chbuf_t *g_sectbuf = NULL; /* current section or NULL */
 static chbuf_t *g_ssecbuf = NULL; /* current subsection or NULL */
 static chbuf_t *g_codebuf = NULL; /* current code or NULL */
 static unsigned g_sectcnt = 0; /* section element count */
+
 void emit_header(void)
 {
   fputc(0x00, stdout); fputc(0x61, stdout); fputc(0x73, stdout); fputc(0x6D, stdout);
@@ -161,7 +162,12 @@ void emit_name(const char *name)
 
 void emit_in(instr_t in)
 {
-  emit_byte((unsigned)in);
+  if ((in & 0xff) == in) { /* 1-byte */
+    emit_byte((unsigned)in & 0xff);
+  } else if ((in & 0xff) == in) { /* 2-byte */
+    emit_byte(((unsigned)in >> 8) & 0xff);
+    emit_byte(((unsigned)in) & 0xff);
+  } else assert(false);
 }
 
 
@@ -320,42 +326,26 @@ static void emit_expr(icbuf_t *pcb, icbuf_t *prelb)
     inscode_t *pic = icbref(pcb, i);
     if (pic->relkey) relocate_ins(pic, prelb); 
     emit_in(pic->in);
-    switch (pic->in) {
-      case IN_BLOCK:        case IN_LOOP:         case IN_IF:
-      case IN_BR:           case IN_BR_IF:
-      case IN_CALL:         case IN_CALL_INDIRECT:
-      case IN_RETURN_CALL:  case IN_RETURN_CALL_INDIRECT:
-      case IN_LOCAL_GET:    case IN_LOCAL_SET:    case IN_LOCAL_TEE: 
-      case IN_GLOBAL_GET:   case IN_GLOBAL_SET:   case IN_TABLE_GET:    case IN_TABLE_SET:
-      case IN_I32_CONST:    case IN_I64_CONST:    case IN_REF_NULL:     case IN_REF_FUNC:
+    switch (instr_sig(pic->in)) {
+      case INSIG_NONE:
+        break;
+      case INSIG_BT:   case INSIG_L:   
+      case INSIG_X:    case INSIG_T:
+      case INSIG_I32:  case INSIG_I64:
         emit_unsigned(pic->arg.u); 
         break;
-      case IN_F32_CONST:
+      case INSIG_X_Y:  case INSIG_MEMARG:
+        emit_unsigned(pic->arg.u); emit_unsigned(pic->argu2); 
+        break;
+      case INSIG_F32:
         emit_float(pic->arg.f); 
         break;
-      case IN_F64_CONST:
+      case INSIG_F64:
         emit_double(pic->arg.d); 
         break;
-      case IN_I32_LOAD:     case IN_I64_LOAD:     case IN_F32_LOAD:     case IN_F64_LOAD:
-      case IN_I32_LOAD8_S:  case IN_I32_LOAD8_U:  case IN_I32_LOAD16_S: case IN_I32_LOAD16_U:
-      case IN_I64_LOAD8_S:  case IN_I64_LOAD8_U:  case IN_I64_LOAD16_S: case IN_I64_LOAD16_U:
-      case IN_I64_LOAD32_S: case IN_I64_LOAD32_U: case IN_I32_STORE:    case IN_I64_STORE:
-      case IN_F32_STORE:    case IN_F64_STORE:    case IN_I32_STORE8:   case IN_I32_STORE16:
-      case IN_I64_STORE8:   case IN_I64_STORE16:  case IN_I64_STORE32:
-        emit_unsigned(pic->arg.u); emit_unsigned(pic->align); 
-        break;
-      case IN_BR_TABLE: /* TODO */
-      case 0x06: case 0x07: case 0x08:
-      case 0x09: case 0x0A:
-      case 0x14: case 0x15: case 0x16:
-      case 0x17: case 0x18: case 0x19:
-      case 0x1D: case 0x1E: case 0x1F:
-      case 0x27:
-      case 0xC5: case 0xC6: case 0xC7: case 0xC8:
-      case 0xC9: case 0xCA: case 0xCB: case 0xCC:
-      case 0xCD: case 0xCE: case 0xCF:
-      case IN_EXTENDED_1: case IN_EXTENDED_2:
-      case 0xFE: case 0xFF:
+      case INSIG_LS_L:
+        assert(false); /* fixme */
+      default:
         assert(false);     
     }
   }    
@@ -722,4 +712,407 @@ void emit_module(module_t* pm)
   emit_datacount(&pm->datadefs);
   emit_codes(&pm->funcdefs, &pm->reloctab);
   emit_datas(&pm->datadefs, &pm->reloctab);
+}
+
+
+static const char *g_innames[256] = {
+    "unreachable",           /* 0x00 */
+    "nop",                   /* 0x01 */
+    "block",                 /* 0x02 */
+    "loop",                  /* 0x03 */
+    "if",                    /* 0x04 */
+    "else",                  /* 0x05 */
+    NULL,                    /* 0x06 */
+    NULL,                    /* 0x07 */
+    NULL,                    /* 0x08 */
+    NULL,                    /* 0x09 */
+    NULL,                    /* 0x0A */
+    "end",                   /* 0x0B */
+    "br",                    /* 0x0C */
+    "br_if",                 /* 0x0D */
+    "br_table",              /* 0x0E */
+    "return",                /* 0x0F */
+    "call",                  /* 0x10 */
+    "call_indirect",         /* 0x11 */
+    "return_call",           /* 0x12 */ /* not in core-1 */
+    "return_call_indirect",  /* 0x13 */ /* not in core-1 */
+    NULL,                    /* 0x14 */
+    NULL,                    /* 0x15 */
+    NULL,                    /* 0x16 */
+    NULL,                    /* 0x17 */
+    NULL,                    /* 0x18 */
+    NULL,                    /* 0x19 */
+    "drop",                  /* 0x1A */
+    "select",                /* 0x1B */
+    "select_t",              /* 0x1C */ /* not in core-1 */
+    NULL,                    /* 0x1D */
+    NULL,                    /* 0x1E */
+    NULL,                    /* 0x1F */
+    "local.get",             /* 0x20 */
+    "local.set",             /* 0x21 */
+    "local.tee",             /* 0x22 */
+    "global.get",            /* 0x23 */
+    "global.set",            /* 0x24 */
+    "table.get",             /* 0x25 */ /* not in core-1 */
+    "table.set",             /* 0x26 */ /* not in core-1 */
+    NULL,                    /* 0x27 */
+    "i32.load",              /* 0x28 */
+    "i64.load",              /* 0x29 */
+    "f32.load",              /* 0x2A */
+    "f64.load",              /* 0x2B */
+    "i32.load8_s",           /* 0x2C */
+    "i32.load8_u",           /* 0x2D */
+    "i32.load16_s",          /* 0x2E */
+    "i32.load16_u",          /* 0x2F */
+    "i64.load8_s",           /* 0x30 */
+    "i64.load8_u",           /* 0x31 */
+    "i64.load16_s",          /* 0x32 */
+    "i64.load16_u",          /* 0x33 */
+    "i64.load32_s",          /* 0x34 */
+    "i64.load32_u",          /* 0x35 */
+    "i32.store",             /* 0x36 */
+    "i64.store",             /* 0x37 */
+    "f32.store",             /* 0x38 */
+    "f64.store",             /* 0x39 */
+    "i32.store8",            /* 0x3A */
+    "i32.store16",           /* 0x3B */
+    "i64.store8",            /* 0x3C */
+    "i64.store16",           /* 0x3D */
+    "i64.store32",           /* 0x3E */
+    "memory.size",           /* 0x3F */
+    "memory.grow",           /* 0x40 */
+    "i32.const",             /* 0x41 */
+    "i64.const",             /* 0x42 */
+    "f32.const",             /* 0x43 */
+    "f64.const",             /* 0x44 */
+    "i32.eqz",               /* 0x45 */
+    "i32.eq",                /* 0x46 */
+    "i32.ne",                /* 0x47 */
+    "i32.lt_s",              /* 0x48 */
+    "i32.lt_u",              /* 0x49 */
+    "i32.gt_s",              /* 0x4A */
+    "i32.gt_u",              /* 0x4B */
+    "i32.le_s",              /* 0x4C */
+    "i32.le_u",              /* 0x4D */
+    "i32.ge_s",              /* 0x4E */
+    "i32.ge_u",              /* 0x4F */
+    "i64.eqz",               /* 0x50 */
+    "i64.eq",                /* 0x51 */
+    "i64.ne",                /* 0x52 */
+    "i64.lt_s",              /* 0x53 */
+    "i64.lt_u",              /* 0x54 */
+    "i64.gt_s",              /* 0x55 */
+    "i64.gt_u",              /* 0x56 */
+    "i64.le_s",              /* 0x57 */
+    "i64.le_u",              /* 0x58 */
+    "i64.ge_s",              /* 0x59 */
+    "i64.ge_u",              /* 0x5A */
+    "f32.eq",                /* 0x5B */
+    "f32.ne",                /* 0x5C */
+    "f32.lt",                /* 0x5D */
+    "f32.gt",                /* 0x5E */
+    "f32.le",                /* 0x5F */
+    "f32.ge",                /* 0x60 */
+    "f64.eq",                /* 0x61 */
+    "f64.ne",                /* 0x62 */
+    "f64.lt",                /* 0x63 */
+    "f64.gt",                /* 0x64 */
+    "f64.le",                /* 0x65 */
+    "f64.ge",                /* 0x66 */
+    "i32.clz",               /* 0x67 */
+    "i32.ctz",               /* 0x68 */
+    "i32.popcnt",            /* 0x69 */
+    "i32.add",               /* 0x6A */
+    "i32.sub",               /* 0x6B */
+    "i32.mul",               /* 0x6C */
+    "i32.div_s",             /* 0x6D */
+    "i32.div_u",             /* 0x6E */
+    "i32.rem_s",             /* 0x6F */
+    "i32.rem_u",             /* 0x70 */
+    "i32.and",               /* 0x71 */
+    "i32.or",                /* 0x72 */
+    "i32.xor",               /* 0x73 */
+    "i32.shl",               /* 0x74 */
+    "i32.shr_s",             /* 0x75 */
+    "i32.shr_u",             /* 0x76 */
+    "i32.rotl",              /* 0x77 */
+    "i32.rotr",              /* 0x78 */
+    "i64.clz",               /* 0x79 */
+    "i64.ctz",               /* 0x7A */
+    "i64.popcnt",            /* 0x7B */
+    "i64.add",               /* 0x7C */
+    "i64.sub",               /* 0x7D */
+    "i64.mul",               /* 0x7E */
+    "i64.div_s",             /* 0x7F */
+    "i64.div_u",             /* 0x80 */
+    "i64.rem_s",             /* 0x81 */
+    "i64.rem_u",             /* 0x82 */
+    "i64.and",               /* 0x83 */
+    "i64.or",                /* 0x84 */
+    "i64.xor",               /* 0x85 */
+    "i64.shl",               /* 0x86 */
+    "i64.shr_s",             /* 0x87 */
+    "i64.shr_u",             /* 0x88 */
+    "i64.rotl",              /* 0x89 */
+    "i64.rotr",              /* 0x8A */
+    "f32.abs",               /* 0x8B */
+    "f32.neg",               /* 0x8C */
+    "f32.ceil",              /* 0x8D */
+    "f32.floor",             /* 0x8E */
+    "f32.trunc",             /* 0x8F */
+    "f32.nearest",           /* 0x90 */
+    "f32.sqrt",              /* 0x91 */
+    "f32.add",               /* 0x92 */
+    "f32.sub",               /* 0x93 */
+    "f32.mul",               /* 0x94 */
+    "f32.div",               /* 0x95 */
+    "f32.min",               /* 0x96 */
+    "f32.max",               /* 0x97 */
+    "f32.copysign",          /* 0x98 */
+    "f64.abs",               /* 0x99 */
+    "f64.neg",               /* 0x9A */
+    "f64.ceil",              /* 0x9B */
+    "f64.floor",             /* 0x9C */
+    "f64.trunc",             /* 0x9D */
+    "f64.nearest",           /* 0x9E */
+    "f64.sqrt",              /* 0x9F */
+    "f64.add",               /* 0xA0 */
+    "f64.sub",               /* 0xA1 */
+    "f64.mul",               /* 0xA2 */
+    "f64.div",               /* 0xA3 */
+    "f64.min",               /* 0xA4 */
+    "f64.max",               /* 0xA5 */
+    "f64.copysign",          /* 0xA6 */
+    "i32.wrap_i64",          /* 0xA7 */
+    "i32.trunc_f32_s",       /* 0xA8 */
+    "i32.trunc_f32_u",       /* 0xA9 */
+    "i32.trunc_f64_s",       /* 0xAA */
+    "i32.trunc_f64_u",       /* 0xAB */
+    "i64.extend_i32_s",      /* 0xAC */
+    "i64.extend_i32_u",      /* 0xAD */
+    "i64.trunc_f32_s",       /* 0xAE */
+    "i64.trunc_f32_u",       /* 0xAF */
+    "i64.trunc_f64_s",       /* 0xB0 */
+    "i64.trunc_f64_u",       /* 0xB1 */
+    "f32.convert_i32_s",     /* 0xB2 */
+    "f32.convert_i32_u",     /* 0xB3 */
+    "f32.convert_i64_s",     /* 0xB4 */
+    "f32.convert_i64_u",     /* 0xB5 */
+    "f32.demote_f64",        /* 0xB6 */
+    "f64.convert_i32_s",     /* 0xB7 */
+    "f64.convert_i32_u",     /* 0xB8 */
+    "f64.convert_i64_s",     /* 0xB9 */
+    "f64.convert_i64_u",     /* 0xBA */
+    "f64.promote_f32",       /* 0xBB */
+    "i32.reinterpret_f32",   /* 0xBC */
+    "i64.reinterpret_f64",   /* 0xBD */
+    "f32.reinterpret_i32",   /* 0xBE */
+    "f64.reinterpret_i64",   /* 0xBF */
+    "i32.extend8_s",         /* 0xC0 */ /* not in core-1 */
+    "i32.extend16_s",        /* 0xC1 */ /* not in core-1 */
+    "i64.extend8_s",         /* 0xC2 */ /* not in core-1 */
+    "i64.extend16_s",        /* 0xC3 */ /* not in core-1 */
+    "i64.extend32_s",        /* 0xC4 */ /* not in core-1 */
+    NULL,                    /* 0xC5 */
+    NULL,                    /* 0xC6 */
+    NULL,                    /* 0xC7 */
+    NULL,                    /* 0xC8 */
+    NULL,                    /* 0xC9 */
+    NULL,                    /* 0xCA */
+    NULL,                    /* 0xCB */
+    NULL,                    /* 0xCC */
+    NULL,                    /* 0xCD */
+    NULL,                    /* 0xCE */
+    NULL,                    /* 0xCF */
+    "ref.null",              /* 0xD0 */ /* not in core-1 */
+    "ref.is_null",           /* 0xD1 */ /* not in core-1 */
+    "ref.func",              /* 0xD2 */ /* not in core-1 */
+    NULL,                    /* 0xD3 */
+    NULL,                    /* 0xD4 */
+    NULL,                    /* 0xD5 */
+    NULL,                    /* 0xD6 */
+    NULL,                    /* 0xD7 */
+    NULL,                    /* 0xD8 */
+    NULL,                    /* 0xD9 */
+    NULL,                    /* 0xDA */
+    NULL,                    /* 0xDB */
+    NULL,                    /* 0xDC */
+    NULL,                    /* 0xDD */
+    NULL,                    /* 0xDE */
+    NULL,                    /* 0xDF */
+    NULL,                    /* 0xE0 */
+    NULL,                    /* 0xE1 */
+    NULL,                    /* 0xE2 */
+    NULL,                    /* 0xE3 */
+    NULL,                    /* 0xE4 */
+    NULL,                    /* 0xE5 */
+    NULL,                    /* 0xE6 */
+    NULL,                    /* 0xE7 */
+    NULL,                    /* 0xE8 */
+    NULL,                    /* 0xE9 */
+    NULL,                    /* 0xEA */
+    NULL,                    /* 0xEB */
+    NULL,                    /* 0xEC */
+    NULL,                    /* 0xED */
+    NULL,                    /* 0xEE */
+    NULL,                    /* 0xEF */
+    NULL,                    /* 0xF0 */
+    NULL,                    /* 0xF1 */
+    NULL,                    /* 0xF2 */
+    NULL,                    /* 0xF3 */
+    NULL,                    /* 0xF4 */
+    NULL,                    /* 0xF5 */
+    NULL,                    /* 0xF6 */
+    NULL,                    /* 0xF7 */
+    NULL,                    /* 0xF8 */
+    NULL,                    /* 0xF9 */
+    NULL,                    /* 0xFA */
+    NULL,                    /* 0xFB */
+    NULL,                    /* 0xFC */
+    NULL,                    /* 0xFD */
+    NULL,                    /* 0xFE */
+    NULL,                    /* 0xFF */
+};
+
+const char *instr_name(instr_t in)
+{
+  const char *s = "?";
+  switch (in) {
+    case IN_I32_TRUNC_SAT_F32_S: s = "i32.trunc_sat_f32_s"; break;
+    case IN_I32_TRUNC_SAT_F32_U: s = "i32.trunc_sat_f32_u"; break;
+    case IN_I32_TRUNC_SAT_F64_S: s = "i32.trunc_sat_f64_s"; break;
+    case IN_I32_TRUNC_SAT_F64_U: s = "i32.trunc_sat_f64_u"; break;
+    case IN_I64_TRUNC_SAT_F32_S: s = "i64.trunc_sat_f32_s"; break;
+    case IN_I64_TRUNC_SAT_F32_U: s = "i64.trunc_sat_f32_u"; break;
+    case IN_I64_TRUNC_SAT_F64_S: s = "i64.trunc_sat_f64_s"; break;
+    case IN_I64_TRUNC_SAT_F64_U: s = "i64.trunc_sat_f64_u"; break;
+    case IN_MEMORY_INIT: s = "memory.init"; break;
+    case IN_DATA_DROP: s = "data.drop"; break;
+    case IN_MEMORY_COPY: s = "memory.copy"; break;
+    case IN_MEMORY_FILL: s = "memory.fill"; break;
+    case IN_TABLE_INIT: s = "table.init"; break;
+    case IN_ELEM_DROP: s = "elem.drop"; break;
+    case IN_TABLE_COPY: s = "table.copy"; break;
+    case IN_TABLE_GROW: s = "table.grow"; break;
+    case IN_TABLE_SIZE: s = "table.size"; break;
+    case IN_TABLE_FILL: s = "table.fill"; break;
+    default: {
+      size_t i = (size_t)in;
+      if (in <= 0xff && g_innames[i]) s = g_innames[i];
+    }
+  }
+  return s;
+}
+
+static buf_t g_nimap;
+
+instr_t name_instr(const char *name)
+{ 
+  sym_t sym; int *pi;
+  if (!g_nimap.esz) {
+    size_t i; bufinit(&g_nimap, sizeof(int)*2);
+    for (i = 0; i <= 0xff; ++i) {
+      const char *s = g_innames[i];
+      if (s) { pi = bufnewbk(&g_nimap); pi[0] = intern(s), pi[1] = i; }
+    }
+    pi = bufnewbk(&g_nimap); pi[0] = intern("i32.trunc_sat_f32_s"), pi[1] = IN_I32_TRUNC_SAT_F32_S;
+    pi = bufnewbk(&g_nimap); pi[0] = intern("i32.trunc_sat_f32_u"), pi[1] = IN_I32_TRUNC_SAT_F32_U; 
+    pi = bufnewbk(&g_nimap); pi[0] = intern("i32.trunc_sat_f64_s"), pi[1] = IN_I32_TRUNC_SAT_F64_S; 
+    pi = bufnewbk(&g_nimap); pi[0] = intern("i32.trunc_sat_f64_u"), pi[1] = IN_I32_TRUNC_SAT_F64_U; 
+    pi = bufnewbk(&g_nimap); pi[0] = intern("i64.trunc_sat_f32_s"), pi[1] = IN_I64_TRUNC_SAT_F32_S; 
+    pi = bufnewbk(&g_nimap); pi[0] = intern("i64.trunc_sat_f32_u"), pi[1] = IN_I64_TRUNC_SAT_F32_U; 
+    pi = bufnewbk(&g_nimap); pi[0] = intern("i64.trunc_sat_f64_s"), pi[1] = IN_I64_TRUNC_SAT_F64_S; 
+    pi = bufnewbk(&g_nimap); pi[0] = intern("i64.trunc_sat_f64_u"), pi[1] = IN_I64_TRUNC_SAT_F64_U; 
+    pi = bufnewbk(&g_nimap); pi[0] = intern("memory.init"), pi[1] = IN_MEMORY_INIT;
+    pi = bufnewbk(&g_nimap); pi[0] = intern("data.drop"), pi[1] = IN_DATA_DROP;           
+    pi = bufnewbk(&g_nimap); pi[0] = intern("memory.copy"), pi[1] = IN_MEMORY_COPY;         
+    pi = bufnewbk(&g_nimap); pi[0] = intern("memory.fill"), pi[1] = IN_MEMORY_FILL;         
+    pi = bufnewbk(&g_nimap); pi[0] = intern("table.init"), pi[1] = IN_TABLE_INIT;          
+    pi = bufnewbk(&g_nimap); pi[0] = intern("elem.drop"), pi[1] = IN_ELEM_DROP;           
+    pi = bufnewbk(&g_nimap); pi[0] = intern("table.copy"), pi[1] = IN_TABLE_COPY;          
+    pi = bufnewbk(&g_nimap); pi[0] = intern("table.grow"), pi[1] = IN_TABLE_GROW;          
+    pi = bufnewbk(&g_nimap); pi[0] = intern("table.size"), pi[1] = IN_TABLE_SIZE;          
+    pi = bufnewbk(&g_nimap); pi[0] = intern("table.fill"), pi[1] = IN_TABLE_FILL;
+    bufqsort(&g_nimap, sym_cmp);
+  }
+  sym = intern(name);
+  pi = bufbsearch(&g_nimap, &sym, sym_cmp);
+  if (pi) return (instr_t)pi[1];
+  else return IN_PLACEHOLDER;
+}
+
+
+insig_t instr_sig(instr_t in)
+{
+  switch (in) {
+    case IN_BLOCK:         case IN_LOOP:         case IN_IF:
+      return INSIG_BT;
+    case IN_BR:            case IN_BR_IF:
+      return INSIG_L;
+    case IN_CALL:          case IN_RETURN_CALL:
+      return INSIG_X;
+    case IN_CALL_INDIRECT: case IN_RETURN_CALL_INDIRECT:
+      return INSIG_X_Y;
+    case IN_SELECT:
+      return INSIG_T;  
+    case IN_LOCAL_GET:     case IN_LOCAL_SET:    case IN_LOCAL_TEE: 
+    case IN_GLOBAL_GET:    case IN_GLOBAL_SET:   case IN_TABLE_GET:    case IN_TABLE_SET:
+      return INSIG_X;
+    case IN_I32_LOAD:      case IN_I64_LOAD:     case IN_F32_LOAD:     case IN_F64_LOAD:
+    case IN_I32_LOAD8_S:   case IN_I32_LOAD8_U:  case IN_I32_LOAD16_S: case IN_I32_LOAD16_U:
+    case IN_I64_LOAD8_S:   case IN_I64_LOAD8_U:  case IN_I64_LOAD16_S: case IN_I64_LOAD16_U:
+    case IN_I64_LOAD32_S:  case IN_I64_LOAD32_U: case IN_I32_STORE:    case IN_I64_STORE:
+    case IN_F32_STORE:     case IN_F64_STORE:    case IN_I32_STORE8:   case IN_I32_STORE16:
+    case IN_I64_STORE8:    case IN_I64_STORE16:  case IN_I64_STORE32:
+      return INSIG_MEMARG;
+    case IN_I32_CONST:
+      return INSIG_I32;  
+    case IN_I64_CONST:
+      return INSIG_I64;
+    case IN_F32_CONST:
+      return INSIG_F32;
+    case IN_F64_CONST:
+      return INSIG_F64;     
+    case IN_REF_NULL:
+      return INSIG_T;
+    case IN_REF_FUNC:      case IN_MEMORY_INIT:  case IN_DATA_DROP:    case IN_ELEM_DROP:
+    case IN_TABLE_GROW:    case IN_TABLE_SIZE:   case IN_TABLE_FILL:   
+      return INSIG_X;
+    case IN_TABLE_INIT:    case IN_TABLE_COPY:
+      return INSIG_X_Y;
+  }
+  return INSIG_NONE;
+}
+
+const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
+{
+  chbclear(pcb);
+  chbputs(instr_name(pic->in), pcb);
+  switch (instr_sig(pic->in)) {
+    case INSIG_NONE:
+      break;
+    case INSIG_BT:   case INSIG_L:   
+    case INSIG_X:    case INSIG_T:
+    case INSIG_I32:  case INSIG_I64:
+      if (pic->relkey) chbputf(pcb, " %s", symname(pic->relkey)); 
+      else chbputf(pcb, " %llu", pic->arg.u); 
+      break;
+    case INSIG_X_Y:  case INSIG_MEMARG:
+      if (pic->relkey) chbputf(pcb, " %s %u", symname(pic->relkey), pic->argu2); 
+      else chbputf(pcb, " %llu %u", pic->arg.u, pic->argu2); 
+      break;
+    case INSIG_F32:
+      if (pic->relkey) chbputf(pcb, " %s", symname(pic->relkey)); 
+      else chbputf(pcb, " %g", (double)pic->arg.f); 
+      break;
+    case INSIG_F64:
+      if (pic->relkey) chbputf(pcb, " %s", symname(pic->relkey)); 
+      else chbputf(pcb, " %g", pic->arg.d); 
+      break;
+    case INSIG_LS_L:
+      assert(false); /* fixme */
+    default:
+      assert(false);     
+  }
+  return chbdata(pcb);
 }
