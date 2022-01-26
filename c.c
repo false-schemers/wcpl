@@ -604,7 +604,10 @@ bool static_eval(node_t *pn, node_t *prn)
   return false;
 }
 
-/* check if node can be evaluated statically (numbers only) */
+/* check if node can be evaluated statically (numbers only)
+ * NB: positive answer does not guarantee successful or error-free evaluation
+ * (but eval errors will also happen at run time if original expr is compiled);
+ * negative answer saves time on attempting actual evaluation */
 static bool static_constant(node_t *pn)
 {
   switch (pn->nt) {
@@ -643,7 +646,6 @@ static bool static_constant(node_t *pn)
   }
   return false;
 }
-
 
 /* post variable declaration for later use */
 static void post_vardecl(sym_t mod, node_t *pn)
@@ -747,7 +749,7 @@ static sym_t henv_lookup(sym_t oname, henv_t *phe, int *pupc)
 
 /* hoist definitions of local vars to plb renaming them if needed;
  * also, mark local vars which addresses are taken as 'auto' */
-static void expr_hoist_locals(node_t *pn, henv_t *phe, ndbuf_t *plb)
+static void expr_hoist_locals(node_t *ptn, node_t *pn, henv_t *phe, ndbuf_t *plb)
 {
   switch (pn->nt) {
     case NT_IDENTIFIER: {
@@ -779,7 +781,7 @@ static void expr_hoist_locals(node_t *pn, henv_t *phe, ndbuf_t *plb)
           ndswap(pni, ndbnewbk(plb));
           ndrem(pn, i); --i; 
         } else {
-          expr_hoist_locals(pni, &he, plb);
+          expr_hoist_locals(ptn, pni, &he, plb);
         }
       }
       buffini(&he.idmap);    
@@ -789,10 +791,9 @@ static void expr_hoist_locals(node_t *pn, henv_t *phe, ndbuf_t *plb)
     } break;
     case NT_PREFIX: {
       assert(ndlen(pn) == 1);
-      expr_hoist_locals(ndref(pn, 0), phe, plb);
+      expr_hoist_locals(ptn, ndref(pn, 0), phe, plb);
       if (pn->op == TT_AND && ndref(pn, 0)->nt == NT_IDENTIFIER) {
         /* address-of var is taken: mark it as auto */
-        /* fixme? parameters and globals are not marked */
         sym_t name = ndref(pn, 0)->name; size_t i;
         for (i = 0; i < ndblen(plb); ++i) {
           node_t *pndi = ndbref(plb, i); 
@@ -801,6 +802,17 @@ static void expr_hoist_locals(node_t *pn, henv_t *phe, ndbuf_t *plb)
           if (pndi->sc == SC_REGISTER) 
             n2eprintf(pn, pndi, "cannot take address of register var");
           else pndi->sc = SC_AUTO;
+          break;
+        }
+        /* if this is an arg var, mark it as auto too */
+        if (i == ndblen(plb)) { /* not a local */
+          for (i = 1 /* skip ret type */; i < ndlen(ptn); ++i) {
+            node_t *pndi = ndref(ptn, i);
+            if (pndi->nt != NT_VARDECL) continue; 
+            if (pndi->name != name) continue;
+            if (pndi->sc == SC_NONE) pndi->sc = SC_AUTO;
+            break; 
+          }
         }
       } 
     } break;
@@ -810,7 +822,7 @@ static void expr_hoist_locals(node_t *pn, henv_t *phe, ndbuf_t *plb)
     default: {
       size_t i;
       for (i = 0; i < ndlen(pn); ++i) {
-        expr_hoist_locals(ndref(pn, i), phe, plb);
+        expr_hoist_locals(ptn, ndref(pn, i), phe, plb);
       }
     } break;
   }
@@ -836,7 +848,7 @@ static void fundef_hoist_locals(node_t *pdn)
   }
   /* go over body looking for blocks w/vardecls and var refs */
   assert(pbn->nt == NT_BLOCK);
-  expr_hoist_locals(pbn, &he, &locals);
+  expr_hoist_locals(ptn, pbn, &he, &locals);
   /* now re-insert decls at the beginning */
   for (i = 0; i < ndblen(&locals); ++i) {
     ndswap(ndinsnew(pbn, i), ndbref(&locals, i));
@@ -929,7 +941,7 @@ static void fundef_wasmify(node_t *pdn)
    * $rp (result pointer), $fp (frame pointer), %ap (... data pointer)? */
   node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
   buf_t vib = mkbuf(sizeof(vi_t)); node_t frame = mknd();
-  size_t i; 
+  ndbuf_t asb; size_t i; ndbinit(&asb);
   
   /* init frame structure, in case there are auto locals*/
   ndset(&frame, NT_TYPE, pdn->pwsid, pdn->startpos);
@@ -949,8 +961,21 @@ static void fundef_wasmify(node_t *pdn)
       case TS_INT:   case TS_UINT:   case TS_LONG:  case TS_ULONG:  
       case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: case TS_PTR: {
         if (i != 0 && name != 0) {
-          vi_t *pvi = bufnewbk(&vib); pvi->name = name, pvi->sc = SC_REGISTER;
-          pvi->reg = name, pvi->cast = cast;
+          vi_t *pvi = bufnewbk(&vib);
+          if (pdni->nt == NT_VARDECL && pdni->sc == SC_AUTO) {
+            sym_t hname = internf("%s#", symname(name));
+            node_t *pni = ndbnewbk(&asb), *psn;
+            ndset(pni, NT_ASSIGN, pdni->pwsid, pdni->startpos); pni->op = TT_ASN;
+            psn = ndinsbk(pni, NT_IDENTIFIER); psn->name = name;
+            psn = ndinsbk(pni, NT_IDENTIFIER); psn->name = hname;
+            pni = ndinsfr(pbn, NT_VARDECL); pni->sc = SC_AUTO;
+            pni->name = name; ndcpy(ndnewbk(pni), ptni);
+            pdni->name = pvi->name = pvi->reg = hname;
+            pdni->sc = SC_NONE;
+          } else {
+            pvi->name = pvi->reg = name;
+          }
+          pvi->sc = SC_REGISTER; pvi->cast = cast;
         }
       } break;
       case TS_ARRAY: case TS_STRUCT: case TS_UNION: { 
@@ -1015,6 +1040,12 @@ static void fundef_wasmify(node_t *pdn)
     }
   }
   
+  /* see if we need to insert assigns for shadowed vars */
+  while (ndblen(&asb) > 0) {
+    ndswap(ndinsnew(pbn, i), ndbref(&asb, 0));
+    ndbrem(&asb, 0);
+  }
+  
   /* see if we need to insert $fp init & local */
   if (ndlen(&frame) > 0) {
     node_t *pin = ndinsnew(pbn, i), *psn;
@@ -1049,6 +1080,7 @@ static void fundef_wasmify(node_t *pdn)
     }
   }
 
+  ndbfini(&asb);
   ndfini(&frame);
   buffini(&vib);
 }
