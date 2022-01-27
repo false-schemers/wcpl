@@ -865,8 +865,8 @@ typedef struct vi_tag {
   ts_t cast;   /* TS_VOID or TS_CHAR..TS_USHORT for widened vars */
 } vi_t;
 
-/* convert to wasm conventions, simplify (get rid of . and []) */
-static void expr_wasmify(node_t *pn, buf_t *pvib)
+/* convert entry to wasm conventions, simplify (get rid of . and []) */
+static void expr_wasmify_entry(node_t *pn, buf_t *pvib)
 {
   switch (pn->nt) {
     case NT_IDENTIFIER: {
@@ -892,14 +892,14 @@ static void expr_wasmify(node_t *pn, buf_t *pvib)
     } break;
     case NT_SUBSCRIPT: { /* x[y] => *(x + y) */
       assert(ndlen(pn) == 2);
-      expr_wasmify(ndref(pn, 0), pvib);
-      expr_wasmify(ndref(pn, 1), pvib);
+      expr_wasmify_entry(ndref(pn, 0), pvib);
+      expr_wasmify_entry(ndref(pn, 1), pvib);
       pn->nt = NT_INFIX, pn->op = TT_PLUS;
       wrap_unary_operator(pn, pn->startpos, TT_STAR);
     } break;
     case NT_POSTFIX: {
       assert(ndlen(pn) == 1);
-      expr_wasmify(ndref(pn, 0), pvib);
+      expr_wasmify_entry(ndref(pn, 0), pvib);
       if (pn->op == TT_DOT) { /* (*x).y => x->y; x.y => (&x)->y */
         node_t *psn = ndref(pn, 0);
         if (psn->nt == NT_PREFIX && psn->op == TT_STAR) lift_arg0(psn);
@@ -928,14 +928,14 @@ static void expr_wasmify(node_t *pn, buf_t *pvib)
     default: {
       size_t i;
       for (i = 0; i < ndlen(pn); ++i) {
-        expr_wasmify(ndref(pn, i), pvib);
+        expr_wasmify_entry(ndref(pn, i), pvib);
       }
     } break;
   }
 }
 
 /* convert to wasm conventions, simplify */
-static void fundef_wasmify(node_t *pdn)
+static void fundef_wasmify_entry(node_t *pdn)
 {
   /* special registers (scalar/poiner vars with internal names): 
    * $rp (result pointer), $fp (frame pointer), %ap (... data pointer)? */
@@ -986,10 +986,27 @@ static void fundef_wasmify(node_t *pdn)
           wrap_type_pointer(pn); prn->name = intern("$rp");
         } else { /* parameter: passed as pointer */
           if (name != 0) {
-            vi_t *pvi = bufnewbk(&vib); pvi->name = name, pvi->sc = SC_AUTO;
-            pvi->reg = internf("$p%s", symname(name));
-            assert(pdni->nt == NT_VARDECL); /* patch in place */
-            pdni->name = pvi->reg;
+            if (ptni->ts != TS_ARRAY && pdni->nt == NT_VARDECL) {
+              sym_t hname = internf("$p%s#", symname(name)), fp = intern("$fp");
+              node_t *pni = ndbnewbk(&asb), *psn, *pvn; vi_t *pvi;
+              ndset(pni, NT_ASSIGN, pdni->pwsid, pdni->startpos); pni->op = TT_ASN;
+              psn = ndinsbk(pni, NT_POSTFIX); psn->op = TT_ARROW; psn->name = name;
+              psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = fp;
+              psn = ndinsbk(pni, NT_PREFIX); psn->op = TT_STAR;
+              psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = hname;
+              pvn = ndnewbk(&frame); pvi = bufnewbk(&vib);
+              ndset(pvn, NT_VARDECL, pdni->pwsid, pdni->startpos);
+              pvn->name = name; ndpushbk(pvn, ptni);
+              pvi->name = name, pvi->sc = SC_AUTO;
+              pvi->reg = fp; pvi->fld = name;
+              pdni->name = hname; pdni->sc = SC_NONE;
+            } else {
+              sym_t pname = internf("$p%s", symname(name));
+              vi_t *pvi = bufnewbk(&vib); pvi->name = name, pvi->sc = SC_AUTO;
+              pvi->reg = pname;
+              assert(pdni->nt == NT_VARDECL); /* patch in place */
+              pdni->name = pvi->reg;
+            }
             if (ptni->ts == TS_ARRAY) flatten_type_array(ptni);
             else wrap_type_pointer(ptni);
           }
@@ -1048,7 +1065,7 @@ static void fundef_wasmify(node_t *pdn)
   
   /* see if we need to insert $fp init & local */
   if (ndlen(&frame) > 0) {
-    node_t *pin = ndinsnew(pbn, i), *psn;
+    node_t *pin = ndinsnew(pbn, i), *psn; vi_t *pvi;
     ndset(pin, NT_ASSIGN, pbn->pwsid, pbn->startpos);
     pin->op = TT_ASN;
     psn = ndinsbk(pin, NT_IDENTIFIER); psn->name = intern("$fp");
@@ -1058,6 +1075,8 @@ static void fundef_wasmify(node_t *pdn)
     pin = ndinsnew(pbn, i);
     ndset(pin, NT_VARDECL, pbn->pwsid, pbn->startpos);
     pin->name = intern("$fp"); wrap_type_pointer(ndpushbk(pin, &frame));
+    pvi = bufnewbk(&vib); pvi->sc = SC_REGISTER;
+    pvi->name = pvi->reg = pin->name;
     i += 2; /* skip inserted nodes */ 
   }
   
@@ -1066,7 +1085,7 @@ static void fundef_wasmify(node_t *pdn)
 
   for (/* use current i */; i < ndlen(pbn); ++i) {
     node_t *pni = ndref(pbn, i);
-    expr_wasmify(pni, &vib);
+    expr_wasmify_entry(pni, &vib);
   }
 
   /* check if falling off is a valid way to return */
@@ -1156,9 +1175,9 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
   dump_node(pn, stderr);
 #endif  
   /* convert to wasm conventions, normalize a bit */
-  fundef_wasmify(pn);
+  fundef_wasmify_entry(pn);
 #ifdef _DEBUG
-  fprintf(stderr, "fundef_wasmify ==>\n");
+  fprintf(stderr, "fundef_wasmify_entry ==>\n");
   dump_node(pn, stderr);
 #endif  
   /* free all nodes allocated with np-functions at once */
