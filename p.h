@@ -95,12 +95,6 @@ typedef enum ts_tag {
   TS_STRUCT,   TS_UNION,     TS_FUNCTION, TS_PTR
 } ts_t;
 
-/* numerical value */
-typedef union numval_tag {
-  long long i; unsigned long long u; 
-  float f; double d;
-} numval_t;
-
 /* intrinsics and special forms */
 typedef enum intr_tag {
   INTR_NONE,   INTR_ALLOCA,  INTR_FREEA,
@@ -165,6 +159,7 @@ extern node_t *ndicpy(node_t* mem, const node_t* pn);
 extern void ndfini(node_t* pn);
 extern node_t *ndcpy(node_t* pn, const node_t* pr);
 extern node_t *ndset(node_t *dst, nt_t nt, int pwsid, int startpos);
+extern node_t *ndsettype(node_t *dst, ts_t ts);
 extern void ndclear(node_t* pn);
 extern void ndrem(node_t* pn, size_t i);
 #define ndswap(pn1, pn2) memswap(pn1, pn2, sizeof(node_t))
@@ -193,6 +188,7 @@ extern void fini_nodepool(void);
 extern void clear_nodepool(void);
 extern node_t *npalloc(void);
 extern node_t *npnew(nt_t nt, int pwsid, int startpos);
+extern node_t *npnewcode(const node_t *psn);
 extern node_t *npdup(const node_t *pr);
 
 /* simple comparison of NT_TYPE nodes for equivalence */

@@ -11,9 +11,9 @@
 #include <ctype.h>
 #include <wchar.h>
 #include "l.h"
+#include "w.h"
 #include "p.h"
 #include "c.h"
-#include "w.h"
 
 
 /* module names and files */
@@ -289,7 +289,7 @@ static void unintern_symbol(const char *name)
 
 void init_symbols(void)
 {
-  node_t *pn;
+  node_t *pn, *psn;
   bufinit(&g_syminfo, sizeof(int)*3);
   ndbinit(&g_nodes);
   intern_symbol("asm", TT_ASM_KW, -1);
@@ -352,6 +352,13 @@ void init_symbols(void)
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
   intern_symbol("ptrdiff_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
+  intern_symbol("NULL", TT_MACRO_NAME, ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_CAST, -1, -1);
+  psn = ndnewbk(pn); ndsettype(psn, TS_PTR);
+  psn = ndnewbk(psn); ndsettype(psn, TS_VOID);
+  psn = ndnewbk(pn); ndset(psn, NT_LITERAL, -1, -1);
+  psn->ts = TS_ULONG; psn->val.i = 0;
+  wrap_node(pn, NT_MACRODEF); pn->name = intern("NULL");
   intern_symbol("sizeof", TT_INTR_NAME, INTR_SIZEOF);
   intern_symbol("alignof", TT_INTR_NAME, INTR_ALIGNOF);
   intern_symbol("offsetof", TT_INTR_NAME, INTR_OFFSETOF);
@@ -1633,6 +1640,13 @@ node_t *ndset(node_t *dst, nt_t nt, int pwsid, int startpos)
   return dst;
 }
 
+node_t *ndsettype(node_t *dst, ts_t ts)
+{
+  ndset(dst, NT_TYPE, -1, -1);
+  dst->ts = ts;
+  return dst;
+}
+
 void ndclear(node_t* pn)
 {
   ndfini(pn);
@@ -1718,9 +1732,12 @@ node_t *npalloc(void)
 
 node_t *npnew(nt_t nt, int pwsid, int startpos)
 {
-  node_t *pn = npalloc();
-  pn->nt = nt; pn->pwsid = pwsid; pn->startpos = startpos;
-  return pn;
+  return ndset(npalloc(), nt, pwsid, startpos);
+}
+
+node_t *npnewcode(const node_t *psn)
+{
+  return npnew(NT_ACODE, psn ? psn->pwsid : -1, psn ? psn->startpos : -1);
 }
 
 node_t *npdup(const node_t *pr)

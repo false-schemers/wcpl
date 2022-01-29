@@ -10,9 +10,9 @@
 #include <assert.h>
 #include <wchar.h>
 #include "l.h"
+#include "w.h"
 #include "p.h"
 #include "c.h"
-#include "w.h"
 
 /* globals */
 static buf_t g_bases;
@@ -117,8 +117,8 @@ static ts_t ts_integral_promote(ts_t ts)
     case TS_INT:                    return TS_INT;
     case TS_UINT:                   return TS_UINT;
     /* fixme: should depend on wasm32/wasm64 model */
-    case TS_LONG:                   return TS_INT;
-    case TS_ULONG:                  return TS_UINT;
+    case TS_LONG:                   return TS_LONG;
+    case TS_ULONG:                  return TS_ULONG;
     case TS_LLONG: case TS_ULLONG:  
     case TS_FLOAT: case TS_DOUBLE:  return ts;
     default: assert(false);
@@ -142,6 +142,8 @@ static ts_t ts_arith_common(ts_t ts1, ts_t ts2)
   if (ts1 == ts2) return ts1;
   if (ts1 == TS_ULLONG || ts2 == TS_ULLONG) return TS_ULLONG;
   if (ts1 == TS_LLONG || ts2 == TS_LLONG) return TS_LLONG;
+  if (ts1 == TS_ULONG || ts2 == TS_ULONG) return TS_ULONG;
+  if (ts1 == TS_LONG || ts2 == TS_LONG) return TS_LONG;
   if (ts1 == TS_UINT || ts2 == TS_UINT) return TS_UINT;
   return TS_INT;
 }
@@ -450,7 +452,7 @@ void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int l
 }
 
 /* calc offset for ptn.fld; prn is NULL or reference node for errors */
-size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld)
+size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld, node_t **ppftn)
 {
   assert(ptn && ptn->nt == NT_TYPE);
   switch (ptn->ts) {
@@ -458,12 +460,15 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld)
       size_t i;
       if (ptn->name && !ndlen(ptn)) {
         node_t *pftn = (node_t *)lookup_eus_type(TS_UNION, ptn->name);
-        if (!pftn) n2eprintf(ptn, prn, "can't allocate incomplete union type");
+        if (!pftn) n2eprintf(ptn, prn, "can't measure incomplete union type");
         else ptn = pftn;
       }
       for (i = 0; i < ndlen(ptn); ++i) {
         node_t *pni = ndref(ptn, i);
-        if (pni->nt == NT_VARDECL && pni->name == fld) return 0;
+        if (pni->nt == NT_VARDECL && pni->name == fld) {
+          if (ppftn) *ppftn = ndref(pni, 0);
+          return 0;
+        }
       }
       n2eprintf(ptn, prn, "can't find field %s in union", symname(fld));
     } break;
@@ -471,7 +476,7 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld)
       size_t size, align, i, n, cursize = 0;
       if (ptn->name && !ndlen(ptn)) {
         node_t *pftn = (node_t *)lookup_eus_type(TS_STRUCT, ptn->name);
-        if (!pftn) n2eprintf(ptn, prn, "can't allocate incomplete struct type");
+        if (!pftn) n2eprintf(ptn, prn, "can't measure incomplete struct type");
         else ptn = pftn;
       }
       for (i = 0; i < ndlen(ptn); ++i) {
@@ -480,7 +485,10 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld)
         measure_type(pni, prn, &size, &align, 0);
         /* round size up so it is multiple of pni align */
         if ((n = cursize % align) > 0) cursize += align - n;
-        if (s == fld) return cursize;
+        if (s == fld) {
+          if (ppftn) *ppftn = pni;
+          return cursize;
+        }
         cursize += size;
       }
       n2eprintf(ptn, prn, "can't find field %s in struct", symname(fld));
@@ -535,7 +543,7 @@ bool static_eval(node_t *pn, node_t *prn)
         return true;
       } else if (pn->intr == INTR_OFFSETOF) {
         size_t offset; assert(ndlen(pn) == 2 && ndref(pn, 1)->nt == NT_IDENTIFIER);
-        offset = measure_offset(ndref(pn, 0), pn, ndref(pn, 1)->name);
+        offset = measure_offset(ndref(pn, 0), pn, ndref(pn, 1)->name, NULL);
         ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); prn->ts = TS_INT; 
         prn->val.i = (int)offset;
         return true;
@@ -710,18 +718,23 @@ static void fundef_check_type(node_t *ptn)
       case TS_VOID:
         if (i == 0) break; /* return type can be void */
         neprintf(ptn, "unexpected void function argument type");
+      case TS_ENUM: /* ok, treated as int */
       case TS_CHAR: case TS_UCHAR:   /* ok but widened to int */
       case TS_SHORT: case TS_USHORT: /* ok but widened to int */
-      case TS_INT: case TS_UINT: case TS_ENUM:
+      case TS_INT: case TS_UINT: 
       case TS_LONG: case TS_ULONG:  
       case TS_LLONG: case TS_ULLONG:  
       case TS_FLOAT: case TS_DOUBLE:
       case TS_PTR: 
         break;
-      case TS_ARRAY: /* passed as pointer */
-        if (i != 0) break; 
-        neprintf(ptn, "unexpected array function return type");
-      case TS_STRUCT: case TS_UNION: /* passed as pointer */
+      case TS_ARRAY: 
+        neprintf(ptn, "not supported: array as function parameter/return type");
+        break;
+      case TS_STRUCT:
+        neprintf(ptn, "not supported: struct as function parameter/return type");
+        break;
+       case TS_UNION:
+        neprintf(ptn, "not supported: union as function parameter/return type");
         break;
       default:
         neprintf(ptn, "function arguments of this type are not supported");
@@ -865,8 +878,8 @@ typedef struct vi_tag {
   ts_t cast;   /* TS_VOID or TS_CHAR..TS_USHORT for widened vars */
 } vi_t;
 
-/* convert entry to wasm conventions, simplify (get rid of . and []) */
-static void expr_wasmify_entry(node_t *pn, buf_t *pvib)
+/* convert node wasm conventions, simplify (get rid of -> and []) */
+static void expr_wasmify(node_t *pn, buf_t *pvib)
 {
   switch (pn->nt) {
     case NT_IDENTIFIER: {
@@ -892,19 +905,19 @@ static void expr_wasmify_entry(node_t *pn, buf_t *pvib)
     } break;
     case NT_SUBSCRIPT: { /* x[y] => *(x + y) */
       assert(ndlen(pn) == 2);
-      expr_wasmify_entry(ndref(pn, 0), pvib);
-      expr_wasmify_entry(ndref(pn, 1), pvib);
+      expr_wasmify(ndref(pn, 0), pvib);
+      expr_wasmify(ndref(pn, 1), pvib);
       pn->nt = NT_INFIX, pn->op = TT_PLUS;
       wrap_unary_operator(pn, pn->startpos, TT_STAR);
     } break;
     case NT_POSTFIX: {
       assert(ndlen(pn) == 1);
-      expr_wasmify_entry(ndref(pn, 0), pvib);
-      if (pn->op == TT_DOT) { /* (*x).y => x->y; x.y => (&x)->y */
+      expr_wasmify(ndref(pn, 0), pvib);
+      if (pn->op == TT_ARROW) { /* (&x)->y => x.y; x->y => (*x).y */
         node_t *psn = ndref(pn, 0);
-        if (psn->nt == NT_PREFIX && psn->op == TT_STAR) lift_arg0(psn);
-        else wrap_unary_operator(psn, psn->startpos, TT_AND);
-        pn->op = TT_ARROW;
+        if (psn->nt == NT_PREFIX && psn->op == TT_AND) lift_arg0(psn);
+        else wrap_unary_operator(psn, psn->startpos, TT_STAR);
+        pn->op = TT_DOT;
       } 
     } break;
     case NT_RETURN: {
@@ -928,17 +941,17 @@ static void expr_wasmify_entry(node_t *pn, buf_t *pvib)
     default: {
       size_t i;
       for (i = 0; i < ndlen(pn); ++i) {
-        expr_wasmify_entry(ndref(pn, i), pvib);
+        expr_wasmify(ndref(pn, i), pvib);
       }
     } break;
   }
 }
 
-/* convert to wasm conventions, simplify */
-static void fundef_wasmify_entry(node_t *pdn)
+/* convert function to wasm conventions, simplify */
+static void fundef_wasmify(node_t *pdn)
 {
   /* special registers (scalar/poiner vars with internal names): 
-   * $rp (result pointer), $fp (frame pointer), %ap (... data pointer)? */
+   * $fp (frame pointer), $ap (... data pointer)? */
   node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
   buf_t vib = mkbuf(sizeof(vi_t)); node_t frame = mknd();
   ndbuf_t asb; size_t i; ndbinit(&asb);
@@ -976,40 +989,6 @@ static void fundef_wasmify_entry(node_t *pdn)
             pvi->name = pvi->reg = name;
           }
           pvi->sc = SC_REGISTER; pvi->cast = cast;
-        }
-      } break;
-      case TS_ARRAY: case TS_STRUCT: case TS_UNION: { 
-        if (i == 0) { /* return value: insert $rp as first arg */
-          node_t *prn = ndinsnew(ptn, 1), *pn; ptni = ndref(ptn, 0); /* re-fetch */
-          ndset(prn, NT_VARDECL, ptni->pwsid, ptni->startpos);
-          pn = ndinsbk(prn, NT_TYPE), pn->ts = TS_VOID; ndswap(pn, ptni);
-          wrap_type_pointer(pn); prn->name = intern("$rp");
-        } else { /* parameter: passed as pointer */
-          if (name != 0) {
-            if (ptni->ts != TS_ARRAY && pdni->nt == NT_VARDECL) {
-              sym_t hname = internf("$p%s#", symname(name)), fp = intern("$fp");
-              node_t *pni = ndbnewbk(&asb), *psn, *pvn; vi_t *pvi;
-              ndset(pni, NT_ASSIGN, pdni->pwsid, pdni->startpos); pni->op = TT_ASN;
-              psn = ndinsbk(pni, NT_POSTFIX); psn->op = TT_ARROW; psn->name = name;
-              psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = fp;
-              psn = ndinsbk(pni, NT_PREFIX); psn->op = TT_STAR;
-              psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = hname;
-              pvn = ndnewbk(&frame); pvi = bufnewbk(&vib);
-              ndset(pvn, NT_VARDECL, pdni->pwsid, pdni->startpos);
-              pvn->name = name; ndpushbk(pvn, ptni);
-              pvi->name = name, pvi->sc = SC_AUTO;
-              pvi->reg = fp; pvi->fld = name;
-              pdni->name = hname; pdni->sc = SC_NONE;
-            } else {
-              sym_t pname = internf("$p%s", symname(name));
-              vi_t *pvi = bufnewbk(&vib); pvi->name = name, pvi->sc = SC_AUTO;
-              pvi->reg = pname;
-              assert(pdni->nt == NT_VARDECL); /* patch in place */
-              pdni->name = pvi->reg;
-            }
-            if (ptni->ts == TS_ARRAY) flatten_type_array(ptni);
-            else wrap_type_pointer(ptni);
-          }
         }
       } break;
       default:
@@ -1085,7 +1064,7 @@ static void fundef_wasmify_entry(node_t *pdn)
 
   for (/* use current i */; i < ndlen(pbn); ++i) {
     node_t *pni = ndref(pbn, i);
-    expr_wasmify_entry(pni, &vib);
+    expr_wasmify(pni, &vib);
   }
 
   /* check if falling off is a valid way to return */
@@ -1110,12 +1089,14 @@ typedef struct ri_tag {
   const node_t *ptn; /* NT_TYPE (not owned) */
 } ri_t;
 
-static const node_t *lookup_var_type(sym_t name, buf_t *prib)
+static const node_t *lookup_var_type(sym_t name, buf_t *prib, bool *pbgl)
 {
   ri_t *pri; const node_t *pgn;
   if ((pri = bufbsearch(prib, &name, sym_cmp)) != NULL) {
+    *pbgl = false;
     return pri->ptn;
   } else if ((pgn = lookup_global(name)) != NULL) {
+    *pbgl = true;
     if (pgn->nt == NT_IMPORT && ndlen(pgn) == 1)
       return ndcref(pgn, 0);
   }
@@ -1151,9 +1132,196 @@ static bool cast_compatible(const node_t *ptpn, const node_t *ptan)
   return assign_compatible(ptpn, ptan);
 }
 
+/* produce cast instructions to convert arithmetical types */
+static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
+{
+  instr_t in = 0;
+  assert(ts_numerical(tsto) && ts_numerical(tsfrom));
+  if (tsto == tsfrom) return; /* no change */
+  switch (tsto) {
+    case TS_DOUBLE:
+      switch (tsfrom) {
+        case TS_FLOAT:               in = IN_F64_PROMOTE_F32;   break;
+        case TS_INT: case TS_LONG:   in = IN_F64_CONVERT_I32_S; break; /* LONG: wasm32 assumed */
+        case TS_UINT: case TS_ULONG: in = IN_F64_CONVERT_I32_U; break; /* ULONG: wasm32 assumed */
+        case TS_LLONG:               in = IN_F64_CONVERT_I64_S; break;
+        case TS_ULLONG:              in = IN_F64_CONVERT_I64_U; break;
+      } break;
+    case TS_FLOAT:
+      switch (tsfrom) {
+        case TS_DOUBLE:              in = IN_F32_DEMOTE_F64; break;
+        case TS_INT: case TS_LONG:   in = IN_F32_CONVERT_I32_S; break; /* LONG: wasm32 assumed */
+        case TS_UINT: case TS_ULONG: in = IN_F32_CONVERT_I32_U; break; /* ULONG: wasm32 assumed */
+        case TS_LLONG:               in = IN_F32_CONVERT_I64_S; break;
+        case TS_ULLONG:              in = IN_F32_CONVERT_I64_U; break;
+      } break;
+    case TS_INT: case TS_LONG: /* LONG: wasm32 assumed */
+      switch (tsfrom) {
+        case TS_DOUBLE:              in = IN_I32_TRUNC_F64_S; break;
+        case TS_FLOAT:               in = IN_I32_TRUNC_F32_S; break;
+        case TS_INT: case TS_LONG:   /* nop */ break; /* LONG: wasm32 assumed */
+        case TS_UINT: case TS_ULONG: /* nop */ break; /* ULONG: wasm32 assumed */
+        case TS_LLONG:               in = IN_I32_WRAP_I64; break;
+        case TS_ULLONG:              in = IN_I32_WRAP_I64; break;
+      } break;
+    case TS_UINT: case TS_ULONG: /* ULONG: wasm32 assumed */
+      switch (tsfrom) {
+        case TS_DOUBLE:              in = IN_I32_TRUNC_F64_U; break;
+        case TS_FLOAT:               in = IN_I32_TRUNC_F32_U; break;
+        case TS_INT: case TS_LONG:   /* nop */ break; /* LONG: wasm32 assumed */
+        case TS_UINT: case TS_ULONG: /* nop */ break; /* ULONG: wasm32 assumed */
+        case TS_LLONG:               in = IN_I32_WRAP_I64; break;
+        case TS_ULLONG:              in = IN_I32_WRAP_I64; break;
+      } break;
+    case TS_LLONG:
+      switch (tsfrom) {
+        case TS_DOUBLE:              in = IN_I64_TRUNC_F64_S; break;
+        case TS_FLOAT:               in = IN_I64_TRUNC_F32_S; break;
+        case TS_INT: case TS_LONG:   in = IN_I64_EXTEND_I32_S; break; /* LONG: wasm32 assumed */
+        case TS_UINT: case TS_ULONG: in = IN_I64_EXTEND_I32_U; break; /* ULONG: wasm32 assumed */
+        case TS_LLONG:               /* nop */ break;
+        case TS_ULLONG:              /* nop */ break;
+      } break;
+    case TS_ULLONG:
+      switch (tsfrom) {
+        case TS_DOUBLE:              in = IN_I64_TRUNC_F64_U; break;
+        case TS_FLOAT:               in = IN_I64_TRUNC_F32_U; break;
+        case TS_INT: case TS_LONG:   in = IN_I64_EXTEND_I32_S; break; /* LONG: wasm32 assumed */
+        case TS_UINT: case TS_ULONG: in = IN_I64_EXTEND_I32_U; break; /* ULONG: wasm32 assumed */
+        case TS_LLONG:               /* nop */ break;
+        case TS_ULLONG:              /* nop */ break;
+      } break;
+  }
+  if (in) icbnewbk(pdata)->in = in;
+}
+
+/* produce cast instructions to convert arithmetical types */
+static void asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
+{
+  instr_t in = 0; unsigned align = 0; inscode_t *pin;
+  switch (tsto) { /* TS_PTR or result of ts_integral_promote(tsfrom) */
+    case TS_PTR: case TS_LONG: case TS_ULONG: /* wasm32 */
+    case TS_INT: case TS_UINT:
+      switch (tsfrom) {
+        case TS_CHAR:   in = IN_I32_LOAD8_S;  align = 0; break;
+        case TS_UCHAR:  in = IN_I32_LOAD8_U;  align = 0; break;
+        case TS_SHORT:  in = IN_I32_LOAD16_S; align = 1; break;
+        case TS_USHORT: in = IN_I32_LOAD16_U; align = 1; break;
+        case TS_PTR: case TS_LONG: case TS_ULONG: /* wasm32 assumed */
+        case TS_INT: case TS_UINT: in = IN_I32_LOAD; align = 2; break;
+      } break;
+    case TS_LLONG: case TS_ULLONG:
+      switch (tsfrom) {
+        case TS_CHAR:   in = IN_I64_LOAD8_S;  align = 0; break;
+        case TS_UCHAR:  in = IN_I64_LOAD8_U;  align = 0; break;
+        case TS_SHORT:  in = IN_I64_LOAD16_S; align = 1; break;
+        case TS_USHORT: in = IN_I64_LOAD16_U; align = 1; break;
+        case TS_PTR: case TS_ULONG: /* wasm32 assumed */
+        case TS_UINT:   in = IN_I64_LOAD32_U; align = 2; break; 
+        case TS_LONG: /* wasm32 assumed */
+        case TS_INT :   in = IN_I64_LOAD32_S; align = 2; break; 
+        case TS_LLONG: case TS_ULLONG: in = IN_I64_LOAD; align = 3; break;
+      } break;
+    case TS_FLOAT:
+      switch (tsfrom) {
+        case TS_FLOAT:  in = IN_F32_LOAD; align = 2; break;      
+      } break;
+    case TS_DOUBLE:
+      switch (tsfrom) {
+        case TS_DOUBLE: in = IN_F64_LOAD; align = 3; break;      
+      } break;
+  }
+  assert(in);
+  pin = icbnewbk(pdata); 
+  pin->in = in; pin->arg.u = off; pin->argu2 = align;
+}
+
+/* produce cast instructions as needed to convert tsn to cast_compatible ttn type */
+static void asm_cast(const node_t *ptpn, const node_t *ptan, icbuf_t *pdata)
+{
+  if (ts_numerical(ptpn->ts) && ts_numerical(ptan->ts)) {
+    asm_numerical_cast(ptpn->ts, ptan->ts, pdata);
+  } else if (ptpn->ts == TS_PTR && ptan->ts == TS_PTR) {
+    /* no representation change */
+  } else if (ptpn->ts == TS_PTR && ts_numerical(ptan->ts)) {
+    asm_numerical_cast(TS_ULONG, ptan->ts, pdata); /* wasm32 assumed */
+  } else if (ts_numerical(ptpn->ts) && ptan->ts == TS_PTR) {
+    asm_numerical_cast(ptpn->ts, TS_ULONG, pdata); /* wasm32 assumed */
+  } else {
+    /* same type: no representation change */
+  }
+}
+
+/* produce numerical constant instruction from literal */
+static void asm_numerical_constant(ts_t ts, numval_t *pval, icbuf_t *pdata)
+{
+  inscode_t *pic = icbnewbk(pdata);
+  switch (ts) {
+    case TS_INT: case TS_UINT:
+    case TS_LONG: case TS_ULONG: /* wasm32 model (will be different under wasm64) */
+      pic->in = IN_I32_CONST; pic->arg.u = pval->u;
+      break;
+    case TS_LLONG: case TS_ULLONG: 
+      pic->in = IN_I64_CONST; pic->arg.u = pval->u;
+      break;
+    case TS_FLOAT:
+      pic->in = IN_F32_CONST; pic->arg.f = pval->f;
+      break;
+    case TS_DOUBLE: 
+      pic->in = IN_F64_CONST; pic->arg.d = pval->d;
+      break;
+    default: assert(false);
+  }
+}
+
+#if 0
+/* compile function -- that is, convert it to asm tree */
+static node_t *fundef_compile(node_t *pdn)
+{
+  node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
+  buf_t rib = mkbuf(sizeof(ri_t)); node_t *ret; size_t i; 
+  /* output is created anew from pieces of input and pool nodes */
+  node_t *prn = npnew(NT_FUNDEF, pdn->pwsid, pdn->startpos), *prtn, *prbn; 
+  prn->name = pdn->name; prn->sc = pdn->sc;
+  ndnewbk(prn); ndnewbk(prn); prtn = ndref(prn, 0), prbn = ndref(prn, 1); 
+  ndset(prtn, NT_TYPE, ptn->pwsid, ptn->startpos); prtn->ts = TS_FUNCTION;
+  ndset(prbn, NT_BLOCK, pbn->pwsid, pbn->startpos);
+  
+  /* collect types for args and local vars; sort for bsearch */
+  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
+  for (i = 0; i < ndlen(ptn); ++i) {
+    node_t *pdni = ndref(ptn, i), *ptni = pdni; sym_t name = 0;
+    if (i == 0) { ret = pdni; assert(pdni->nt == NT_TYPE); } 
+    if (pdni->nt == NT_VARDECL) name = ptni->name, ptni = ndref(pdni, 0); 
+    if (name) { ri_t *pri = bufnewbk(&rib); pri->name = name; pri->ptn = ptni; }
+    ndpushbk(prtn, pdni); /* as-is, entry already converted */
+  }
+  assert(pbn->nt == NT_BLOCK);
+  for (i = 0; i < ndlen(pbn); ++i) {
+    node_t *pdni = ndref(pbn, i), *ptni; sym_t name;
+    if (pdni->nt != NT_VARDECL) break; /* statements may follow */
+    name = pdni->name, ptni = ndref(pdni, 0); 
+    if (name) { ri_t *pri = bufnewbk(&rib); pri->name = name; pri->ptn = ptni; }
+    ndpushbk(prbn, pdni); /* as-is, entry already converted */
+  }
+  bufqsort(&rib, sym_cmp);
+
+  /* go over body statements */
+  for (/* use current i */; i < ndlen(pbn); ++i) {
+    node_t *pni = ndref(pbn, i);
+    node_t *pcn = expr_compile(pni, &rib, ret);
+    ndswap(ndnewbk(prbn), pcn);
+  }
+
+  buffini(&rib);
+  return prn;
+}
+#endif
+
 /* process function definition in main module */
 static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
 {
+  //node_t *pcn;
   assert(pn->nt == NT_FUNDEF && pn->name && ndlen(pn) == 2);
   assert(ndref(pn, 0)->nt == NT_TYPE && ndref(pn, 0)->ts == TS_FUNCTION);
 #ifdef _DEBUG
@@ -1174,18 +1342,26 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
   fprintf(stderr, "fundef_hoist_locals ==>\n");
   dump_node(pn, stderr);
 #endif  
-  /* convert to wasm conventions, normalize a bit */
-  fundef_wasmify_entry(pn);
+  /* convert entry to wasm conventions, normalize a bit */
+  fundef_wasmify(pn);
 #ifdef _DEBUG
-  fprintf(stderr, "fundef_wasmify_entry ==>\n");
+  fprintf(stderr, "fundef_wasmify ==>\n");
   dump_node(pn, stderr);
 #endif  
+#if 0
+  /* compile to asm tree */
+  pcn = fundef_compile(pn);
+#ifdef _DEBUG
+  fprintf(stderr, "fundef_compile ==>\n");
+  dump_node(pcn, stderr);
+#endif  
+#endif
   /* free all nodes allocated with np-functions at once */
   clear_nodepool();
 }
 
 /* process top-level intrinsic call */
-static void process_intrcall(node_t *pn, module_t *pm)
+static void process_top_intrcall(node_t *pn, module_t *pm)
 {
 #ifdef _DEBUG
   dump_node(pn, stderr);
@@ -1225,7 +1401,7 @@ static void process_top_node(sym_t mainmod, node_t *pn, module_t *pm)
     /* in header: declarations only */
     size_t i;
     if (pn->nt == NT_FUNDEF) neprintf(pn, "function definition in header");
-    else if (pn->nt == NT_INTRCALL) process_intrcall(pn, pm); 
+    else if (pn->nt == NT_INTRCALL) process_top_intrcall(pn, pm); 
     else if (pn->nt != NT_BLOCK) neprintf(pn, "invalid top-level declaration");
     else if (!pn->name) neprintf(pn, "unscoped top-level declaration");
     else for (i = 0; i < ndlen(pn); ++i) {
@@ -1235,6 +1411,8 @@ static void process_top_node(sym_t mainmod, node_t *pn, module_t *pm)
       } else if (pni->nt == NT_VARDECL && pni->sc != SC_EXTERN) {
         neprintf(pni, "non-extern declaration in header");
       } else if (pni->nt == NT_VARDECL && pni->name && ndlen(pni) == 1) {
+        node_t *ptn = ndref(pni, 0); assert(ptn->nt == NT_TYPE);
+        if (ptn->ts == TS_FUNCTION) fundef_check_type(ptn);
         post_vardecl(pn->name, pni);
       } else {
         neprintf(pni, "extern declaration expected");
@@ -1244,7 +1422,7 @@ static void process_top_node(sym_t mainmod, node_t *pn, module_t *pm)
     /* in module mainmod: produce code */
     size_t i;
     if (pn->nt == NT_FUNDEF) process_fundef(mainmod, pn, pm);
-    else if (pn->nt == NT_INTRCALL) process_intrcall(pn, pm); 
+    else if (pn->nt == NT_INTRCALL) process_top_intrcall(pn, pm); 
     else if (pn->nt != NT_BLOCK) neprintf(pn, "unexpected top-level declaration");
     else for (i = 0; i < ndlen(pn); ++i) {
       node_t *pni = ndref(pn, i);
@@ -1438,63 +1616,6 @@ void compile_module(const char *ifname, const char *ofname)
   modfini(&m); 
 }
 
-#if 0
-void emit_test_module(void)
-{
-  module_t mod;
-  dseg_t *pds; /* eseg_t *pes; */
-  entry_t *pe; inscode_t *pic;
-  /* init */
-  modinit(&mod);
-  /* memory imports */
-  pe = entbnewbk(&mod.memdefs, EK_MEM); /* only mem #0 is supported */
-  pe->name = intern("memory"); /* local, exportable memory */
-  pe->lt = LT_MIN, pe->n = 1; /* ask for one 64K page first, no max pages limit */
-  /* data segments */
-  pds = dsegbnewbk(&mod.datadefs, DS_ACTIVE); /* #0 */
-  chbsets(&pds->data, "My first WASI module!\n");
-  pic = icbnewbk(&pds->code), pic->in = IN_I32_CONST, pic->arg.u = 8;
-  pic = icbnewbk(&pds->code), pic->in = IN_END; 
-  /* fd_read (imported) */
-  pe = entbnewbk(&mod.funcdefs, EK_FUNC); /* #0 */
-  pe->mod = intern("wasi_snapshot_preview1"), pe->name = intern("fd_read");
-  pe->fsi = funcsig(&mod.funcsigs, 4, 1, NT_I32, NT_I32, NT_I32, NT_I32, NT_I32);
-  /* fd_write (imported) */
-  pe = entbnewbk(&mod.funcdefs, EK_FUNC); /* #1 */
-  pe->mod = intern("wasi_snapshot_preview1"), pe->name = intern("fd_write");
-  pe->fsi = funcsig(&mod.funcsigs, 4, 1, NT_I32, NT_I32, NT_I32, NT_I32, NT_I32);
-  /* foo */
-  pe = entbnewbk(&mod.funcdefs, EK_FUNC); /* #2 */
-  pe->name = intern("foo");
-  pe->fsi = funcsig(&mod.funcsigs, 2, 1, NT_I32, NT_I32, NT_I32);
-  pic = icbnewbk(&pe->code), pic->in = IN_LOCAL_GET, pic->arg.u = 1;
-  pic = icbnewbk(&pe->code), pic->in = IN_LOCAL_GET, pic->arg.u = 0;
-  pic = icbnewbk(&pe->code), pic->in = IN_I32_ADD;
-  pic = icbnewbk(&pe->code), pic->in = IN_END;
-  /* _start */
-  pe = entbnewbk(&mod.funcdefs, EK_FUNC); /* #3 */
-  pe->name = intern("_start");
-  pe->fsi = funcsig(&mod.funcsigs, 0, 0);
-  //pe->isstart = true;
-  pic = icbnewbk(&pe->code), pic->in = IN_I32_CONST, pic->arg.u = 0;
-  pic = icbnewbk(&pe->code), pic->in = IN_I32_CONST, pic->arg.u = 8;
-  pic = icbnewbk(&pe->code), pic->in = IN_I32_STORE, pic->arg.u = 2, pic->align = 0;
-  pic = icbnewbk(&pe->code), pic->in = IN_I32_CONST, pic->arg.u = 4;
-  pic = icbnewbk(&pe->code), pic->in = IN_I32_CONST, pic->arg.u = 22;
-  pic = icbnewbk(&pe->code), pic->in = IN_I32_STORE, pic->arg.u = 2, pic->align = 0;
-  pic = icbnewbk(&pe->code), pic->in = IN_I32_CONST, pic->arg.u = 1;
-  pic = icbnewbk(&pe->code), pic->in = IN_I32_CONST, pic->arg.u = 0;
-  pic = icbnewbk(&pe->code), pic->in = IN_I32_CONST, pic->arg.u = 1;
-  pic = icbnewbk(&pe->code), pic->in = IN_I32_CONST, pic->arg.u = 0;
-  pic = icbnewbk(&pe->code), pic->in = IN_CALL, pic->arg.u = 1; /* fd_write */
-  pic = icbnewbk(&pe->code), pic->in = IN_DROP;
-  pic = icbnewbk(&pe->code), pic->in = IN_END;
-  /* emit wasm */
-  emit_module(&mod);
-  /* done */
-  modfini(&mod); 
-}
-#endif
 
 int main(int argc, char **argv)
 {

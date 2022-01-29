@@ -26,6 +26,8 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - features beyond C99 other than the ones explicitly mentioned above
 - `#if`-category directives for conditional compilation
 - bit fields
+- structures/unions as parameters and return values
+- assignment of structures/unions
 - free-form `switch`: nothing but cases in curly braces after test will be supported
 - free-form labels and `goto`
 - `setjmp`/`longjmp` (not in WASM model)

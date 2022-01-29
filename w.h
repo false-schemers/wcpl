@@ -339,10 +339,17 @@ extern void fsbfini(fsbuf_t* pb);
 extern unsigned fsintern(fsbuf_t* pb, funcsig_t *pfs); /* may clear pfs */
 extern unsigned funcsig(fsbuf_t* pb, size_t argc, size_t retc, ...);
 
+/* numerical value */
+typedef union numval_tag {
+  long long i; unsigned long long u; 
+  float f; double d;
+} numval_t;
+
+/* instruction */
 typedef struct inscode_tag {
   sym_t relkey; /* 0 or relocation table key */
   instr_t in; 
-  union { long long s; unsigned long long u; float f; double d; } arg;
+  numval_t arg;
   unsigned argu2; 
 } inscode_t;
 
@@ -350,15 +357,15 @@ typedef buf_t icbuf_t;
 #define icbinit(mem) bufinit(mem, sizeof(inscode_t))
 #define icbfini(pb) buffini(pb)
 #define icblen(pb) buflen(pb)
-#define icbref(pb, i) (inscode_t*)bufref(pb, i)
-#define icbnewbk(pb) (inscode_t*)bufnewbk(pb)
+#define icbref(pb, i) ((inscode_t*)bufref(pb, i))
+#define icbnewbk(pb) ((inscode_t*)bufnewbk(pb))
 
 #define vtblen(pb) buflen(pb)
-#define vtbref(pb, i) (valtype_t*)bufref(pb, i)
-#define vtbnewbk(pb) (valtype_t*)bufnewbk(pb)
+#define vtbref(pb, i) ((valtype_t*)bufref(pb, i))
+#define vtbnewbk(pb) ((valtype_t*)bufnewbk(pb))
 #define idxblen(pb) buflen(pb)
-#define idxbref(pb, i) (unsigned*)bufref(pb, i)
-#define idxbnewbk(pb) (unsigned*)bufnewbk(pb)
+#define idxbref(pb, i) ((unsigned*)bufref(pb, i))
+#define idxbnewbk(pb) ((unsigned*)bufnewbk(pb))
 
 typedef struct entry_tag {
   entkind_t ek;     /* as used in import/export sections */
