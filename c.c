@@ -890,7 +890,9 @@ static void expr_wasmify(node_t *pn, buf_t *pvib)
           wrap_unary_operator(pn, pn->startpos, TT_STAR);
         } else if (pvi->sc == SC_AUTO) { /* ->fld */
           pn->name = pvi->reg;
-          wrap_postfix_operator(pn, TT_ARROW, pvi->fld);
+          wrap_postfix_operator
+            (wrap_unary_operator(pn, pn->startpos, TT_STAR), 
+             TT_DOT, pvi->fld);
         } else { /* in register, just fix name */
           pn->name = pvi->reg;
         }
@@ -921,16 +923,12 @@ static void expr_wasmify(node_t *pn, buf_t *pvib)
       } 
     } break;
     case NT_RETURN: {
-      sym_t rp = intern("$rp"), fp = intern("$fp"); 
-      vi_t *pvi = bufbsearch(pvib, &rp, sym_cmp);
-      node_t *psn;
-      if (pvi && ndlen(pn) == 1) { /* return x => *$rp = x, return; */
-        wrap_node(lift_arg0(pn), NT_ASSIGN); pn->op = TT_ASN;
-        psn = ndinsfr(pn, NT_PREFIX); psn->op = TT_STAR;
-        psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = rp;
-        wrap_node(pn, NT_COMMA); ndinsbk(pn, NT_RETURN);
+      sym_t fp = intern("$fp"); node_t *psn;
+      vi_t *pvi = bufbsearch(pvib, &fp, sym_cmp);
+      if (ndlen(pn) > 0) {
+        assert(ndlen(pn) == 1);
+        expr_wasmify(ndref(pn, 0), pvib);
       }
-      pvi = bufbsearch(pvib, &fp, sym_cmp);
       if (pvi) { /* return ... => freea($fp), return ... */
         wrap_node(pn, NT_COMMA);
         psn = ndinsfr(pn, NT_INTRCALL); psn->intr = INTR_FREEA;
