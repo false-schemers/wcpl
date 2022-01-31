@@ -1531,11 +1531,12 @@ static node_t *compile_binary(node_t *prn, node_t *pan1, tt_t op, node_t *pan2)
     ndfini(&rtn);
     if (asm_binary(rts, op, &pcn->data)) return pcn;
   } else if (ts1 == TS_PTR && ts_numerical(ts2) && (op == TT_PLUS || op == TT_MINUS)) {
-    size_t size, align; numval_t v; node_t *pmn, *pnn, *psn;
+    size_t size, align; numval_t v; node_t *pmn, *pcn, *pnn, *psn;
     measure_type(ndref(patn1, 0), prn, &size, &align, 0);
     pmn = compile_numlit(prn, TS_ULONG, (v.u = size, &v));
+    pcn = compile_cast(prn, acode_type(pmn), pan1);
     pnn = compile_binary(prn, pan2, TT_STAR, pmn); /* fixme: constant fold oportunity */
-    psn = compile_binary(prn, compile_cast(prn, acode_type(pmn), pan1), op, pnn);
+    psn = compile_binary(prn, pcn, op, pnn);
     return compile_cast(prn, patn1, psn); 
   } else if (ts_numerical(ts1) && ts2 == TS_PTR && op == TT_PLUS) {
     return compile_binary(prn, pan2, op, pan1);
@@ -1641,11 +1642,35 @@ static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan
   return NULL;
 }
 
-/* compile non-reduceable *x returning scalar value */
+/* compile non-reduceable *x{.f...} returning scalar value (load) or pointer (!load) */
 static node_t *compile_deref(node_t *prn, node_t *pan, buf_t *psymb, bool load)
 {
-  neprintf(prn, "compile_deref: not yet implemented");
-  return NULL;
+  node_t *patn = acode_type(pan), *petn = NULL; 
+  size_t off = 0, i;
+  if (patn->ts == TS_PTR) petn = ndref(patn, 0);
+  else neprintf(prn, "cannot dereference non-pointer expression");
+  if (psymb) for (i = 0; i < buflen(psymb); ++i) {
+    sym_t fld = *(sym_t*)bufref(psymb, i);
+    off += measure_offset(petn, prn, fld, &petn);
+  }
+  if (load) { /* code for scalar value */
+    node_t *pcn = npnewcode(prn), *ptn = ndpushbk(pcn, petn);
+    if (petn->ts != TS_PTR && !ts_numerical(petn->ts))
+     neprintf(prn, "cannot dereference pointer to non-scalar expression");
+    if (petn->ts != TS_PTR) ptn->ts = ts_integral_promote(petn->ts);
+    ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+    asm_load(ptn->ts, petn->ts, off, &pcn->data);
+    return pcn;
+  } else {
+    node_t *pcn = npnewcode(prn); 
+    ndpushbk(ndsettype(ndnewbk(pcn), TS_PTR), petn);
+    if (off > 0) {
+      numval_t v; node_t *pon = compile_numlit(prn, TS_ULONG, (v.u = off, &v));
+      pan = compile_binary(prn, compile_cast(prn, acode_type(pon), pan), TT_PLUS, pon);
+    }
+    ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+    return pcn;
+  } 
 }
 
 /* compile expression -- that is, convert it to asm tree */
@@ -1775,7 +1800,7 @@ retry:
       pcn = pn;
     } break;
     case NT_TYPE: assert(false); break; /* inside cast only */  
-    /* leave statement layer as-is for now */
+    /* leave statement layer as-is for now (fixme!) */
     default: {
       /* for now, dup outside structure and compile nodes */
       size_t i;
