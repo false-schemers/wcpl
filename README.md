@@ -32,6 +32,13 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - free-form labels and `goto`
 - `setjmp`/`longjmp` (not in WASM model)
 
+# Linking
+
+The plan is to use WAT format with symbolic identifiers in place of indices as
+object file format; linking will use symbolic names, so no custom sections or 
+relocation tables are needed. Not every WAT file can serve as WCPL object file
+however; certain constaints need to be satisfied.
+ 
 
 # Installation
 

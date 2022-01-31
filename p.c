@@ -3527,8 +3527,14 @@ static void dump(node_t *pn, FILE* fp, int indent)
     } break;
     case NT_ACODE: {
       size_t i, ri = 1; chbuf_t cb = mkchb();
-      fprintf(fp, "(acode\n");
-      dump(ndref(pn, 0), fp, indent+2);
+      node_t *ptn = ndref(pn, 0);
+      if (ndlen(ptn) == 0) {
+        if (!ptn->name) fprintf(fp, "(acode (type %s)", ts_name(ptn->ts));
+        else fprintf(fp, "(acode (type %s %s)", ts_name(ptn->ts), symname(ptn->name));
+      } else {
+        fprintf(fp, "(acode\n");
+        dump(ptn, fp, indent+2);
+      }
       assert(pn->data.esz == sizeof(inscode_t));
       for (i = 0; i < buflen(&pn->data); ++i) {
         inscode_t *pic = bufref(&pn->data, i);

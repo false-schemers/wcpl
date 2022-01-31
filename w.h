@@ -359,6 +359,7 @@ typedef buf_t icbuf_t;
 #define icblen(pb) buflen(pb)
 #define icbref(pb, i) ((inscode_t*)bufref(pb, i))
 #define icbnewbk(pb) ((inscode_t*)bufnewbk(pb))
+#define icbpopbk(pb) bufpopbk(pb)
 
 #define vtblen(pb) buflen(pb)
 #define vtbref(pb, i) ((valtype_t*)bufref(pb, i))

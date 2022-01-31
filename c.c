@@ -923,13 +923,13 @@ static void expr_wasmify(node_t *pn, buf_t *pvib)
       } 
     } break;
     case NT_RETURN: {
-      sym_t fp = intern("$fp"); node_t *psn;
+      sym_t fp = intern("fp$"); node_t *psn;
       vi_t *pvi = bufbsearch(pvib, &fp, sym_cmp);
       if (ndlen(pn) > 0) {
         assert(ndlen(pn) == 1);
         expr_wasmify(ndref(pn, 0), pvib);
       }
-      if (pvi) { /* return ... => freea($fp), return ... */
+      if (pvi) { /* return ... => freea(fp$), return ... */
         wrap_node(pn, NT_COMMA);
         psn = ndinsfr(pn, NT_INTRCALL); psn->intr = INTR_FREEA;
         psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = fp;
@@ -949,7 +949,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib)
 static void fundef_wasmify(node_t *pdn)
 {
   /* special registers (scalar/poiner vars with internal names): 
-   * $fp (frame pointer), $ap (... data pointer)? */
+   * fp$ (frame pointer), ap$ (... data pointer)? */
   node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
   buf_t vib = mkbuf(sizeof(vi_t)); node_t frame = mknd();
   ndbuf_t asb; size_t i; ndbinit(&asb);
@@ -1005,12 +1005,12 @@ static void fundef_wasmify(node_t *pdn)
         cast = ptni->ts;
       case TS_INT:   case TS_UINT:   case TS_LONG:  case TS_ULONG:  
       case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: case TS_PTR: {
-        if (pdni->sc == SC_AUTO) { /* field in $fp frame struct */
+        if (pdni->sc == SC_AUTO) { /* field in fp$ frame struct */
           node_t *pvn = ndnewbk(&frame); vi_t *pvi = bufnewbk(&vib);
           ndset(pvn, NT_VARDECL, pdni->pwsid, pdni->startpos);
           pvn->name = name; ndpushbk(pvn, ptni);
           pvi->name = name, pvi->sc = SC_AUTO;
-          pvi->reg = intern("$fp"); pvi->fld = name;
+          pvi->reg = intern("fp$"); pvi->fld = name;
           ndrem(pbn, i);
         } else { /* normal register var */
           vi_t *pvi = bufnewbk(&vib); pvi->name = name, pvi->sc = SC_REGISTER;
@@ -1024,7 +1024,7 @@ static void fundef_wasmify(node_t *pdn)
         ndset(pvn, NT_VARDECL, pdni->pwsid, pdni->startpos);
         pvn->name = name; ndpushbk(pvn, ptni);
         pvi->name = name, pvi->sc = SC_AUTO;
-        pvi->reg = intern("$fp"); pvi->fld = name;
+        pvi->reg = intern("fp$"); pvi->fld = name;
         ndrem(pbn, i); 
       } break;
       default: {
@@ -1040,18 +1040,18 @@ static void fundef_wasmify(node_t *pdn)
     ndbrem(&asb, 0);
   }
   
-  /* see if we need to insert $fp init & local */
+  /* see if we need to insert fp$ init & local */
   if (ndlen(&frame) > 0) {
     node_t *pin = ndinsnew(pbn, i), *psn; vi_t *pvi;
     ndset(pin, NT_ASSIGN, pbn->pwsid, pbn->startpos);
     pin->op = TT_ASN;
-    psn = ndinsbk(pin, NT_IDENTIFIER); psn->name = intern("$fp");
+    psn = ndinsbk(pin, NT_IDENTIFIER); psn->name = intern("fp$");
     psn = ndinsbk(pin, NT_INTRCALL); psn->intr = INTR_ALLOCA;
     psn = ndinsbk(psn, NT_INTRCALL); psn->intr = INTR_SIZEOF;
     ndpushbk(psn, &frame);
     pin = ndinsnew(pbn, i);
     ndset(pin, NT_VARDECL, pbn->pwsid, pbn->startpos);
-    pin->name = intern("$fp"); wrap_type_pointer(ndpushbk(pin, &frame));
+    pin->name = intern("fp$"); wrap_type_pointer(ndpushbk(pin, &frame));
     pvi = bufnewbk(&vib); pvi->sc = SC_REGISTER;
     pvi->name = pvi->reg = pin->name;
     i += 2; /* skip inserted nodes */ 
@@ -1067,8 +1067,8 @@ static void fundef_wasmify(node_t *pdn)
 
   /* check if falling off is a valid way to return */
   if (ndref(ptn, 0)->ts == TS_VOID) {
-    /* if $fp is present, insert freea($fp); */
-    sym_t fp = intern("$fp"); 
+    /* if fp$ is present, insert freea(fp$); */
+    sym_t fp = intern("fp$"); 
     vi_t *pvi = bufbsearch(&vib, &fp, sym_cmp);
     if (pvi) {
       node_t *psn = ndinsbk(pbn, NT_INTRCALL); psn->intr = INTR_FREEA;
@@ -1129,6 +1129,9 @@ static bool cast_compatible(const node_t *ptpn, const node_t *ptan)
   /* the rest must be compatible */
   return assign_compatible(ptpn, ptan);
 }
+
+
+/* procedures producing assembly instructions */
 
 /* produce cast instructions to convert arithmetical types */
 static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
@@ -1193,7 +1196,7 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
   if (in) icbnewbk(pdata)->in = in;
 }
 
-/* produce cast instructions to convert arithmetical types */
+/* produce load instruction to fetch from a scalar pointer */
 static void asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
 {
   instr_t in = 0; unsigned align = 0; inscode_t *pin;
@@ -1234,6 +1237,27 @@ static void asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
   pin->in = in; pin->arg.u = off; pin->argu2 = align;
 }
 
+/* produce store instruction from a load instruction */
+static void asm_instr_load_to_store(const inscode_t *plic, inscode_t *psic)
+{
+  instr_t in = 0; 
+  switch (plic->in) {
+    case IN_LOCAL_GET: in = IN_LOCAL_SET; break;
+    case IN_GLOBAL_GET: in = IN_GLOBAL_SET; break;
+    case IN_I32_LOAD: in = IN_I32_STORE; break;
+    case IN_I64_LOAD: in = IN_I64_STORE; break;
+    case IN_F32_LOAD: in = IN_F32_STORE; break;
+    case IN_F64_LOAD: in = IN_F64_STORE; break;
+    case IN_I32_LOAD8_S:  case IN_I32_LOAD8_U:  in = IN_I32_STORE8; break;
+    case IN_I32_LOAD16_S: case IN_I32_LOAD16_U: in = IN_I32_STORE16; break;
+    case IN_I64_LOAD8_S:  case IN_I64_LOAD8_U:  in = IN_I64_STORE8; break;
+    case IN_I64_LOAD16_S: case IN_I64_LOAD16_U: in = IN_I64_STORE16; break;
+    case IN_I64_LOAD32_S: case IN_I64_LOAD32_U: in = IN_I64_STORE32; break;
+  }
+  assert(in);
+  *psic = *plic; psic->in = in;
+}
+
 /* produce cast instructions as needed to convert tsn to cast_compatible ttn type */
 static void asm_cast(const node_t *ptpn, const node_t *ptan, icbuf_t *pdata)
 {
@@ -1248,6 +1272,150 @@ static void asm_cast(const node_t *ptpn, const node_t *ptan, icbuf_t *pdata)
   } else {
     /* same type: no representation change */
   }
+}
+
+/* encode unary assembly operator; return false if not applicable */
+static bool asm_unary(ts_t ts, tt_t op, icbuf_t *pdata)
+{
+  switch (ts) {
+    case TS_INT: case TS_UINT:
+    case TS_LONG: case TS_ULONG: /* wasm32 model (will be different under wasm64) */
+      switch (op) {
+        case TT_PLUS: return true;
+        case TT_NOT: icbnewbk(pdata)->in = IN_I32_EQZ; return true;
+      } break;
+    case TS_LLONG: case TS_ULLONG: 
+      switch (op) {
+        case TT_PLUS: return true;
+        case TT_NOT: icbnewbk(pdata)->in = IN_I64_EQZ; return true;
+      } break;
+    case TS_FLOAT:
+      switch (op) {
+        case TT_PLUS: return true;
+        case TT_MINUS: icbnewbk(pdata)->in = IN_F32_NEG; return true;
+      } break;
+    case TS_DOUBLE: 
+      switch (op) {
+        case TT_PLUS: return true;
+        case TT_MINUS: icbnewbk(pdata)->in = IN_F64_NEG; return true;
+      } break;
+    default: assert(false);
+  }
+  return false;
+}
+
+/* encode binary assembly operator; return false if not applicable */
+static bool asm_binary(ts_t ts, tt_t op, icbuf_t *pdata)
+{
+  instr_t in = 0;
+  switch (ts) {
+    case TS_INT: case TS_LONG: /* wasm32 model (will be different under wasm64) */
+      switch (op) {
+        case TT_PLUS:  in = IN_I32_ADD; break;
+        case TT_MINUS: in = IN_I32_SUB; break;
+        case TT_STAR:  in = IN_I32_MUL; break;
+        case TT_AND:   in = IN_I32_AND; break;
+        case TT_OR:    in = IN_I32_OR; break;
+        case TT_XOR:   in = IN_I32_XOR; break;
+        case TT_SLASH: in = IN_I32_DIV_S; break;
+        case TT_REM:   in = IN_I32_REM_S; break;
+        case TT_SHL:   in = IN_I32_SHL; break;
+        case TT_SHR:   in = IN_I32_SHR_S; break;
+        case TT_EQ:    in = IN_I32_EQ; break;
+        case TT_NE:    in = IN_I32_NE; break;
+        case TT_LT:    in = IN_I32_LT_S; break;
+        case TT_GT:    in = IN_I32_GT_S; break;
+        case TT_LE:    in = IN_I32_LE_S; break;
+        case TT_GE:    in = IN_I32_GE_S; break;
+      } break;
+    case TS_UINT: case TS_ULONG: /* wasm32 model (will be different under wasm64) */
+      switch (op) {
+        case TT_PLUS:  in = IN_I32_ADD; break;
+        case TT_MINUS: in = IN_I32_SUB; break;
+        case TT_STAR:  in = IN_I32_MUL; break;
+        case TT_AND:   in = IN_I32_AND; break;
+        case TT_OR:    in = IN_I32_OR; break;
+        case TT_XOR:   in = IN_I32_XOR; break;
+        case TT_SLASH: in = IN_I32_DIV_U; break;
+        case TT_REM:   in = IN_I32_REM_U; break;
+        case TT_SHL:   in = IN_I32_SHL; break;
+        case TT_SHR:   in = IN_I32_SHR_U; break;
+        case TT_EQ:    in = IN_I32_EQ; break;
+        case TT_NE:    in = IN_I32_NE; break;
+        case TT_LT:    in = IN_I32_LT_U; break;
+        case TT_GT:    in = IN_I32_GT_U; break;
+        case TT_LE:    in = IN_I32_LE_U; break;
+        case TT_GE:    in = IN_I32_GE_U; break;
+      } break;
+    case TS_LLONG: 
+      switch (op) {
+        case TT_PLUS:  in = IN_I64_ADD; break;
+        case TT_MINUS: in = IN_I64_SUB; break;
+        case TT_STAR:  in = IN_I64_MUL; break;
+        case TT_AND:   in = IN_I64_AND; break;
+        case TT_OR:    in = IN_I64_OR; break;
+        case TT_XOR:   in = IN_I64_XOR; break;
+        case TT_SLASH: in = IN_I64_DIV_S; break;
+        case TT_REM:   in = IN_I64_REM_S; break;
+        case TT_SHL:   in = IN_I64_SHL; break;
+        case TT_SHR:   in = IN_I64_SHR_S; break;
+        case TT_EQ:    in = IN_I64_EQ; break;
+        case TT_NE:    in = IN_I64_NE; break;
+        case TT_LT:    in = IN_I64_LT_S; break;
+        case TT_GT:    in = IN_I64_GT_S; break;
+        case TT_LE:    in = IN_I64_LE_S; break;
+        case TT_GE:    in = IN_I64_GE_S; break;
+      } break;
+    case TS_ULLONG: 
+      switch (op) {
+        case TT_PLUS:  in = IN_I64_ADD; break;
+        case TT_MINUS: in = IN_I64_SUB; break;
+        case TT_STAR:  in = IN_I64_MUL; break;
+        case TT_AND:   in = IN_I64_AND; break;
+        case TT_OR:    in = IN_I64_OR; break;
+        case TT_XOR:   in = IN_I64_XOR; break;
+        case TT_SLASH: in = IN_I64_DIV_U; break;
+        case TT_REM:   in = IN_I64_REM_U; break;
+        case TT_SHL:   in = IN_I64_SHL; break;
+        case TT_SHR:   in = IN_I64_SHR_U; break;
+        case TT_EQ:    in = IN_I64_EQ; break;
+        case TT_NE:    in = IN_I64_NE; break;
+        case TT_LT:    in = IN_I64_LT_U; break;
+        case TT_GT:    in = IN_I64_GT_U; break;
+        case TT_LE:    in = IN_I64_LE_U; break;
+        case TT_GE:    in = IN_I64_GE_U; break;
+      } break;
+    case TS_FLOAT: 
+      switch (op) {
+        case TT_PLUS:  in = IN_F32_ADD; break;
+        case TT_MINUS: in = IN_F32_SUB; break;
+        case TT_STAR:  in = IN_F32_MUL; break;
+        case TT_SLASH: in = IN_F32_DIV; break;
+        case TT_EQ:    in = IN_F32_EQ; break;
+        case TT_NE:    in = IN_F32_NE; break;
+        case TT_LT:    in = IN_F32_LT; break;
+        case TT_GT:    in = IN_F32_GT; break;
+        case TT_LE:    in = IN_F32_LE; break;
+        case TT_GE:    in = IN_F32_GE; break;
+      } break;
+    case TS_DOUBLE: 
+      switch (op) {
+        case TT_PLUS:  in = IN_F64_ADD; break;
+        case TT_MINUS: in = IN_F64_SUB; break;
+        case TT_STAR:  in = IN_F64_MUL; break;
+        case TT_SLASH: in = IN_F64_DIV; break;
+        case TT_EQ:    in = IN_F64_EQ; break;
+        case TT_NE:    in = IN_F64_NE; break;
+        case TT_LT:    in = IN_F64_LT; break;
+        case TT_GT:    in = IN_F64_GT; break;
+        case TT_LE:    in = IN_F64_LE; break;
+        case TT_GE:    in = IN_F64_GE; break;
+      } break;
+    default: assert(false);
+  }
+  if (!in) return false;
+  icbnewbk(pdata)->in = in; 
+  return true;
 }
 
 /* produce numerical constant instruction from literal */
@@ -1272,7 +1440,359 @@ static void asm_numerical_constant(ts_t ts, numval_t *pval, icbuf_t *pdata)
   }
 }
 
-#if 0
+/* pop last instruction from pdata into pic */
+static void asm_popbk(icbuf_t *pdata, inscode_t *pic)
+{
+  size_t n = icblen(pdata); assert(n > 0);
+  if (pic) *pic = *icbref(pdata, n-1);
+  icbpopbk(pdata); 
+}
+
+
+/* acode node predicates */
+
+static node_t *acode_type(node_t *pcn)
+{
+  node_t *ptn; assert(pcn);
+  if (pcn->nt != NT_ACODE) neprintf(pcn, "compile: asm code expected");
+  assert(ndlen(pcn) > 0);
+  ptn = ndref(pcn, 0); assert(ptn->nt == NT_TYPE);
+  return ptn;
+}
+
+/* check if code is simple and side-effect-free */
+static bool acode_simple_noeff(node_t *pan)
+{
+  if (pan->nt == NT_ACODE && ndlen(pan) == 1 && icblen(&pan->data) == 1) {
+    instr_t in = icbref(&pan->data, 0)->in;
+    if (in >= IN_I32_CONST && in <= IN_F64_CONST) return true;
+    if (in == IN_GLOBAL_GET || in == IN_LOCAL_GET) return true;
+    if (in >= IN_I32_LOAD && in <= IN_I64_LOAD32_U) return true;
+  }  
+  return false;
+}
+
+/* check if this node is a var get; returns 0 or instruction code */
+static int acode_rval_get(node_t *pan)
+{
+  if (pan->nt == NT_ACODE && icblen(&pan->data) == 1) {
+    instr_t in = icbref(&pan->data, 0)->in;
+    return (in == IN_GLOBAL_GET || in == IN_LOCAL_GET) ? in : 0;
+  } else return 0;
+}
+
+/* check if this node is memory load; returns 0 or instruction code */
+static int acode_rval_load(node_t *pan)
+{
+  if (pan->nt == NT_ACODE && icblen(&pan->data) >= 1) {
+    instr_t in = icbref(&pan->data, icblen(&pan->data)-1)->in;
+    return (in >= IN_I32_LOAD && in <= IN_I64_LOAD32_U) ? in : 0;
+  } else return 0;
+}
+
+
+/* compiler helpers; prn is original reference node for errors */
+
+/* compile a cast expression (can produce empty code sequence) */
+static node_t *compile_cast(node_t *prn, node_t *ptn, node_t *pan)
+{
+  node_t *pcn, *patn = acode_type(pan);
+  if (ptn->ts == TS_VOID) ; /* ok, any value can be dropped */
+  else if (!cast_compatible(ptn, patn))
+    n2eprintf(ndref(prn, 1), prn, "compile: impossible cast");
+  pcn = npnewcode(prn); ndcpy(ndnewbk(pcn), ptn);
+  ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+  if (ptn->ts == TS_VOID) icbnewbk(&pcn->data)->in = IN_DROP;
+  else asm_cast(ptn, patn, &pcn->data);
+  return pcn;
+}
+
+/* compile a numerical literal expression */
+static node_t *compile_numlit(node_t *prn, ts_t ts, numval_t *pnv)
+{
+  node_t *pcn = npnewcode(prn); ndsettype(ndnewbk(pcn), ts); 
+  asm_numerical_constant(ts, pnv, &pcn->data);
+  return pcn;
+}
+
+/* compile regular binary operator expressions (+ - * / % << >> = != < <= > >=) */
+static node_t *compile_binary(node_t *prn, node_t *pan1, tt_t op, node_t *pan2)
+{
+  node_t *patn1 = acode_type(pan1), *patn2 = acode_type(pan2); 
+  ts_t ts1 = patn1->ts, ts2 = patn2->ts;
+  if (ts_numerical(ts1) && ts_numerical(ts2)) {
+    ts_t rts = ts_arith_common(ts1, ts2); 
+    node_t rtn = mknd(), *prtn, *pcn = npnewcode(prn); ndsettype(&rtn, rts);
+    if (rts != ts1) pan1 = compile_cast(prn, &rtn, pan1); /* fixme: constant fold oportunity */
+    if (rts != ts2) pan2 = compile_cast(prn, &rtn, pan2); /* fixme: constant fold oportunity */
+    prtn = ndcpy(ndnewbk(pcn), &rtn); if (op >= TT_LT && op <= TT_NE) prtn->ts = TS_INT;
+    ndswap(ndnewbk(pcn), pan1); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+    ndswap(ndnewbk(pcn), pan2); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+    ndfini(&rtn);
+    if (asm_binary(rts, op, &pcn->data)) return pcn;
+  } else if (ts1 == TS_PTR && ts_numerical(ts2) && (op == TT_PLUS || op == TT_MINUS)) {
+    size_t size, align; numval_t v; node_t *pmn, *pnn, *psn;
+    measure_type(ndref(patn1, 0), prn, &size, &align, 0);
+    pmn = compile_numlit(prn, TS_ULONG, (v.u = size, &v));
+    pnn = compile_binary(prn, pan2, TT_STAR, pmn); /* fixme: constant fold oportunity */
+    psn = compile_binary(prn, compile_cast(prn, acode_type(pmn), pan1), op, pnn);
+    return compile_cast(prn, patn1, psn); 
+  } else if (ts_numerical(ts1) && ts2 == TS_PTR && op == TT_PLUS) {
+    return compile_binary(prn, pan2, op, pan1);
+  } else if (ts1 == TS_PTR && ts2 == TS_PTR && op == TT_MINUS) {
+    if (same_type(patn1, patn2)) {
+      size_t size, align; numval_t v; node_t *pmn, *pdn;
+      measure_type(ndref(patn1, 0), prn, &size, &align, 0);
+      pmn = compile_numlit(prn, TS_ULONG, (v.u = size, &v));
+      pdn = compile_binary(prn, compile_cast(prn, acode_type(pmn), pan1), TT_MINUS, 
+                                compile_cast(prn, acode_type(pmn), pan2));
+      return compile_binary(prn, pdn, TT_SLASH, pmn); 
+    } 
+    n2eprintf(ndref(prn, 0), prn, "incompatible pointer types for subtraction operation");
+  } else if (ts1 == TS_PTR && ts2 == TS_PTR && op >= TT_LT && op <= TT_NE) {
+    node_t tn = mknd(), *ptn = ndsettype(&tn, TS_ULONG), *pan;
+    pan = compile_binary(prn, compile_cast(prn, ptn, pan1), op, compile_cast(prn, ptn, pan2));
+    ptn->ts = TS_INT; pan = compile_cast(prn, ptn, pan);
+    ndfini(&tn); return pan;
+  } 
+  n2eprintf(ndref(prn, 0), prn, "invalid types for binary %s operation", op_name(op));
+  return NULL; /* won't happen */
+}
+
+/* compile regular unary operator expressions (! ~ + -) */
+static node_t *compile_unary(node_t *prn, tt_t op, node_t *pan)
+{
+  node_t *pcn = npnewcode(prn), *patn = acode_type(pan); 
+  ts_t ts = patn->ts; numval_t v;
+  if (ts_numerical(ts)) {
+    ts_t rts = ts_integral_promote(ts); 
+    ndsettype(ndnewbk(pcn), (op == TT_NOT) ? TS_INT : rts);
+    if (op == TT_MINUS && rts != TS_FLOAT && rts != TS_DOUBLE) {
+      /* no NEG instructions for integers; -x => 0-x */
+      asm_numerical_constant(rts, (v.i = 0, &v), &pcn->data); 
+      ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+      if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
+      if (asm_binary(rts, TT_MINUS, &pcn->data)) return pcn;
+    } else if (op == TT_TILDE && rts != TS_FLOAT && rts != TS_DOUBLE) {
+      /* no INV instructions for integers; ~x => x^-1 */
+      asm_numerical_constant(rts, (v.i = -1, &v), &pcn->data); 
+      ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+      if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
+      if (asm_binary(rts, TT_XOR, &pcn->data)) return pcn;
+    } else if (op == TT_NOT && (rts == TS_FLOAT || rts == TS_DOUBLE)) {
+      /* no EQZ instructions for floats; !x => x==0.0 */
+      if (rts == TS_FLOAT) v.f = 0.0; else v.d = 0.0;
+      asm_numerical_constant(rts, &v, &pcn->data); 
+      ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+      if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
+      if (asm_binary(rts, TT_EQ, &pcn->data)) return pcn;
+    } else { /* regular case */
+      ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+      if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
+      if (asm_unary(rts, op, &pcn->data)) return pcn;
+    }
+  }
+  n2eprintf(ndref(prn, 0), prn, "invalid type for unary %s operation", op_name(op));
+  return NULL; /* won't happen */
+}
+
+/* compile x to serve in a boolean test position */
+node_t *compile_booltest(node_t *prn, node_t *pan)
+{
+  node_t *patn = acode_type(pan);
+  if (patn->ts < TS_INT || patn->ts > TS_ULONG) {
+    numval_t v; node_t *pzn = compile_numlit(prn, TS_INT, (v.i = 0, &v));
+    return compile_binary(prn, pan, TT_NE, pzn);
+  } else { /* good as-is */
+    return pan;
+  }
+}
+
+/* compile ++x --x x++ x-- and assignments */
+static node_t *compile_asncombo(node_t *prn, node_t *pan, tt_t op, node_t *pvn, bool post)
+{
+  neprintf(prn, "compile_asncombo: not yet implemented");
+  return NULL;
+} 
+
+/* compile x ? y : z operator */
+static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan3)
+{
+  node_t *patn1 = acode_type(pan1), *patn2 = acode_type(pan2), *patn3 = acode_type(pan3); 
+  node_t nt = mknd(), *pcn = npnewcode(prn), *pctn = NULL; 
+  if (ts_numerical(patn2->ts) && ts_numerical(patn3->ts)) 
+    pctn = ndsettype(&nt, ts_arith_common(patn2->ts, patn3->ts));
+  else if (same_type(patn2, patn3)) pctn = patn2;
+  else neprintf(prn, "incompatible types of ?: operator branches");
+  pan1 = compile_booltest(prn, pan1); /* add !=0 if not i32 */
+  ndcpy(ndnewbk(pcn), pctn);
+  if (acode_simple_noeff(pan2) && acode_simple_noeff(pan3)) {
+    /* both branches can be computed cheaply with no effects; use SELECT */
+    ndswap(ndnewbk(pcn), pan1); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
+    ndswap(ndnewbk(pcn), pan2); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
+    ndswap(ndnewbk(pcn), pan3); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+    icbnewbk(&pcn->data)->in = IN_SELECT;  
+    ndfini(&nt); return pcn;
+  } else { 
+    /* fixme: 'if'-'else' construct is needed */
+  }
+  ndfini(&nt);  
+  neprintf(prn, "compile_cond: not yet implemented");
+  return NULL;
+}
+
+/* compile non-reduceable *x returning scalar value */
+static node_t *compile_deref(node_t *prn, node_t *pan, buf_t *psymb, bool load)
+{
+  neprintf(prn, "compile_deref: not yet implemented");
+  return NULL;
+}
+
+/* compile expression -- that is, convert it to asm tree */
+static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
+{
+  node_t *pcn = NULL; numval_t v;
+retry:
+  switch (pn->nt) {
+    case NT_LITERAL: {
+      assert(ts_numerical(pn->ts));
+      pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), pn->ts);
+      asm_numerical_constant(pn->ts, &pn->val, &pcn->data);
+    } break; 
+    case NT_IDENTIFIER: {
+      bool bgl; inscode_t *pic;
+      const node_t *ptn = lookup_var_type(pn->name, prib, &bgl);
+      if (!ptn) neprintf(pn, "compile: undefined identifier");
+      pcn = npnewcode(pn); ndpushbk(pcn, ptn);
+      pic = icbnewbk(&pcn->data); pic->relkey = pn->name;
+      pic->in = bgl ? IN_GLOBAL_GET : IN_LOCAL_GET;
+    } break;
+    case NT_SUBSCRIPT: assert(false); break; /* dewasmified */
+    case NT_CALL: {
+      /* fixme */
+    } break;
+    case NT_INTRCALL: {
+      /* fixme */
+    } break;
+    case NT_CAST: {
+      pcn = compile_cast(pn, ndref(pn, 0), expr_compile(ndcref(pn, 1), prib, ret));
+    } break;
+    case NT_POSTFIX: {
+      switch (pn->op) {
+        case TT_DOT: {
+          node_t *pni = pn; buf_t fb; bufinit(&fb, sizeof(sym_t));
+          while (pni->nt == NT_POSTFIX && pni->op == TT_DOT) {
+            *(sym_t*)bufnewfr(&fb) = pni->name;
+            pni = ndref(pni, 0); 
+          }
+          pcn = compile_deref(pn, expr_compile(pni, prib, ret), &fb, true);
+          buffini(&fb);
+        } break;
+        case TT_PLUS_PLUS: case TT_MINUS_MINUS: {
+          node_t *pan = expr_compile(ndref(pn, 0), prib, ret);
+          numval_t v; tt_t op = pn->op == TT_PLUS_PLUS ? TT_PLUS : TT_MINUS;
+          pcn = compile_asncombo(pn, pan, op, compile_numlit(pn, TS_INT, (v.i = 1, &v)), true); 
+        } break;
+        case TT_ARROW: /* TT_ARROW was dewasmified into TT_DOT */
+        default: assert(false); 
+      }    
+    } break;
+    case NT_PREFIX: {
+      node_t *pn0 = ndref(pn, 0);
+      switch (pn->op) {
+        case TT_AND: {
+          if (pn0->nt == NT_PREFIX && pn0->op == TT_STAR) {
+            pn = ndref(pn0, 0); goto retry;
+          } else {
+            node_t *pni = pn0; buf_t fb; bufinit(&fb, sizeof(sym_t));
+            while (pni->nt == NT_POSTFIX && pni->op == TT_DOT) {
+              *(sym_t*)bufnewfr(&fb) = pni->name;
+              pni = ndref(pni, 0); 
+            }
+            pcn = compile_deref(pn, expr_compile(pni, prib, ret), &fb, false);
+            buffini(&fb);
+          }
+        } break;
+        case TT_STAR: {
+          if (pn0->nt == NT_PREFIX && pn0->op == TT_AND) {
+            pn = ndref(pn0, 0); goto retry;
+          } else { /* nb: struct/union pointers handled in TT_DOT */
+            node_t *pan = expr_compile(pn0, prib, ret); /* scalar ptr */
+            pcn = compile_deref(pn, pan, NULL, true); /* no extra (sub)field offset */ 
+          }
+        } break;
+        case TT_PLUS_PLUS: case TT_MINUS_MINUS: {
+          node_t *pan = expr_compile(pn0, prib, ret);
+          tt_t op = pn->op == TT_PLUS_PLUS ? TT_PLUS : TT_MINUS; 
+          pcn = compile_asncombo(pn, pan, op, compile_numlit(pn, TS_INT, (v.i = 1, &v)), false); 
+        } break;
+        default: {
+          node_t *pan = expr_compile(pn0, prib, ret);
+          pcn = compile_unary(pn, pn->op, pan);
+        } break;
+      }    
+    } break;
+    case NT_INFIX: {
+      node_t *pan1 = expr_compile(ndcref(pn, 0), prib, ret);
+      node_t *pan2 = expr_compile(ndcref(pn, 1), prib, ret);
+      switch (pn->op) {
+        case TT_AND_AND: {
+          pcn = compile_cond(pn, pan1, pan2, compile_numlit(pn, TS_INT, (v.i = 0, &v)));
+        } break;
+        case TT_OR_OR: {
+          pcn = compile_cond(pn, pan1, compile_numlit(pn, TS_INT, (v.i = 1, &v)), pan2);
+        } break;
+        default: {
+          pcn = compile_binary(pn, pan1, pn->op, pan2);
+        } break;
+      }
+    } break;
+    case NT_COND: {
+      node_t *pan1 = expr_compile(ndcref(pn, 0), prib, ret);
+      node_t *pan2 = expr_compile(ndcref(pn, 1), prib, ret);
+      node_t *pan3 = expr_compile(ndcref(pn, 2), prib, ret);
+      pcn = compile_cond(pn, pan1, pan2, pan3);
+    } break;
+    case NT_ASSIGN: {
+      node_t *pan1 = expr_compile(ndcref(pn, 0), prib, ret);
+      node_t *pan2 = expr_compile(ndcref(pn, 1), prib, ret);
+      tt_t op = (pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? pn->op - 1 : 0;  
+      pcn = compile_asncombo(pn, pan1, op, pan2, false); 
+    } break;
+    case NT_COMMA: {
+      size_t i; pcn = npnewcode(pn); assert(ndlen(pn) > 0);
+      for (i = 0; i < ndlen(pn); ++i) {
+        node_t *pcni = expr_compile(ndref(pn, i), prib, ret);
+        node_t *ptni = acode_type(pcni); bool drop = false;
+        if (i == ndlen(pn) - 1) ndcpy(ndinsnew(pcn, 0), ptni);
+        else drop = ptni->ts != TS_VOID;
+        ndswap(pcni, ndnewbk(pcn));
+        icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+        if (drop) icbnewbk(&pcn->data)->in = IN_DROP;
+      }
+    } break;
+    case NT_ACODE: {
+      pcn = pn;
+    } break;
+    case NT_TYPE: assert(false); break; /* inside cast only */  
+    /* leave statement layer as-is for now */
+    default: {
+      /* for now, dup outside structure and compile nodes */
+      size_t i;
+      pcn = npnew(pn->nt, pn->pwsid, pn->startpos); 
+      pcn->intr = pn->intr; pcn->op = pn->op;
+      pcn->name = pn->name; /* shouldn't be there */
+      for (i = 0; i < ndlen(pn); ++i) {
+        node_t *pcni = expr_compile(ndref(pn, i), prib, ret);
+        ndswap(pcni, ndnewbk(pcn));
+      }
+    } break;
+  }
+  if (!pcn) neprintf(pn, "failed to compile expression");
+  //assert(pcn->nt == NT_ACODE);
+  return pcn;  
+}
+
 /* compile function -- that is, convert it to asm tree */
 static node_t *fundef_compile(node_t *pdn)
 {
@@ -1314,12 +1834,11 @@ static node_t *fundef_compile(node_t *pdn)
   buffini(&rib);
   return prn;
 }
-#endif
 
 /* process function definition in main module */
 static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
 {
-  //node_t *pcn;
+  node_t *pcn;
   assert(pn->nt == NT_FUNDEF && pn->name && ndlen(pn) == 2);
   assert(ndref(pn, 0)->nt == NT_TYPE && ndref(pn, 0)->ts == TS_FUNCTION);
 #ifdef _DEBUG
@@ -1346,7 +1865,7 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
   fprintf(stderr, "fundef_wasmify ==>\n");
   dump_node(pn, stderr);
 #endif  
-#if 0
+#if 1
   /* compile to asm tree */
   pcn = fundef_compile(pn);
 #ifdef _DEBUG
