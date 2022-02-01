@@ -6,13 +6,15 @@
 /* WASM writer */
 
 typedef enum {
-  NT_I32 = 0x7F,
-  NT_I64 = 0x7E,
-  NT_F32 = 0x7D,
-  NT_F64 = 0x7C,
-  VT_V128 = 0x7B,
+  VT_UNKN = 0,
+  BT_VOID = 0x40,
+  RT_EXTERNREF = 0x6F,
   RT_FUNCREF = 0x70,
-  RT_EXTERNREF = 0x6F
+  VT_V128 = 0x7B,
+  VT_F64 = 0x7C,
+  VT_F32 = 0x7D,
+  VT_I64 = 0x7E,
+  VT_I32 = 0x7F
 } valtype_t;
 
 typedef enum {
@@ -465,6 +467,7 @@ extern void emit_module(module_t* pm);
 
 /* messaging and debug help */
 extern const char *instr_name(instr_t in);
+extern const char *valtype_name(valtype_t vt);
 extern instr_t name_instr(const char *name);
 extern insig_t instr_sig(instr_t in);
 extern const char *format_inscode(inscode_t *pic, chbuf_t *pcb);

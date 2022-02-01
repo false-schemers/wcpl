@@ -108,6 +108,20 @@ static bool ts_unsigned(ts_t ts)
   return false;
 }
 
+valtype_t ts_to_blocktype(ts_t ts)
+{
+  switch (ts) {
+    case TS_VOID:                   return BT_VOID;
+    case TS_LONG:  case TS_ULONG:   /* fall thru (assumes wasm32) */
+    case TS_PTR:                    /* fall thru (assumes wasm32) */
+    case TS_INT:   case TS_UINT:    return VT_I32;
+    case TS_LLONG: case TS_ULLONG:  return VT_I64;
+    case TS_FLOAT:                  return VT_F32;
+    case TS_DOUBLE:                 return VT_F64;
+  }
+  return VT_UNKN;
+}
+
 /* returns TS_INT/TS_UINT/TS_LLONG/TS_ULLONG/TS_FLOAT/TS_DOUBLE */
 static ts_t ts_integral_promote(ts_t ts)
 {
@@ -1632,14 +1646,20 @@ static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan
     ndswap(ndnewbk(pcn), pan1); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
     ndswap(ndnewbk(pcn), pan2); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
     ndswap(ndnewbk(pcn), pan3); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
-    icbnewbk(&pcn->data)->in = IN_SELECT;  
-    ndfini(&nt); return pcn;
+    icbnewbk(&pcn->data)->in = IN_SELECT;
   } else { 
     /* fixme: 'if'-'else' construct is needed */
+    inscode_t *pic; unsigned bt = ts_to_blocktype(pctn->ts); 
+    assert(bt >= VT_F64 && bt <= VT_I32);
+    ndswap(ndnewbk(pcn), pan1); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
+    pic = icbnewbk(&pcn->data); pic->in = IN_IF; pic->arg.u = bt;
+    ndswap(ndnewbk(pcn), pan2); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
+    icbnewbk(&pcn->data)->in = IN_ELSE;
+    ndswap(ndnewbk(pcn), pan3); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
+    icbnewbk(&pcn->data)->in = IN_END;
   }
-  ndfini(&nt);  
-  neprintf(prn, "compile_cond: not yet implemented");
-  return NULL;
+  ndfini(&nt); 
+  return pcn;
 }
 
 /* compile non-reduceable *x{.f...} returning scalar value (load) or pointer (!load) */
@@ -2039,17 +2059,17 @@ static void tn2vt(node_t *ptn, vtbuf_t *pvtb)
   switch (ptn->ts) {
     case TS_VOID: /* put nothing */ break;
     case TS_INT: case TS_UINT:  
-      *vtbnewbk(pvtb) = NT_I32; break;  
+      *vtbnewbk(pvtb) = VT_I32; break;  
     case TS_LONG: case TS_ULONG:  
     case TS_PTR: case TS_ARRAY:
       /* fixme: should depend on wasm32/wasm64 model */
-      *vtbnewbk(pvtb) = NT_I32; break;  
+      *vtbnewbk(pvtb) = VT_I32; break;  
     case TS_LLONG: case TS_ULLONG:  
-      *vtbnewbk(pvtb) = NT_I64; break;
+      *vtbnewbk(pvtb) = VT_I64; break;
     case TS_FLOAT: /* legal in wasm, no auto promotion to double */
-      *vtbnewbk(pvtb) = NT_F32; break;
+      *vtbnewbk(pvtb) = VT_F32; break;
     case TS_DOUBLE:
-      *vtbnewbk(pvtb) = NT_F64; break;
+      *vtbnewbk(pvtb) = VT_F64; break;
     default:
       neprintf(ptn, "function arguments of this type are not supported");
   }

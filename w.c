@@ -1004,6 +1004,22 @@ const char *instr_name(instr_t in)
   return s;
 }
 
+const char *valtype_name(valtype_t vt)
+{
+  const char *s = "?";
+  switch (vt) {
+    case BT_VOID: s = "void"; break;
+    case VT_I32: s = "i32"; break;
+    case VT_I64: s = "i64"; break;
+    case VT_F32: s = "f32"; break;
+    case VT_F64: s = "f64"; break;
+    case VT_V128: s = "v128"; break;
+    case RT_FUNCREF: s = "funcref"; break;
+    case RT_EXTERNREF: s = "externref"; break;
+  }
+  return s;
+}
+
 static buf_t g_nimap;
 
 instr_t name_instr(const char *name)
@@ -1053,7 +1069,7 @@ insig_t instr_sig(instr_t in)
       return INSIG_X;
     case IN_CALL_INDIRECT: case IN_RETURN_CALL_INDIRECT:
       return INSIG_X_Y;
-    case IN_SELECT:
+    case IN_SELECT_T:
       return INSIG_T;  
     case IN_LOCAL_GET:     case IN_LOCAL_SET:    case IN_LOCAL_TEE: 
     case IN_GLOBAL_GET:    case IN_GLOBAL_SET:   case IN_TABLE_GET:    case IN_TABLE_SET:
@@ -1091,7 +1107,12 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
   switch (instr_sig(pic->in)) {
     case INSIG_NONE:
       break;
-    case INSIG_BT:   case INSIG_L:   
+    case INSIG_BT: {
+      const char *s = valtype_name((valtype_t)pic->arg.u);
+      if (*s != '?') chbputf(pcb, " %s", s); 
+      else chbputf(pcb, " %llu", pic->arg.u); 
+    } break;
+    case INSIG_L:   
     case INSIG_X:    case INSIG_T:
     case INSIG_I32:  case INSIG_I64:
       if (pic->relkey) chbputf(pcb, " %s", symname(pic->relkey)); 
