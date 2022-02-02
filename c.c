@@ -1761,7 +1761,7 @@ static node_t *compile_deref(node_t *prn, node_t *pan, buf_t *psymb, bool load)
 }
 
 /* compile ++x --x x++ x-- and assignments; ptn is cast type or NULL */
-static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *ptn, tt_t op, node_t *pvn, bool post)
+static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op, node_t *pvn, bool post)
 {
   /* convert pan in place and return it */
   inscode_t lic, sic, *pic;
@@ -1771,6 +1771,14 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *ptn, tt_t op, 
     if (post) asm_getbk(&pan->data, &lic); /* old val stays on stack */
     else asm_popbk(&pan->data, &lic); /* old val is no longer on stack */
     if (op) pvn = compile_binary(prn, pdn, op, pvn); /* new val on stack */
+    if (!assign_compatible(acode_type(pan), pctn ? pctn : acode_type(pvn)))
+      neprintf(prn, "can't modify lval: unexpected type");
+    if (pctn && !cast_compatible(pctn, acode_type(pvn)))
+      neprintf(prn, "can't modify lval: impossible narrowing cast");
+    if (pctn && !same_type(pctn, acode_type(pvn))) 
+      pvn = compile_cast(prn, pctn, pvn); 
+    if (!same_type(acode_type(pan), acode_type(pvn))) 
+      pvn = compile_cast(prn, acode_type(pan), pvn); 
     ndswap(ndnewbk(pan), pvn); icbnewbk(&pan->data)->in = IN_PLACEHOLDER;
     asm_instr_load_to_store(&lic, &sic);
     if (post) { /* new val removed, old val remains */
@@ -1800,6 +1808,14 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *ptn, tt_t op, 
       asm_pushbk(&pln->data, &lic); lift_arg0(acode_type(pln));
       pvn = compile_binary(prn, pln, op, pvn); /* new val on stack */
     }
+    if (!assign_compatible(acode_type(pan), pctn ? pctn : acode_type(pvn)))
+      neprintf(prn, "can't modify lval: unexpected type");
+    if (pctn && !cast_compatible(pctn, acode_type(pvn)))
+      neprintf(prn, "can't modify lval: impossible narrowing cast");
+    if (pctn && !same_type(pctn, acode_type(pvn)))
+      pvn = compile_cast(prn, pctn, pvn); 
+    if (!same_type(acode_type(pan), acode_type(pvn))) 
+      pvn = compile_cast(prn, acode_type(pan), pvn); 
     ndswap(ndnewbk(pan), pvn); icbnewbk(&pan->data)->in = IN_PLACEHOLDER;
     asm_instr_load_to_store(&lic, &sic);
     if (post) { /* new val removed, old val remains */
@@ -1818,6 +1834,37 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *ptn, tt_t op, 
   }
 } 
 
+/* compile call expression */
+static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab)
+{
+  node_t *pcn = npnewcode(prn), *pftn = acode_type(pfn); size_t i;
+  inscode_t cic; 
+  if (pftn->ts != TS_FUNCTION) 
+    n2eprintf(ndref(prn, 0), prn, "can't call non-function type");
+  if (ndlen(pftn) != buflen(pab)+1)
+    n2eprintf(ndref(prn, 0), prn, "%d-parameter function called with %d arguments",
+      (int)ndlen(pftn)-1, (int)buflen(pab));
+  ndpushbk(pcn, ndref(pftn, 0));      
+  if (acode_rval_get(pfn)) {
+    inscode_t ic; asm_getbk(&pfn->data, &ic);
+    if (ic.in != IN_GLOBAL_GET) 
+      n2eprintf(ndref(prn, 0), prn, "not a function: %s", symname(ic.relkey));
+    cic.in = IN_CALL; cic.relkey = ic.relkey;
+  } else {
+    n2eprintf(ndref(prn, 0), prn, "NYI: non-identifier functions are not yet supported");
+  }
+  for (i = 0; i < buflen(pab); ++i) {
+    node_t **ppani = bufref(pab, i), *pani = *ppani;
+    node_t *ptni = acode_type(pani), *pftni = ndref(pftn, i+1);
+    if (pftni->nt == NT_VARDECL) pftni = ndref(pftni, 0);
+    if (!assign_compatible(pftni, ptni))
+      n2eprintf(pani, prn, "can't pass argument[%d]: unexpected type", i);
+    if (!same_type(pftni, ptni)) pani = compile_cast(prn, pftni, pani);
+    ndswap(ndnewbk(pcn), pani); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+  }
+  asm_pushbk(&pcn->data, &cic);
+  return pcn;
+}
 
 /* compile expression -- that is, convert it to asm tree */
 static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
@@ -1837,13 +1884,18 @@ retry:
     } break;
     case NT_SUBSCRIPT: assert(false); break; /* dewasmified */
     case NT_CALL: {
-      /* fixme */
+      size_t i; buf_t apb = mkbuf(sizeof(node_t*));
+      node_t *pfn = expr_compile(ndref(pn, 0), prib, ret);
+      for (i = 1; i < ndlen(pn); ++i)
+        *(node_t **)bufnewbk(&apb) = expr_compile(ndref(pn, i), prib, ret);
+      pcn = compile_call(pn, pfn, &apb);
+      buffini(&apb);
     } break;
     case NT_INTRCALL: {
       /* fixme */
     } break;
     case NT_CAST: {
-      pcn = compile_cast(pn, ndref(pn, 0), expr_compile(ndcref(pn, 1), prib, ret));
+      pcn = compile_cast(pn, ndref(pn, 0), expr_compile(ndref(pn, 1), prib, ret));
     } break;
     case NT_POSTFIX: {
       switch (pn->op) {
