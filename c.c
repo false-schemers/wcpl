@@ -1150,63 +1150,102 @@ static bool cast_compatible(const node_t *ptpn, const node_t *ptan)
 /* produce cast instructions to convert arithmetical types */
 static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
 {
-  instr_t in = 0;
+  instr_t in0 = 0, in = 0; 
   assert(ts_numerical(tsto) && ts_numerical(tsfrom));
   if (tsto == tsfrom) return; /* no change */
   switch (tsto) {
     case TS_DOUBLE:
       switch (tsfrom) {
-        case TS_FLOAT:               in = IN_F64_PROMOTE_F32;   break;
-        case TS_INT: case TS_LONG:   in = IN_F64_CONVERT_I32_S; break; /* LONG: wasm32 assumed */
-        case TS_UINT: case TS_ULONG: in = IN_F64_CONVERT_I32_U; break; /* ULONG: wasm32 assumed */
-        case TS_LLONG:               in = IN_F64_CONVERT_I64_S; break;
-        case TS_ULLONG:              in = IN_F64_CONVERT_I64_U; break;
+        case TS_FLOAT:                           in = IN_F64_PROMOTE_F32;   break;
+        case TS_CHAR:   in0 = IN_I32_EXTEND8_S,  in = IN_F64_CONVERT_I32_S; break; 
+        case TS_SHORT:  in0 = IN_I32_EXTEND16_S, in = IN_F64_CONVERT_I32_S; break; 
+        case TS_INT: case TS_LONG:/* wasm32 */   in = IN_F64_CONVERT_I32_S; break;
+        case TS_UCHAR:                           in = IN_F64_CONVERT_I32_U; break;
+        case TS_USHORT:                          in = IN_F64_CONVERT_I32_U; break;
+        case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_F64_CONVERT_I32_U; break;
+        case TS_LLONG:                           in = IN_F64_CONVERT_I64_S; break;
+        case TS_ULLONG:                          in = IN_F64_CONVERT_I64_U; break;
       } break;
     case TS_FLOAT:
       switch (tsfrom) {
-        case TS_DOUBLE:              in = IN_F32_DEMOTE_F64; break;
-        case TS_INT: case TS_LONG:   in = IN_F32_CONVERT_I32_S; break; /* LONG: wasm32 assumed */
-        case TS_UINT: case TS_ULONG: in = IN_F32_CONVERT_I32_U; break; /* ULONG: wasm32 assumed */
-        case TS_LLONG:               in = IN_F32_CONVERT_I64_S; break;
-        case TS_ULLONG:              in = IN_F32_CONVERT_I64_U; break;
+        case TS_DOUBLE:                          in = IN_F32_DEMOTE_F64;    break;
+        case TS_CHAR:   in0 = IN_I32_EXTEND8_S,  in = IN_F32_CONVERT_I32_S; break; 
+        case TS_SHORT:  in0 = IN_I32_EXTEND16_S, in = IN_F32_CONVERT_I32_S; break; 
+        case TS_INT: case TS_LONG:/* wasm32 */   in = IN_F32_CONVERT_I32_S; break;
+        case TS_UCHAR:                           in = IN_F32_CONVERT_I32_U; break;
+        case TS_USHORT:                          in = IN_F32_CONVERT_I32_U; break;
+        case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_F32_CONVERT_I32_U; break;
+        case TS_LLONG:                           in = IN_F32_CONVERT_I64_S; break;
+        case TS_ULLONG:                          in = IN_F32_CONVERT_I64_U; break;
       } break;
+    case TS_CHAR: case TS_SHORT: { /* replace upper bits w/sign bit */
+        inscode_t *pic; unsigned sh = (tsto == TS_CHAR) ? 24 : 16;
+        asm_numerical_cast(TS_INT, tsfrom, pdata); 
+        pic = icbnewbk(pdata); pic->in = IN_I32_CONST; pic->arg.u = sh;
+        icbnewbk(pdata)->in = IN_I32_SHL;
+        pic = icbnewbk(pdata); pic->in = IN_I32_CONST; pic->arg.u = sh;
+        icbnewbk(pdata)->in = IN_I32_SHR_S;
+        return;
+      } break;  
+    case TS_UCHAR: case TS_USHORT: { /* mask upper bits */
+        inscode_t *pic; unsigned m = (tsto == TS_CHAR) ? 0xFF : 0xFFFF;
+        asm_numerical_cast(TS_UINT, tsfrom, pdata);
+        pic = icbnewbk(pdata); pic->in = IN_I32_CONST; pic->arg.u = m;
+        icbnewbk(pdata)->in = IN_I32_AND;
+        return;
+      } break;  
     case TS_INT: case TS_LONG: /* LONG: wasm32 assumed */
       switch (tsfrom) {
-        case TS_DOUBLE:              in = IN_I32_TRUNC_F64_S; break;
-        case TS_FLOAT:               in = IN_I32_TRUNC_F32_S; break;
-        case TS_INT: case TS_LONG:   /* nop */ break; /* LONG: wasm32 assumed */
-        case TS_UINT: case TS_ULONG: /* nop */ break; /* ULONG: wasm32 assumed */
-        case TS_LLONG:               in = IN_I32_WRAP_I64; break;
-        case TS_ULLONG:              in = IN_I32_WRAP_I64; break;
+        case TS_DOUBLE:                          in = IN_I32_TRUNC_F64_S;   break;
+        case TS_FLOAT:                           in = IN_I32_TRUNC_F32_S;   break;
+        case TS_CHAR:                            in = IN_I32_EXTEND8_S;     break; 
+        case TS_SHORT:                           in = IN_I32_EXTEND16_S;    break; 
+        case TS_INT: case TS_LONG:/* wasm32 */   /* nop */                  break;
+        case TS_UCHAR:                           /* nop */                  break;
+        case TS_USHORT:                          /* nop */                  break;
+        case TS_UINT: case TS_ULONG:/* wasm32 */ /* nop */                  break;
+        case TS_LLONG:                           in = IN_I32_WRAP_I64;      break;
+        case TS_ULLONG:                          in = IN_I32_WRAP_I64;      break;
       } break;
     case TS_UINT: case TS_ULONG: /* ULONG: wasm32 assumed */
       switch (tsfrom) {
-        case TS_DOUBLE:              in = IN_I32_TRUNC_F64_U; break;
-        case TS_FLOAT:               in = IN_I32_TRUNC_F32_U; break;
-        case TS_INT: case TS_LONG:   /* nop */ break; /* LONG: wasm32 assumed */
-        case TS_UINT: case TS_ULONG: /* nop */ break; /* ULONG: wasm32 assumed */
-        case TS_LLONG:               in = IN_I32_WRAP_I64; break;
-        case TS_ULLONG:              in = IN_I32_WRAP_I64; break;
+        case TS_DOUBLE:                          in = IN_I32_TRUNC_F64_U;   break;
+        case TS_FLOAT:                           in = IN_I32_TRUNC_F32_U;   break;
+        case TS_CHAR:                            in = IN_I32_EXTEND8_S;     break; 
+        case TS_SHORT:                           in = IN_I32_EXTEND16_S;    break; 
+        case TS_INT: case TS_LONG:/* wasm32 */   /* nop */                  break;
+        case TS_UCHAR:                           /* nop */                  break;
+        case TS_USHORT:                          /* nop */                  break;
+        case TS_UINT: case TS_ULONG:/* wasm32 */ /* nop */                  break;
+        case TS_LLONG:                           in = IN_I32_WRAP_I64;      break;
+        case TS_ULLONG:                          in = IN_I32_WRAP_I64;      break;
       } break;
     case TS_LLONG:
       switch (tsfrom) {
-        case TS_DOUBLE:              in = IN_I64_TRUNC_F64_S; break;
-        case TS_FLOAT:               in = IN_I64_TRUNC_F32_S; break;
-        case TS_INT: case TS_LONG:   in = IN_I64_EXTEND_I32_S; break; /* LONG: wasm32 assumed */
-        case TS_UINT: case TS_ULONG: in = IN_I64_EXTEND_I32_U; break; /* ULONG: wasm32 assumed */
-        case TS_LLONG:               /* nop */ break;
-        case TS_ULLONG:              /* nop */ break;
+        case TS_DOUBLE:                          in = IN_I64_TRUNC_F64_S;   break;
+        case TS_FLOAT:                           in = IN_I64_TRUNC_F32_S;   break;
+        case TS_CHAR:  in0 = IN_I32_EXTEND8_S;   in = IN_I64_EXTEND_I32_S;  break; 
+        case TS_SHORT: in0 = IN_I32_EXTEND16_S;  in = IN_I64_EXTEND_I32_S;  break; 
+        case TS_INT: case TS_LONG:/* wasm32 */   in = IN_I64_EXTEND_I32_S;  break;
+        case TS_UCHAR: case TS_USHORT:
+        case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_I64_EXTEND_I32_U;  break;
+        case TS_LLONG:                           /* nop */                  break;
+        case TS_ULLONG:                          /* nop */                  break;
       } break;
     case TS_ULLONG:
       switch (tsfrom) {
-        case TS_DOUBLE:              in = IN_I64_TRUNC_F64_U; break;
-        case TS_FLOAT:               in = IN_I64_TRUNC_F32_U; break;
-        case TS_INT: case TS_LONG:   in = IN_I64_EXTEND_I32_S; break; /* LONG: wasm32 assumed */
-        case TS_UINT: case TS_ULONG: in = IN_I64_EXTEND_I32_U; break; /* ULONG: wasm32 assumed */
-        case TS_LLONG:               /* nop */ break;
-        case TS_ULLONG:              /* nop */ break;
+        case TS_DOUBLE:                          in = IN_I64_TRUNC_F64_U;   break;
+        case TS_FLOAT:                           in = IN_I64_TRUNC_F32_U;   break;
+        case TS_CHAR:  in0 = IN_I32_EXTEND8_S;   in = IN_I64_EXTEND_I32_S;  break; 
+        case TS_SHORT: in0 = IN_I32_EXTEND16_S;  in = IN_I64_EXTEND_I32_S;  break; 
+        case TS_INT: case TS_LONG:/* wasm32 */   in = IN_I64_EXTEND_I32_S;  break;
+        case TS_UCHAR: case TS_USHORT:
+        case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_I64_EXTEND_I32_U;  break;
+        case TS_LLONG:                           /* nop */                  break;
+        case TS_ULLONG:                          /* nop */                  break;
       } break;
   }
+  if (in0) icbnewbk(pdata)->in = in0;
   if (in) icbnewbk(pdata)->in = in;
 }
 
@@ -1454,6 +1493,19 @@ static void asm_numerical_constant(ts_t ts, numval_t *pval, icbuf_t *pdata)
   }
 }
 
+/* push instruction to pdata */
+static void asm_pushbk(icbuf_t *pdata, inscode_t *pic)
+{
+  *icbnewbk(pdata) = *pic;
+}
+
+/* fetch last instruction from pdata into pic */
+static void asm_getbk(icbuf_t *pdata, inscode_t *pic)
+{
+  size_t n = icblen(pdata); assert(n > 0);
+  *pic = *icbref(pdata, n-1);
+}
+
 /* pop last instruction from pdata into pic */
 static void asm_popbk(icbuf_t *pdata, inscode_t *pic)
 {
@@ -1529,6 +1581,15 @@ static node_t *compile_numlit(node_t *prn, ts_t ts, numval_t *pnv)
   return pcn;
 }
 
+/* compile identifier reference (as rval); ptn is type node (copied) */
+static node_t *compile_idref(node_t *prn, bool global, sym_t name, const node_t *ptn)
+{
+  inscode_t *pic; node_t *pcn = npnewcode(prn); ndpushbk(pcn, ptn);
+  pic = icbnewbk(&pcn->data); pic->relkey = name;
+  pic->in = global ? IN_GLOBAL_GET : IN_LOCAL_GET;
+  return pcn;
+}
+
 /* compile regular binary operator expressions (+ - * / % << >> = != < <= > >=) */
 static node_t *compile_binary(node_t *prn, node_t *pan1, tt_t op, node_t *pan2)
 {
@@ -1545,23 +1606,34 @@ static node_t *compile_binary(node_t *prn, node_t *pan1, tt_t op, node_t *pan2)
     ndfini(&rtn);
     if (asm_binary(rts, op, &pcn->data)) return pcn;
   } else if (ts1 == TS_PTR && ts_numerical(ts2) && (op == TT_PLUS || op == TT_MINUS)) {
-    size_t size, align; numval_t v; node_t *pmn, *pcn, *pnn, *psn;
+    size_t size, align; numval_t v; node_t *psn;
     measure_type(ndref(patn1, 0), prn, &size, &align, 0);
-    pmn = compile_numlit(prn, TS_ULONG, (v.u = size, &v));
-    pcn = compile_cast(prn, acode_type(pmn), pan1);
-    pnn = compile_binary(prn, pan2, TT_STAR, pmn); /* fixme: constant fold oportunity */
-    psn = compile_binary(prn, pcn, op, pnn);
+    if (size > 1) {
+      node_t *pmn = compile_numlit(prn, TS_ULONG, (v.u = size, &v));
+      node_t *pcn = compile_cast(prn, acode_type(pmn), pan1);
+      node_t *pnn = compile_binary(prn, pan2, TT_STAR, pmn); /* fixme: constant fold oportunity */
+      psn = compile_binary(prn, pcn, op, pnn);
+    } else { /* byte pointer, no need to scale */
+      node_t *pcn = compile_cast(prn, ndsettype(npalloc(), TS_ULONG), pan1);
+      psn = compile_binary(prn, pcn, op, pan2); 
+    }
     return compile_cast(prn, patn1, psn); 
   } else if (ts_numerical(ts1) && ts2 == TS_PTR && op == TT_PLUS) {
     return compile_binary(prn, pan2, op, pan1);
   } else if (ts1 == TS_PTR && ts2 == TS_PTR && op == TT_MINUS) {
     if (same_type(patn1, patn2)) {
-      size_t size, align; numval_t v; node_t *pmn, *pdn;
+      size_t size, align; numval_t v;
       measure_type(ndref(patn1, 0), prn, &size, &align, 0);
-      pmn = compile_numlit(prn, TS_ULONG, (v.u = size, &v));
-      pdn = compile_binary(prn, compile_cast(prn, acode_type(pmn), pan1), TT_MINUS, 
-                                compile_cast(prn, acode_type(pmn), pan2));
-      return compile_binary(prn, pdn, TT_SLASH, pmn); 
+      if (size > 1) { 
+        node_t *pmn = compile_numlit(prn, TS_LONG, (v.i = size, &v));
+        node_t *pdn = compile_binary(prn, compile_cast(prn, acode_type(pmn), pan1), TT_MINUS, 
+                                          compile_cast(prn, acode_type(pmn), pan2));
+        return compile_binary(prn, pdn, TT_SLASH, pmn); 
+      } else { /* byte pointer, no need to scale */
+        node_t *ptn = ndsettype(npalloc(), TS_LONG);
+        return compile_binary(prn, compile_cast(prn, ptn, pan1), TT_MINUS, 
+                                   compile_cast(prn, ptn, pan2));
+      }
     } 
     n2eprintf(ndref(prn, 0), prn, "incompatible pointer types for subtraction operation");
   } else if (ts1 == TS_PTR && ts2 == TS_PTR && op >= TT_LT && op <= TT_NE) {
@@ -1622,13 +1694,6 @@ node_t *compile_booltest(node_t *prn, node_t *pan)
     return pan;
   }
 }
-
-/* compile ++x --x x++ x-- and assignments */
-static node_t *compile_asncombo(node_t *prn, node_t *pan, tt_t op, node_t *pvn, bool post)
-{
-  neprintf(prn, "compile_asncombo: not yet implemented");
-  return NULL;
-} 
 
 /* compile x ? y : z operator */
 static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan3)
@@ -1693,6 +1758,62 @@ static node_t *compile_deref(node_t *prn, node_t *pan, buf_t *psymb, bool load)
   } 
 }
 
+/* compile ++x --x x++ x-- and assignments; ptn is cast type or NULL */
+static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *ptn, tt_t op, node_t *pvn, bool post)
+{
+  /* convert pan in place and return it */
+  inscode_t lic, sic, *pic;
+  if (acode_rval_get(pan)) {
+    /* pan is a single IN_GLOBAL_GET/IN_LOCAL_GET instruction */
+    node_t *pdn = op ? npdup(pan) : NULL; /* needed for combo */
+    if (post) asm_getbk(&pan->data, &lic); /* old val stays on stack */
+    else asm_popbk(&pan->data, &lic); /* old val is no longer on stack */
+    if (op) pvn = compile_binary(prn, pdn, op, pvn); /* new val on stack */
+    ndswap(ndnewbk(pan), pvn); icbnewbk(&pan->data)->in = IN_PLACEHOLDER;
+    asm_instr_load_to_store(&lic, &sic);
+    if (post) { /* new val removed, old val remains */
+      asm_pushbk(&pan->data, &sic); 
+    } else if (sic.in == IN_LOCAL_SET) { /* short way to keep new val */
+      sic.in = IN_LOCAL_TEE;
+      asm_pushbk(&pan->data, &sic); 
+    } else { /* re-fetch to get new val */
+      asm_pushbk(&pan->data, &sic);
+      asm_pushbk(&pan->data, &lic);
+    }
+    return pan;    
+  } else if (acode_rval_load(pan)) {
+    /* pan code ends in one of IN_I32_LOAD..IN_I64_LOAD32_U instructions */
+    sym_t pname = intern("p$"); node_t *ptn, *pdn;
+    asm_popbk(&pan->data, &lic); /* now pointer is on stack, save it as p$ */
+    pic = icbnewbk(&pan->data); pic->relkey = pname;
+    if (post) pic->in = IN_LOCAL_TEE; /* ptr val stays on stack */
+    else pic->in = IN_LOCAL_SET;  /* ptr val is no longer on stack */
+    if (post) asm_pushbk(&pan->data, &lic); /* old val on stack */
+    ptn = wrap_type_pointer(npdup(acode_type(pan))); 
+    pdn = compile_idref(prn, false, pname, ptn);
+    ndcpy(ndnewbk(pan), pdn); icbnewbk(&pan->data)->in = IN_PLACEHOLDER;
+    if (op) {
+      node_t *pln = npdup(pdn); 
+      asm_pushbk(&pln->data, &lic); lift_arg0(acode_type(pln));
+      pvn = compile_binary(prn, pln, op, pvn); /* new val on stack */
+    }
+    ndswap(ndnewbk(pan), pvn); icbnewbk(&pan->data)->in = IN_PLACEHOLDER;
+    asm_instr_load_to_store(&lic, &sic);
+    if (post) { /* new val removed, old val remains */
+      asm_pushbk(&pan->data, &sic);
+    } else { /* re-fetch to get new val */
+      asm_pushbk(&pan->data, &sic);
+      ndcpy(ndnewbk(pan), pdn); icbnewbk(&pan->data)->in = IN_PLACEHOLDER;
+      asm_pushbk(&pan->data, &lic);
+    }
+    return pan;    
+  } else {
+    neprintf(prn, "not a valid lvalue");
+    return NULL;
+  }
+} 
+
+
 /* compile expression -- that is, convert it to asm tree */
 static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
 {
@@ -1705,12 +1826,9 @@ retry:
       asm_numerical_constant(pn->ts, &pn->val, &pcn->data);
     } break; 
     case NT_IDENTIFIER: {
-      bool bgl; inscode_t *pic;
-      const node_t *ptn = lookup_var_type(pn->name, prib, &bgl);
+      bool bgl; const node_t *ptn = lookup_var_type(pn->name, prib, &bgl);
       if (!ptn) neprintf(pn, "compile: undefined identifier");
-      pcn = npnewcode(pn); ndpushbk(pcn, ptn);
-      pic = icbnewbk(&pcn->data); pic->relkey = pn->name;
-      pic->in = bgl ? IN_GLOBAL_GET : IN_LOCAL_GET;
+      pcn = compile_idref(pn, bgl, pn->name, ptn);
     } break;
     case NT_SUBSCRIPT: assert(false); break; /* dewasmified */
     case NT_CALL: {
@@ -1730,13 +1848,16 @@ retry:
             *(sym_t*)bufnewfr(&fb) = pni->name;
             pni = ndref(pni, 0); 
           }
-          pcn = compile_deref(pn, expr_compile(pni, prib, ret), &fb, true);
+          if (pni->nt == NT_PREFIX && pni->op == TT_STAR)
+            pcn = compile_deref(pn, expr_compile(ndref(pni, 0), prib, ret), &fb, true);
           buffini(&fb);
         } break;
         case TT_PLUS_PLUS: case TT_MINUS_MINUS: {
-          node_t *pan = expr_compile(ndref(pn, 0), prib, ret);
+          node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
+          node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL;
+          node_t *pan = expr_compile(pln, prib, ret);
           numval_t v; tt_t op = pn->op == TT_PLUS_PLUS ? TT_PLUS : TT_MINUS;
-          pcn = compile_asncombo(pn, pan, op, compile_numlit(pn, TS_INT, (v.i = 1, &v)), true); 
+          pcn = compile_asncombo(pn, pan, ptn, op, compile_numlit(pn, TS_INT, (v.i = 1, &v)), true); 
         } break;
         case TT_ARROW: /* TT_ARROW was dewasmified into TT_DOT */
         default: assert(false); 
@@ -1767,9 +1888,11 @@ retry:
           }
         } break;
         case TT_PLUS_PLUS: case TT_MINUS_MINUS: {
-          node_t *pan = expr_compile(pn0, prib, ret);
+          node_t *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
+          node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL;
+          node_t *pan = expr_compile(pln, prib, ret);
           tt_t op = pn->op == TT_PLUS_PLUS ? TT_PLUS : TT_MINUS; 
-          pcn = compile_asncombo(pn, pan, op, compile_numlit(pn, TS_INT, (v.i = 1, &v)), false); 
+          pcn = compile_asncombo(pn, pan, ptn, op, compile_numlit(pn, TS_INT, (v.i = 1, &v)), false); 
         } break;
         default: {
           node_t *pan = expr_compile(pn0, prib, ret);
@@ -1799,10 +1922,12 @@ retry:
       pcn = compile_cond(pn, pan1, pan2, pan3);
     } break;
     case NT_ASSIGN: {
-      node_t *pan1 = expr_compile(ndcref(pn, 0), prib, ret);
+      node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
+      node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL;
+      node_t *pan = expr_compile(pln, prib, ret);
       node_t *pan2 = expr_compile(ndcref(pn, 1), prib, ret);
       tt_t op = (pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? pn->op - 1 : 0;  
-      pcn = compile_asncombo(pn, pan1, op, pan2, false); 
+      pcn = compile_asncombo(pn, pan, ptn, op, pan2, false); 
     } break;
     case NT_COMMA: {
       size_t i; pcn = npnewcode(pn); assert(ndlen(pn) > 0);

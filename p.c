@@ -3528,7 +3528,11 @@ static void dump(node_t *pn, FILE* fp, int indent)
     case NT_ACODE: {
       size_t i, ri = 1; chbuf_t cb = mkchb();
       node_t *ptn = ndref(pn, 0);
-      if (ndlen(ptn) == 0) {
+      if (ptn->ts == TS_PTR && ndlen(ndref(ptn, 0)) == 0) {
+        ptn = ndref(ptn, 0);
+        if (!ptn->name) fprintf(fp, "(acode (type ptr (type %s))", ts_name(ptn->ts));
+        else fprintf(fp, "(acode (type ptr (type %s %s))", ts_name(ptn->ts), symname(ptn->name));
+      } else if (ndlen(ptn) == 0) {
         if (!ptn->name) fprintf(fp, "(acode (type %s)", ts_name(ptn->ts));
         else fprintf(fp, "(acode (type %s %s)", ts_name(ptn->ts), symname(ptn->name));
       } else {
