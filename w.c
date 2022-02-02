@@ -1103,6 +1103,11 @@ insig_t instr_sig(instr_t in)
 const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
 {
   chbclear(pcb);
+  if (pic->in == IN_REGDECL) {
+    const char *ts = valtype_name((valtype_t)pic->arg.u);
+    chbputf(pcb, "register %s %s", ts, symname(pic->relkey)); 
+    return chbdata(pcb);
+  }
   chbputs(instr_name(pic->in), pcb);
   switch (instr_sig(pic->in)) {
     case INSIG_NONE:

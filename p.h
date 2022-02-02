@@ -191,6 +191,12 @@ extern node_t *npnew(nt_t nt, int pwsid, int startpos);
 extern node_t *npnewcode(const node_t *psn);
 extern node_t *npdup(const node_t *pr);
 
+/* unique register name pool */
+extern void init_regpool(void);
+extern void fini_regpool(void);
+extern void clear_regpool(void);
+extern sym_t rpalloc(valtype_t vt);
+
 /* simple comparison of NT_TYPE nodes for equivalence */
 extern bool same_type(const node_t *pctn1, const node_t *pctn2);
 

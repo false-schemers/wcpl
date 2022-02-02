@@ -1746,6 +1746,44 @@ node_t *npdup(const node_t *pr)
 }
 
 
+/* unique register name pool */
+
+static int g_rnum_f64 = 0;
+static int g_rnum_f32 = 0;
+static int g_rnum_i64 = 0;
+static int g_rnum_i32 = 0;
+
+void init_regpool(void)
+{
+  g_rnum_f64 = 0;
+  g_rnum_f32 = 0;
+  g_rnum_i64 = 0;
+  g_rnum_i32 = 0;
+}
+
+void fini_regpool(void)
+{
+  init_regpool();
+}
+
+void clear_regpool(void)
+{
+  init_regpool();
+}
+
+sym_t rpalloc(valtype_t vt)
+{
+  switch (vt) {
+    case VT_F64: return internf("d%d$",  ++g_rnum_f64); 
+    case VT_F32: return internf("d%d$",  ++g_rnum_f32); 
+    case VT_I64: return internf("ll%d$", ++g_rnum_i64); 
+    case VT_I32: return internf("i%d$",  ++g_rnum_i32); 
+    default: assert(false);
+  }
+  return 0;
+}
+
+
 /* node builders */
 
 /* wrap node into nt node as a subnode */
@@ -2356,7 +2394,7 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
     parse_asm_code(pw, psn, &nd);
     ndfini(&nd);
   } else {
-    /* regular instr */
+    /* declaration or regular instr */
     inscode_t *pic = bufnewbk(&pan->data);
     chbuf_t cb = mkchb(); tt_t tt; instr_t in;
     tt = peekt(pw);
@@ -2373,6 +2411,23 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
           chbputs(pw->tokstr, &cb); dropt(pw);
         }
       }
+    }
+    if (streql(chbdata(&cb), "register")) {
+      valtype_t vt = 0;
+      tt = peekt(pw);
+      if (streql(pw->tokstr, "f64")) vt = VT_F64;
+      else if (streql(pw->tokstr, "f32")) vt = VT_F32;
+      else if (streql(pw->tokstr, "i64")) vt = VT_I64;
+      else if (streql(pw->tokstr, "i32")) vt = VT_I32;
+      else if (streql(pw->tokstr, "funcref")) vt = RT_FUNCREF;
+      else if (streql(pw->tokstr, "externref")) vt = RT_EXTERNREF;
+      else reprintf(pw, pw->pos, "unexpected register type");
+      dropt(pw);
+      pic->in = IN_REGDECL;
+      pic->relkey = getid(pw);
+      pic->arg.u = vt;  
+      chbfini(&cb);
+      return;
     }
     if (!chblen(&cb)) reprintf(pw, pw->pos, "instruction name expected");
     in = name_instr(chbdata(&cb));

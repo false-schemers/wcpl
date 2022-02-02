@@ -291,7 +291,8 @@ typedef enum {
   IN_TABLE_FILL /* x */  = 0xFC11,
   /* bunch of vector instructions follow */
   /* ... */
-  IN_PLACEHOLDER = -1 /* for internal use */
+  IN_PLACEHOLDER = -1, /* for internal use */
+  IN_REGDECL = -2, /* for internal use */
 } instr_t;
 
 typedef enum {
@@ -360,6 +361,7 @@ typedef buf_t icbuf_t;
 #define icbfini(pb) buffini(pb)
 #define icblen(pb) buflen(pb)
 #define icbref(pb, i) ((inscode_t*)bufref(pb, i))
+#define icbnewfr(pb) ((inscode_t*)bufnewfr(pb))
 #define icbnewbk(pb) ((inscode_t*)bufnewbk(pb))
 #define icbpopbk(pb) bufpopbk(pb)
 

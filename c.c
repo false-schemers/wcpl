@@ -41,6 +41,7 @@ void init_compiler(dsbuf_t *plibv)
   bufinit(&g_dsmap, sizeof(dsmelt_t));
   init_workspaces();
   init_nodepool();
+  init_regpool();
   init_symbols();
 }
 
@@ -54,6 +55,7 @@ void fini_compiler(void)
   buffini(&g_dsmap);
   fini_workspaces();
   fini_nodepool();
+  fini_regpool();
   fini_symbols();
 }
 
@@ -1783,7 +1785,8 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *ptn, tt_t op, 
     return pan;    
   } else if (acode_rval_load(pan)) {
     /* pan code ends in one of IN_I32_LOAD..IN_I64_LOAD32_U instructions */
-    sym_t pname = intern("p$"); node_t *ptn, *pdn;
+    sym_t pname = rpalloc(VT_I32); /* function-unique register name (wasm32) */
+    node_t *ptn, *pdn;
     asm_popbk(&pan->data, &lic); /* now pointer is on stack, save it as p$ */
     pic = icbnewbk(&pan->data); pic->relkey = pname;
     if (post) pic->in = IN_LOCAL_TEE; /* ptr val stays on stack */
@@ -1806,6 +1809,8 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *ptn, tt_t op, 
       ndcpy(ndnewbk(pan), pdn); icbnewbk(&pan->data)->in = IN_PLACEHOLDER;
       asm_pushbk(&pan->data, &lic);
     }
+    pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; 
+    pic->relkey = pname; pic->arg.u = VT_I32; /* wasm32 */ 
     return pan;    
   } else {
     neprintf(prn, "not a valid lvalue");
@@ -2011,6 +2016,7 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
   node_t *pcn;
   assert(pn->nt == NT_FUNDEF && pn->name && ndlen(pn) == 2);
   assert(ndref(pn, 0)->nt == NT_TYPE && ndref(pn, 0)->ts == TS_FUNCTION);
+  clear_regpool(); /* reset reg name generator */
 #ifdef _DEBUG
   fprintf(stderr, "process_fundef:\n");
   dump_node(pn, stderr);
