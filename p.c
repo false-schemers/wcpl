@@ -3331,6 +3331,20 @@ void n2eprintf(const node_t *pn, const node_t *pn2, const char *fmt, ...)
   else exit(1);
 }
 
+/* report node warning, possibly printing location information */
+void nwprintf(const node_t *pn, const char *fmt, ...)
+{
+  pws_t *pw = NULL; int startpos = -1;
+  va_list args;
+  va_start(args, fmt); 
+  if (pn && pn->pwsid >= 0 && pn->pwsid < (int)buflen(&g_pwsbuf)) {
+    pw = *(pws_t**)bufref(&g_pwsbuf, (size_t)pn->pwsid);
+    startpos = pn->startpos;
+  }
+  vrprintf(pw, startpos, fmt, args); 
+  va_end(args); 
+}
+
 
 /* dump nodes in s-expression format */
 

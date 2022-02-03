@@ -467,7 +467,7 @@ extern void modfini(module_t* pm);
 /* top-level emits */
 extern void emit_module(module_t* pm);
 
-/* messaging and debug help */
+/* introspection */
 extern const char *instr_name(instr_t in);
 extern const char *valtype_name(valtype_t vt);
 extern instr_t name_instr(const char *name);

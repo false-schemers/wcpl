@@ -240,6 +240,8 @@ extern void parse_translation_unit(pws_t *pw, ndbuf_t *pnb);
 extern void neprintf(const node_t *pn, const char *fmt, ...);
 /* report node error, printing second node location, and exit */
 extern void n2eprintf(const node_t *pn, const node_t *pn2, const char *fmt, ...);
+/* report node warning, possibly printing location information */
+extern void nwprintf(const node_t *pn, const char *fmt, ...);
 /* post imported/forward symbol to symbol table */
 extern const node_t *post_symbol(sym_t mod, node_t *pvn);
 /* return ptr to NT_IMPORT node or NULL if name is not declared */

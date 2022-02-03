@@ -962,8 +962,8 @@ static void expr_wasmify(node_t *pn, buf_t *pvib)
         assert(ndlen(pn) == 1);
         expr_wasmify(ndref(pn, 0), pvib);
       }
-      if (pvi) { /* return ... => freea(fp$), return ... */
-        wrap_node(pn, NT_COMMA);
+      if (pvi) { /* return ... => { freea(fp$); return ... } */
+        wrap_node(pn, NT_BLOCK);
         psn = ndinsfr(pn, NT_INTRCALL); psn->intr = INTR_FREEA;
         psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = fp;
       }
@@ -1534,7 +1534,7 @@ static void asm_popbk(icbuf_t *pdata, inscode_t *pic)
 }
 
 
-/* acode node predicates */
+/* acode node predicates and helpers */
 
 static node_t *acode_type(node_t *pcn)
 {
@@ -1590,6 +1590,20 @@ static int acode_rval_load(node_t *pan)
   } else return 0;
 }
 
+/* copy contents of pan code to the end of pcn code */
+static node_t *acode_copyin(node_t *pcn, node_t *pan)
+{
+  ndcpy(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+  return pcn;
+}
+
+/* move contents of pan code to the end of pcn code */
+static node_t *acode_swapin(node_t *pcn, node_t *pan)
+{
+  ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+  return pcn;
+}
+
 
 /* compiler helpers; prn is original reference node for errors */
 
@@ -1601,7 +1615,7 @@ static node_t *compile_cast(node_t *prn, node_t *ptn, node_t *pan)
   else if (!cast_compatible(ptn, patn))
     n2eprintf(ndref(prn, 1), prn, "compile: impossible cast");
   pcn = npnewcode(prn); ndcpy(ndnewbk(pcn), ptn);
-  ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+  acode_swapin(pcn, pan);
   if (ptn->ts == TS_VOID) icbnewbk(&pcn->data)->in = IN_DROP;
   else asm_cast(ptn, patn, &pcn->data);
   return pcn;
@@ -1635,8 +1649,7 @@ static node_t *compile_binary(node_t *prn, node_t *pan1, tt_t op, node_t *pan2)
     if (rts != ts1) pan1 = compile_cast(prn, &rtn, pan1); /* fixme: constant fold oportunity */
     if (rts != ts2) pan2 = compile_cast(prn, &rtn, pan2); /* fixme: constant fold oportunity */
     prtn = ndcpy(ndnewbk(pcn), &rtn); if (op >= TT_LT && op <= TT_NE) prtn->ts = TS_INT;
-    ndswap(ndnewbk(pcn), pan1); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
-    ndswap(ndnewbk(pcn), pan2); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+    acode_swapin(pcn, pan1); acode_swapin(pcn, pan2);
     ndfini(&rtn);
     if (asm_binary(rts, op, &pcn->data)) return pcn;
   } else if (ts1 == TS_PTR && ts_numerical(ts2) && (op == TT_PLUS || op == TT_MINUS)) {
@@ -1660,13 +1673,15 @@ static node_t *compile_binary(node_t *prn, node_t *pan1, tt_t op, node_t *pan2)
       measure_type(ndref(patn1, 0), prn, &size, &align, 0);
       if (size > 1) { 
         node_t *pmn = compile_numlit(prn, TS_LONG, (v.i = size, &v));
-        node_t *pdn = compile_binary(prn, compile_cast(prn, acode_type(pmn), pan1), TT_MINUS, 
-                                          compile_cast(prn, acode_type(pmn), pan2));
+        node_t *p1n = compile_cast(prn, acode_type(pmn), pan1);
+        node_t *p2n = compile_cast(prn, acode_type(pmn), pan2);
+        node_t *pdn = compile_binary(prn, p1n, TT_MINUS, p2n);
         return compile_binary(prn, pdn, TT_SLASH, pmn); 
       } else { /* byte pointer, no need to scale */
         node_t *ptn = ndsettype(npalloc(), TS_LONG);
-        return compile_binary(prn, compile_cast(prn, ptn, pan1), TT_MINUS, 
-                                   compile_cast(prn, ptn, pan2));
+        node_t *p1n = compile_cast(prn, ptn, pan1);
+        node_t *p2n = compile_cast(prn, ptn, pan2);
+        return compile_binary(prn, p1n, TT_MINUS, p2n);
       }
     } 
     n2eprintf(ndref(prn, 0), prn, "incompatible pointer types for subtraction operation");
@@ -1691,24 +1706,24 @@ static node_t *compile_unary(node_t *prn, tt_t op, node_t *pan)
     if (op == TT_MINUS && rts != TS_FLOAT && rts != TS_DOUBLE) {
       /* no NEG instructions for integers; -x => 0-x */
       asm_numerical_constant(rts, (v.i = 0, &v), &pcn->data); 
-      ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+      acode_swapin(pcn, pan);
       if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
       if (asm_binary(rts, TT_MINUS, &pcn->data)) return pcn;
     } else if (op == TT_TILDE && rts != TS_FLOAT && rts != TS_DOUBLE) {
       /* no INV instructions for integers; ~x => x^-1 */
       asm_numerical_constant(rts, (v.i = -1, &v), &pcn->data); 
-      ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+      acode_swapin(pcn, pan);
       if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
       if (asm_binary(rts, TT_XOR, &pcn->data)) return pcn;
     } else if (op == TT_NOT && (rts == TS_FLOAT || rts == TS_DOUBLE)) {
       /* no EQZ instructions for floats; !x => x==0.0 */
       if (rts == TS_FLOAT) v.f = 0.0; else v.d = 0.0;
       asm_numerical_constant(rts, &v, &pcn->data); 
-      ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+      acode_swapin(pcn, pan);
       if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
       if (asm_binary(rts, TT_EQ, &pcn->data)) return pcn;
     } else { /* regular case */
-      ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+      acode_swapin(pcn, pan);
       if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
       if (asm_unary(rts, op, &pcn->data)) return pcn;
     }
@@ -1742,19 +1757,19 @@ static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan
   ndcpy(ndnewbk(pcn), pctn);
   if (acode_simple_noeff(pan2) && acode_simple_noeff(pan3)) {
     /* both branches can be computed cheaply with no effects; use SELECT */
-    ndswap(ndnewbk(pcn), pan1); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
-    ndswap(ndnewbk(pcn), pan2); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
-    ndswap(ndnewbk(pcn), pan3); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+    acode_swapin(pcn, pan1); 
+    acode_swapin(pcn, pan2); 
+    acode_swapin(pcn, pan3);
     icbnewbk(&pcn->data)->in = IN_SELECT;
   } else { 
-    /* fixme: 'if'-'else' construct is needed */
+    /* fixme: 'if'-'else' block is needed */
     inscode_t *pic; unsigned bt = ts_to_blocktype(pctn->ts); 
     assert(bt >= VT_F64 && bt <= VT_I32);
-    ndswap(ndnewbk(pcn), pan1); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
+    acode_swapin(pcn, pan1);
     pic = icbnewbk(&pcn->data); pic->in = IN_IF; pic->arg.u = bt;
-    ndswap(ndnewbk(pcn), pan2); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
+    acode_swapin(pcn, pan2);
     icbnewbk(&pcn->data)->in = IN_ELSE;
-    ndswap(ndnewbk(pcn), pan3); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;  
+    acode_swapin(pcn, pan3);
     icbnewbk(&pcn->data)->in = IN_END;
   }
   ndfini(&nt); 
@@ -1777,7 +1792,7 @@ static node_t *compile_deref(node_t *prn, node_t *pan, buf_t *psymb, bool load)
     if (petn->ts != TS_PTR && !ts_numerical(petn->ts))
      neprintf(prn, "cannot dereference pointer to non-scalar expression");
     if (petn->ts != TS_PTR) ptn->ts = ts_integral_promote(petn->ts);
-    ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+    acode_swapin(pcn, pan);
     asm_load(ptn->ts, petn->ts, off, &pcn->data);
     return pcn;
   } else {
@@ -1787,7 +1802,7 @@ static node_t *compile_deref(node_t *prn, node_t *pan, buf_t *psymb, bool load)
       numval_t v; node_t *pon = compile_numlit(prn, TS_ULONG, (v.u = off, &v));
       pan = compile_binary(prn, compile_cast(prn, acode_type(pon), pan), TT_PLUS, pon);
     }
-    ndswap(ndnewbk(pcn), pan); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+    acode_swapin(pcn, pan);
     return pcn;
   } 
 }
@@ -1811,7 +1826,7 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op,
       pvn = compile_cast(prn, pctn, pvn); 
     if (!same_type(acode_type(pan), acode_type(pvn))) 
       pvn = compile_cast(prn, acode_type(pan), pvn); 
-    ndswap(ndnewbk(pan), pvn); icbnewbk(&pan->data)->in = IN_PLACEHOLDER;
+    acode_swapin(pan, pvn);
     asm_instr_load_to_store(&lic, &sic);
     if (post) { /* new val removed, old val remains */
       asm_pushbk(&pan->data, &sic); 
@@ -1834,7 +1849,7 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op,
     if (post) asm_pushbk(&pan->data, &lic); /* old val on stack */
     ptn = wrap_type_pointer(npdup(acode_type(pan))); 
     pdn = compile_idref(prn, false, pname, ptn);
-    ndcpy(ndnewbk(pan), pdn); icbnewbk(&pan->data)->in = IN_PLACEHOLDER;
+    acode_copyin(pan, pdn);
     if (op) {
       node_t *pln = npdup(pdn); 
       asm_pushbk(&pln->data, &lic); lift_arg0(acode_type(pln));
@@ -1848,13 +1863,13 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op,
       pvn = compile_cast(prn, pctn, pvn); 
     if (!same_type(acode_type(pan), acode_type(pvn))) 
       pvn = compile_cast(prn, acode_type(pan), pvn); 
-    ndswap(ndnewbk(pan), pvn); icbnewbk(&pan->data)->in = IN_PLACEHOLDER;
+    acode_swapin(pan, pvn);
     asm_instr_load_to_store(&lic, &sic);
     if (post) { /* new val removed, old val remains */
       asm_pushbk(&pan->data, &sic);
     } else { /* re-fetch to get new val */
       asm_pushbk(&pan->data, &sic);
-      ndcpy(ndnewbk(pan), pdn); icbnewbk(&pan->data)->in = IN_PLACEHOLDER;
+      acode_copyin(pan, pdn);
       asm_pushbk(&pan->data, &lic);
     }
     pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; 
@@ -1892,39 +1907,90 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab)
     if (!assign_compatible(pftni, ptni))
       n2eprintf(pani, prn, "can't pass argument[%d]: unexpected type", i);
     if (!same_type(pftni, ptni)) pani = compile_cast(prn, pftni, pani);
-    ndswap(ndnewbk(pcn), pani); icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+    acode_swapin(pcn, pani);
   }
   asm_pushbk(&pcn->data, &cic);
   return pcn;
 }
 
-/* compile expression -- that is, convert it to asm tree */
+/* compile statement (i.e. drop value if any) */
+static node_t *compile_stm(node_t *pcn)
+{
+  node_t *ptni = acode_type(pcn);
+  if (ptni->ts != TS_VOID) {
+    icbnewbk(&pcn->data)->in = IN_DROP;
+    ndsettype(ptni, TS_VOID);
+  }
+  return pcn;
+}
+
+/* compile if statement */
+static node_t *compile_if(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan3)
+{
+  inscode_t *pic; unsigned bt = BT_VOID; 
+  node_t *pcn = npnewcode(prn); ndsettype(ndnewbk(prn), TS_VOID); 
+  acode_swapin(pcn, compile_booltest(prn, pan1));
+  pic = icbnewbk(&pcn->data); pic->in = IN_IF; pic->arg.u = bt;
+  acode_swapin(pcn, compile_stm(pan2));
+  if (pan3) {
+    icbnewbk(&pcn->data)->in = IN_ELSE;
+    acode_swapin(pcn, compile_stm(pan3));
+  }
+  icbnewbk(&pcn->data)->in = IN_END;
+  return pcn;
+}
+
+/* compile while statement */
+static node_t *compile_while(node_t *prn, node_t *pan1, node_t *pan2)
+{
+  inscode_t *pic; unsigned bt = BT_VOID; 
+  node_t *pcn = npnewcode(prn); ndsettype(ndnewbk(prn), TS_VOID);
+  pan1 = compile_booltest(prn, pan1); 
+  pic = icbnewbk(&pcn->data); pic->in = IN_BLOCK; pic->arg.u = bt;
+  acode_copyin(pcn, pan1);
+  icbnewbk(&pcn->data)->in = IN_I32_EQZ;
+  pic = icbnewbk(&pcn->data); pic->in = IN_BR_IF; pic->arg.u = 0;
+  pic = icbnewbk(&pcn->data); pic->in = IN_LOOP; pic->arg.u = bt;
+  acode_swapin(pcn, compile_stm(pan2));
+  acode_swapin(pcn, pan1);
+  pic = icbnewbk(&pcn->data); pic->in = IN_BR_IF; pic->arg.u = 0;
+  icbnewbk(&pcn->data)->in = IN_END;
+  icbnewbk(&pcn->data)->in = IN_END;
+  return pcn;
+}
+
+/* compile expression -- that is, convert it to asm tree; prib is var/reg info,
+ * ret is return type for statements, NULL for expressions returning a value */
 static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
 {
   node_t *pcn = NULL; numval_t v;
   if (static_constant(pn)) {
-    node_t nd = mknd(); 
+    node_t nd = mknd();
+    if (ret && getwlevel() < 1) nwprintf(pn, "warning: constant value is not used"); 
     if (static_eval(pn, &nd)) ndswap(&nd, pn);
     ndfini(&nd);
   }
 retry:
   switch (pn->nt) {
+
+    /* expressions */
     case NT_LITERAL: {
       assert(ts_numerical(pn->ts));
+      if (ret && getwlevel() < 1) nwprintf(pn, "warning: literal value is not used");
       pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), pn->ts);
       asm_numerical_constant(pn->ts, &pn->val, &pcn->data);
     } break; 
     case NT_IDENTIFIER: {
       bool bgl; const node_t *ptn = lookup_var_type(pn->name, prib, &bgl);
       if (!ptn) neprintf(pn, "compile: undefined identifier");
+      if (ret && getwlevel() < 1) nwprintf(pn, "warning: identifier value is not used");
       pcn = compile_idref(pn, bgl, pn->name, ptn);
     } break;
     case NT_SUBSCRIPT: assert(false); break; /* dewasmified */
     case NT_CALL: {
       size_t i; buf_t apb = mkbuf(sizeof(node_t*));
-      node_t *pfn = expr_compile(ndref(pn, 0), prib, ret);
-      for (i = 1; i < ndlen(pn); ++i)
-        *(node_t **)bufnewbk(&apb) = expr_compile(ndref(pn, i), prib, ret);
+      node_t *pfn = expr_compile(ndref(pn, 0), prib, NULL);
+      for (i = 1; i < ndlen(pn); ++i) *(node_t**)bufnewbk(&apb) = expr_compile(ndref(pn, i), prib, NULL);
       pcn = compile_call(pn, pfn, &apb);
       buffini(&apb);
     } break;
@@ -1932,7 +1998,7 @@ retry:
       switch (pn->intr) {
         case INTR_ALLOCA: {
           if (ndlen(pn) == 1) {
-            node_t *pan = expr_compile(ndref(pn, 0), prib, ret);
+            node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
             node_t *ptni = acode_type(pan); inscode_t *pic; numval_t *pnv;
             ts_t ts = acode_const(pan, &pnv);
             if (ts == TS_INT) { /* sizeof?: calc frame size statically */
@@ -1968,7 +2034,7 @@ retry:
         } break;
         case INTR_FREEA: {
           if (ndlen(pn) == 1) {
-            node_t *pan = expr_compile(ndref(pn, 0), prib, ret);
+            node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
             node_t *ptni = acode_type(pan); inscode_t *pic;
             if (ptni->ts != TS_PTR)
               neprintf(pn, "invalid freea() intrinsic's argument");
@@ -1982,12 +2048,11 @@ retry:
         case INTR_SASSERT: {
           check_static_assert(pn);
           pcn = ndsettype(npnewcode(pn), TS_VOID);
-          icbnewbk(&pcn->data)->in = IN_NOP;
         } break;
       }
     } break;
     case NT_CAST: {
-      pcn = compile_cast(pn, ndref(pn, 0), expr_compile(ndref(pn, 1), prib, ret));
+      pcn = compile_cast(pn, ndref(pn, 0), expr_compile(ndref(pn, 1), prib, NULL));
     } break;
     case NT_POSTFIX: {
       switch (pn->op) {
@@ -1998,13 +2063,13 @@ retry:
             pni = ndref(pni, 0); 
           }
           if (pni->nt == NT_PREFIX && pni->op == TT_STAR)
-            pcn = compile_deref(pn, expr_compile(ndref(pni, 0), prib, ret), &fb, true);
+            pcn = compile_deref(pn, expr_compile(ndref(pni, 0), prib, NULL), &fb, true);
           buffini(&fb);
         } break;
         case TT_PLUS_PLUS: case TT_MINUS_MINUS: {
           node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
           node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL;
-          node_t *pan = expr_compile(pln, prib, ret);
+          node_t *pan = expr_compile(pln, prib, NULL);
           numval_t v; tt_t op = pn->op == TT_PLUS_PLUS ? TT_PLUS : TT_MINUS;
           pcn = compile_asncombo(pn, pan, ptn, op, compile_numlit(pn, TS_INT, (v.i = 1, &v)), true); 
         } break;
@@ -2025,7 +2090,7 @@ retry:
               pni = ndref(pni, 0); 
             }
             if (pni->nt == NT_PREFIX && pni->op == TT_STAR)
-              pcn = compile_deref(pn, expr_compile(ndref(pni, 0), prib, ret), &fb, false);
+              pcn = compile_deref(pn, expr_compile(ndref(pni, 0), prib, NULL), &fb, false);
             else neprintf(pn, "cannot get address of expression");
             buffini(&fb);
           }
@@ -2034,26 +2099,26 @@ retry:
           if (pn0->nt == NT_PREFIX && pn0->op == TT_AND) {
             pn = ndref(pn0, 0); goto retry;
           } else { /* nb: struct/union pointers handled in TT_DOT */
-            node_t *pan = expr_compile(pn0, prib, ret); /* scalar ptr */
+            node_t *pan = expr_compile(pn0, prib, NULL); /* scalar ptr expected */
             pcn = compile_deref(pn, pan, NULL, true); /* no extra (sub)field offset */ 
           }
         } break;
         case TT_PLUS_PLUS: case TT_MINUS_MINUS: {
           node_t *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
           node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL;
-          node_t *pan = expr_compile(pln, prib, ret);
+          node_t *pan = expr_compile(pln, prib, NULL);
           tt_t op = pn->op == TT_PLUS_PLUS ? TT_PLUS : TT_MINUS; 
           pcn = compile_asncombo(pn, pan, ptn, op, compile_numlit(pn, TS_INT, (v.i = 1, &v)), false); 
         } break;
-        default: {
-          node_t *pan = expr_compile(pn0, prib, ret);
+        default: { /* normal unary op */
+          node_t *pan = expr_compile(pn0, prib, NULL);
           pcn = compile_unary(pn, pn->op, pan);
         } break;
       }    
     } break;
     case NT_INFIX: {
-      node_t *pan1 = expr_compile(ndcref(pn, 0), prib, ret);
-      node_t *pan2 = expr_compile(ndcref(pn, 1), prib, ret);
+      node_t *pan1 = expr_compile(ndcref(pn, 0), prib, NULL);
+      node_t *pan2 = expr_compile(ndcref(pn, 1), prib, NULL);
       switch (pn->op) {
         case TT_AND_AND: {
           pcn = compile_cond(pn, pan1, pan2, compile_numlit(pn, TS_INT, (v.i = 0, &v)));
@@ -2061,40 +2126,69 @@ retry:
         case TT_OR_OR: {
           pcn = compile_cond(pn, pan1, compile_numlit(pn, TS_INT, (v.i = 1, &v)), pan2);
         } break;
-        default: {
+        default: { /* normal binary */
           pcn = compile_binary(pn, pan1, pn->op, pan2);
         } break;
       }
     } break;
     case NT_COND: {
-      node_t *pan1 = expr_compile(ndcref(pn, 0), prib, ret);
-      node_t *pan2 = expr_compile(ndcref(pn, 1), prib, ret);
-      node_t *pan3 = expr_compile(ndcref(pn, 2), prib, ret);
+      node_t *pan1 = expr_compile(ndref(pn, 0), prib, NULL);
+      node_t *pan2 = expr_compile(ndref(pn, 1), prib, NULL);
+      node_t *pan3 = expr_compile(ndref(pn, 2), prib, NULL);
       pcn = compile_cond(pn, pan1, pan2, pan3);
     } break;
     case NT_ASSIGN: {
       node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
       node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL;
-      node_t *pan = expr_compile(pln, prib, ret);
-      node_t *pan2 = expr_compile(ndcref(pn, 1), prib, ret);
+      node_t *pan = expr_compile(pln, prib, NULL);
+      node_t *pan2 = expr_compile(ndcref(pn, 1), prib, NULL);
       tt_t op = (pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? pn->op - 1 : 0;  
       pcn = compile_asncombo(pn, pan, ptn, op, pan2, false); 
     } break;
     case NT_COMMA: {
       size_t i; pcn = npnewcode(pn); assert(ndlen(pn) > 0);
       for (i = 0; i < ndlen(pn); ++i) {
-        node_t *pcni = expr_compile(ndref(pn, i), prib, ret);
+        node_t *pcni = expr_compile(ndref(pn, i), prib, NULL);
         node_t *ptni = acode_type(pcni); bool drop = false;
         if (i == ndlen(pn) - 1) ndcpy(ndinsnew(pcn, 0), ptni);
         else drop = ptni->ts != TS_VOID;
-        ndswap(pcni, ndnewbk(pcn));
-        icbnewbk(&pcn->data)->in = IN_PLACEHOLDER;
+        acode_swapin(pcn, pcni);
         if (drop) icbnewbk(&pcn->data)->in = IN_DROP;
       }
     } break;
     case NT_ACODE: {
       pcn = pn;
     } break;
+
+    /* statements */
+    case NT_BLOCK: {
+      size_t i; assert(ret);
+      pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_VOID);
+      for (i = 0; i < ndlen(pn); ++i) {
+        node_t *pcni = expr_compile(ndref(pn, i), prib, ret);
+        acode_swapin(pcn, compile_stm(pcni));
+      }
+    } break;
+    case NT_IF: {
+      size_t n = ndlen(pn); node_t *pan1, *pan2, *pan3;
+      assert(ret);
+      pan1 = expr_compile(ndref(pn, 0), prib, ret);
+      pan2 = expr_compile(ndref(pn, 1), prib, ret);
+      pan3 = n == 3 ? expr_compile(ndref(pn, 2), prib, ret) : NULL;
+      pcn = compile_if(pn, pan1, pan2, pan3);
+    } break;
+    /* case NT_SWITCH */
+    /* case NT_CASE */
+    /* case NT_DEFAULT */
+    case NT_WHILE: {
+      size_t n = ndlen(pn); node_t *pan1, *pan2;
+      assert(ret);
+      pan1 = expr_compile(ndref(pn, 0), prib, ret);
+      pan2 = expr_compile(ndref(pn, 1), prib, ret);
+      pcn = compile_while(pn, pan1, pan2);
+    } break;
+    
+    /* other */
     case NT_TYPE: assert(false); break; /* inside cast only */  
     /* leave statement layer as-is for now (fixme!) */
     default: {
@@ -2127,7 +2221,7 @@ static node_t *fundef_compile(node_t *pdn)
   ndset(prbn, NT_BLOCK, pbn->pwsid, pbn->startpos);
   
   /* collect types for args and local vars; sort for bsearch */
-  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
+  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION && ndlen(ptn) > 0);
   for (i = 0; i < ndlen(ptn); ++i) {
     node_t *pdni = ndref(ptn, i), *ptni = pdni; sym_t name = 0;
     if (i == 0) { ret = pdni; assert(pdni->nt == NT_TYPE); } 

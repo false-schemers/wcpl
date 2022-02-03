@@ -1,4 +1,4 @@
-/* w.c (wasm writer) -- esl */
+/* w.c (wasm interface) -- esl */
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -714,6 +714,8 @@ void emit_module(module_t* pm)
   emit_datas(&pm->datadefs, &pm->reloctab);
 }
 
+
+/* introspection */
 
 static const char *g_innames[256] = {
     "unreachable",           /* 0x00 */
