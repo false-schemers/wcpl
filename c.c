@@ -1935,13 +1935,14 @@ retry:
             node_t *pan = expr_compile(ndref(pn, 0), prib, ret);
             node_t *ptni = acode_type(pan); inscode_t *pic; numval_t *pnv;
             ts_t ts = acode_const(pan, &pnv);
-            sym_t pname = rpalloc(VT_I32); /* wasm32 */
             if (ts == TS_INT) { /* sizeof?: calc frame size statically */
               pnv->i = (pnv->i + 15) & ~0xFLL;
-              pic = icbnewfr(&pan->data); pic->in = IN_LOCAL_TEE; pic->relkey = pname;
               pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; pic->relkey = intern("env_stack_pointer");
+              pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; pic->relkey = intern("env_stack_pointer");
+              pic = icbnewbk(&pan->data); pic->in = IN_I32_SUB; 
+              pic = icbnewbk(&pan->data); pic->in = IN_GLOBAL_SET; pic->relkey = intern("env_stack_pointer");
             } else { /* calc frame size dynamically */
-              sym_t sname = rpalloc(VT_I32);
+              sym_t sname = rpalloc(VT_I32), pname = rpalloc(VT_I32); /* wasm32 */
               pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->relkey = sname; pic->arg.u = VT_I32;
               if (!ts_numerical(ptni->ts) || ts_arith_common(ptni->ts, TS_ULONG) != TS_ULONG)
                 neprintf(pn, "invalid alloca() intrinsic's argument");
@@ -1954,11 +1955,11 @@ retry:
               pic = icbnewbk(&pan->data); pic->in = IN_GLOBAL_GET; pic->relkey = intern("env_stack_pointer");
               pic = icbnewbk(&pan->data); pic->in = IN_LOCAL_TEE; pic->relkey = pname;
               pic = icbnewbk(&pan->data); pic->in = IN_LOCAL_GET; pic->relkey = sname;
+              pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->relkey = pname; pic->arg.u = VT_I32;
+              pic = icbnewbk(&pan->data); pic->in = IN_I32_SUB;
+              pic = icbnewbk(&pan->data); pic->in = IN_GLOBAL_SET; pic->relkey = intern("env_stack_pointer");
+              pic = icbnewbk(&pan->data); pic->in = IN_LOCAL_GET; pic->relkey = pname;
             }
-            pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->relkey = pname; pic->arg.u = VT_I32;
-            pic = icbnewbk(&pan->data); pic->in = IN_I32_SUB;
-            pic = icbnewbk(&pan->data); pic->in = IN_GLOBAL_SET; pic->relkey = intern("env_stack_pointer");
-            pic = icbnewbk(&pan->data); pic->in = IN_LOCAL_GET; pic->relkey = pname;
             wrap_type_pointer(ndsettype(acode_type(pan), TS_VOID));
             pcn = pan;
           } else {
