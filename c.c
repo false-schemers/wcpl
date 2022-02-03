@@ -628,6 +628,23 @@ bool static_eval(node_t *pn, node_t *prn)
   return false;
 }
 
+static void check_static_assert(node_t *pn)
+{
+  if (pn->intr == INTR_SASSERT) {
+    node_t *pen, *psn; int res;
+    assert(ndlen(pn) == 1 || ndlen(pn) == 2);
+    pen = ndref(pn, 0), psn = ndlen(pn) == 2 ? ndref(pn, 1) : NULL;
+    if (psn && (psn->nt != NT_LITERAL || psn->ts != TS_STRING))
+      neprintf(pn, "unexpected 2nd arg of static_assert (string literal expected)");
+    if (!static_eval_to_int(pen, &res))
+      n2eprintf(pen, pn, "unexpected lhs of static_assert comparison (static test expected)");
+    if (res == 0) {
+      if (!psn) neprintf(pn, "static_assert failed");
+      else neprintf(pn, "static_assert failed (%s)", chbdata(&psn->data));
+    }
+  }
+}
+
 /* check if node can be evaluated statically (numbers only)
  * NB: positive answer does not guarantee successful or error-free evaluation
  * (but eval errors will also happen at run time if original expr is compiled);
@@ -1540,6 +1557,21 @@ static bool acode_simple_noeff(node_t *pan)
   return false;
 }
 
+/* check if this node is a const; returns 0 or ts_t/nv */
+static ts_t acode_const(node_t *pan, numval_t **ppnv)
+{
+  if (pan->nt == NT_ACODE && ndlen(pan) == 1 && icblen(&pan->data) == 1) {
+    inscode_t *pic = icbref(&pan->data, 0); instr_t in = pic->in;
+    switch (in) {
+      case IN_I32_CONST: if (ppnv) *ppnv = &pic->arg; return TS_INT;
+      case IN_I64_CONST: if (ppnv) *ppnv = &pic->arg; return TS_LLONG;
+      case IN_F32_CONST: if (ppnv) *ppnv = &pic->arg; return TS_FLOAT;
+      case IN_F64_CONST: if (ppnv) *ppnv = &pic->arg; return TS_DOUBLE;
+    }
+  }  
+  return TS_VOID; /* 0 */
+}
+
 /* check if this node is a var get; returns 0 or instruction code */
 static int acode_rval_get(node_t *pan)
 {
@@ -1870,6 +1902,11 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab)
 static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
 {
   node_t *pcn = NULL; numval_t v;
+  if (static_constant(pn)) {
+    node_t nd = mknd(); 
+    if (static_eval(pn, &nd)) ndswap(&nd, pn);
+    ndfini(&nd);
+  }
 retry:
   switch (pn->nt) {
     case NT_LITERAL: {
@@ -1892,7 +1929,61 @@ retry:
       buffini(&apb);
     } break;
     case NT_INTRCALL: {
-      /* fixme */
+      switch (pn->intr) {
+        case INTR_ALLOCA: {
+          if (ndlen(pn) == 1) {
+            node_t *pan = expr_compile(ndref(pn, 0), prib, ret);
+            node_t *ptni = acode_type(pan); inscode_t *pic; numval_t *pnv;
+            ts_t ts = acode_const(pan, &pnv);
+            sym_t pname = rpalloc(VT_I32); /* wasm32 */
+            if (ts == TS_INT) { /* sizeof?: calc frame size statically */
+              pnv->i = (pnv->i + 15) & ~0xFLL;
+              pic = icbnewfr(&pan->data); pic->in = IN_LOCAL_TEE; pic->relkey = pname;
+              pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; pic->relkey = intern("env_stack_pointer");
+            } else { /* calc frame size dynamically */
+              sym_t sname = rpalloc(VT_I32);
+              pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->relkey = sname; pic->arg.u = VT_I32;
+              if (!ts_numerical(ptni->ts) || ts_arith_common(ptni->ts, TS_ULONG) != TS_ULONG)
+                neprintf(pn, "invalid alloca() intrinsic's argument");
+              if (ptni->ts != TS_ULONG) asm_numerical_cast(TS_ULONG, ptni->ts, &pan->data);
+              pic = icbnewbk(&pan->data); pic->in = IN_I32_CONST; pic->arg.u = 15;  
+              pic = icbnewbk(&pan->data); pic->in = IN_I32_ADD; 
+              pic = icbnewbk(&pan->data); pic->in = IN_I32_CONST; pic->arg.u = 0xFFFFFFF0;
+              pic = icbnewbk(&pan->data); pic->in = IN_I32_AND;   
+              pic = icbnewbk(&pan->data); pic->in = IN_LOCAL_SET; pic->relkey = sname;
+              pic = icbnewbk(&pan->data); pic->in = IN_GLOBAL_GET; pic->relkey = intern("env_stack_pointer");
+              pic = icbnewbk(&pan->data); pic->in = IN_LOCAL_TEE; pic->relkey = pname;
+              pic = icbnewbk(&pan->data); pic->in = IN_LOCAL_GET; pic->relkey = sname;
+            }
+            pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->relkey = pname; pic->arg.u = VT_I32;
+            pic = icbnewbk(&pan->data); pic->in = IN_I32_SUB;
+            pic = icbnewbk(&pan->data); pic->in = IN_GLOBAL_SET; pic->relkey = intern("env_stack_pointer");
+            pic = icbnewbk(&pan->data); pic->in = IN_LOCAL_GET; pic->relkey = pname;
+            wrap_type_pointer(ndsettype(acode_type(pan), TS_VOID));
+            pcn = pan;
+          } else {
+            neprintf(pn, "alloca() intrinsic expects one argument");
+          }
+        } break;
+        case INTR_FREEA: {
+          if (ndlen(pn) == 1) {
+            node_t *pan = expr_compile(ndref(pn, 0), prib, ret);
+            node_t *ptni = acode_type(pan); inscode_t *pic;
+            if (ptni->ts != TS_PTR)
+              neprintf(pn, "invalid freea() intrinsic's argument");
+            pic = icbnewbk(&pan->data); pic->in = IN_GLOBAL_SET; pic->relkey = intern("env_stack_pointer");
+            ndsettype(acode_type(pan), TS_VOID);
+            pcn = pan;
+          } else {
+            neprintf(pn, "freea() intrinsic expects one argument");
+          }
+        } break;
+        case INTR_SASSERT: {
+          check_static_assert(pn);
+          pcn = ndsettype(npnewcode(pn), TS_VOID);
+          icbnewbk(&pcn->data)->in = IN_NOP;
+        } break;
+      }
     } break;
     case NT_CAST: {
       pcn = compile_cast(pn, ndref(pn, 0), expr_compile(ndref(pn, 1), prib, ret));
@@ -1932,7 +2023,9 @@ retry:
               *(sym_t*)bufnewfr(&fb) = pni->name;
               pni = ndref(pni, 0); 
             }
-            pcn = compile_deref(pn, expr_compile(pni, prib, ret), &fb, false);
+            if (pni->nt == NT_PREFIX && pni->op == TT_STAR)
+              pcn = compile_deref(pn, expr_compile(ndref(pni, 0), prib, ret), &fb, false);
+            else neprintf(pn, "cannot get address of expression");
             buffini(&fb);
           }
         } break;
@@ -2111,19 +2204,8 @@ static void process_top_intrcall(node_t *pn, module_t *pm)
 #ifdef _DEBUG
   dump_node(pn, stderr);
 #endif
-  if (pn->intr == INTR_SASSERT) {
-    node_t *pen, *psn; int res;
-    assert(ndlen(pn) == 1 || ndlen(pn) == 2);
-    pen = ndref(pn, 0), psn = ndlen(pn) == 2 ? ndref(pn, 1) : NULL;
-    if (psn && (psn->nt != NT_LITERAL || psn->ts != TS_STRING))
-      neprintf(pn, "unexpected 2nd arg of static_assert (string literal expected)");
-    if (!static_eval_to_int(pen, &res))
-      n2eprintf(pen, pn, "unexpected lhs of static_assert comparison (static test expected)");
-    if (res == 0) {
-      if (!psn) neprintf(pn, "static_assert failed");
-      else neprintf(pn, "static_assert failed (%s)", chbdata(&psn->data));
-    }
-  } else neprintf(pn, "unexpected top-level form");
+  if (pn->intr == INTR_SASSERT) check_static_assert(pn);
+  else neprintf(pn, "unexpected top-level form");
 }
 
 /* process single top node (from module or include) */
