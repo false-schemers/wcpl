@@ -1512,7 +1512,13 @@ static void asm_numerical_constant(ts_t ts, numval_t *pval, icbuf_t *pdata)
   }
 }
 
-/* push instruction to pdata */
+/* push instruction to pdata's front */
+static void asm_pushfr(icbuf_t *pdata, inscode_t *pic)
+{
+  *icbnewfr(pdata) = *pic;
+}
+
+/* push instruction to pdata's end */
 static void asm_pushbk(icbuf_t *pdata, inscode_t *pic)
 {
   *icbnewbk(pdata) = *pic;
@@ -2377,6 +2383,45 @@ static node_t *fundef_compile(node_t *pdn)
   return prn;
 }
 
+/* flatten asm tree */
+static void expr_flatten(node_t *pn, node_t *pcn) 
+{
+  size_t i, ri = 1;
+  for (i = 0; i < buflen(&pn->data); ++i) {
+    inscode_t *pic = bufref(&pn->data, i);
+    if (pic->in == IN_PLACEHOLDER) {
+      assert(ri < ndlen(pn));
+      expr_flatten(ndref(pn, ri), pcn);
+      ++ri;
+    } else if (pic->in == IN_REGDECL) {
+      asm_pushfr(&pcn->data, pic); 
+    } else {
+      asm_pushbk(&pcn->data, pic); 
+    }
+  }  
+}
+
+static node_t *fundef_flatten(node_t *pdn) 
+{
+  node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
+  node_t *pcn = npnewcode(pdn); 
+  size_t i; 
+  for (i = 0; i < ndlen(pbn); ++i) {
+    expr_flatten(ndref(pbn, i), pcn);
+  } 
+  for (i = ndlen(ptn); i > 1; --i) {
+    node_t *pdi = ndref(ptn, i-1);
+    if (pdi->nt == NT_VARDECL) {
+      inscode_t *pic = icbnewfr(&pcn->data); 
+      pic->in = IN_REGDECL; pic->relkey = pdi->name;
+      pic->arg.u = ts_to_blocktype(ndref(pdi, 0)->ts);      
+      assert(VT_F64 <= pic->arg.u && pic->arg.u <= VT_I32);
+    }
+  }
+  ndswap(ndnewbk(pcn), ptn);
+  return pcn;
+}
+
 /* process function definition in main module */
 static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
 {
@@ -2414,7 +2459,13 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
 #ifdef _DEBUG
   fprintf(stderr, "fundef_compile ==>\n");
   dump_node(pcn, stderr);
-#endif  
+#endif
+  /* flatten */
+  pcn = fundef_flatten(pcn);
+#ifdef _DEBUG
+  fprintf(stderr, "fundef_flatten ==>\n");
+  dump_node(pcn, stderr);
+#endif
 #endif
   /* free all nodes allocated with np-functions at once */
   clear_nodepool();
