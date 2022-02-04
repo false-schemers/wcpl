@@ -2274,12 +2274,20 @@ retry:
       }
     } break;
     case NT_IF: {
-      size_t n = ndlen(pn); node_t *pan1, *pan2, *pan3;
+      size_t n = ndlen(pn); 
+      node_t *pn2, *pan1, *pan2, *pan3;
       assert(ret);
       pan1 = expr_compile(ndref(pn, 0), prib, NULL);
-      pan2 = expr_compile(ndref(pn, 1), prib, ret);
-      pan3 = n == 3 ? expr_compile(ndref(pn, 2), prib, ret) : NULL;
-      pcn = compile_if(pn, pan1, pan2, pan3);
+      pn2 = ndref(pn, 1);
+      if (n == 2 && pn2->nt == NT_CONTINUE) {
+        pcn = compile_branch(pn, pan1, true);
+      } else if (n == 2 && pn2->nt == NT_BREAK) {
+        pcn = compile_branch(pn, pan1, false);
+      } else {
+        pan2 = expr_compile(pn2, prib, ret);
+        pan3 = n == 3 ? expr_compile(ndref(pn, 2), prib, ret) : NULL;
+        pcn = compile_if(pn, pan1, pan2, pan3);
+      }
     } break;
     /* case NT_SWITCH */
     /* case NT_CASE */
@@ -2376,7 +2384,7 @@ static node_t *fundef_compile(node_t *pdn)
   for (/* use current i */; i < ndlen(pbn); ++i) {
     node_t *pni = ndref(pbn, i);
     node_t *pcn = expr_compile(pni, &rib, ret);
-    ndswap(ndnewbk(prbn), pcn);
+    ndswap(ndnewbk(prbn), compile_stm(pcn));
   }
 
   buffini(&rib);
@@ -2384,42 +2392,91 @@ static node_t *fundef_compile(node_t *pdn)
 }
 
 /* flatten asm tree */
-static void expr_flatten(node_t *pn, node_t *pcn) 
+static void expr_flatten(node_t *pn, node_t *pcn, icbuf_t *prb) 
 {
   size_t i, ri = 1;
   for (i = 0; i < buflen(&pn->data); ++i) {
     inscode_t *pic = bufref(&pn->data, i);
     if (pic->in == IN_PLACEHOLDER) {
       assert(ri < ndlen(pn));
-      expr_flatten(ndref(pn, ri), pcn);
+      expr_flatten(ndref(pn, ri), pcn, prb);
       ++ri;
     } else if (pic->in == IN_REGDECL) {
-      asm_pushfr(&pcn->data, pic); 
+      asm_pushbk(prb, pic); 
     } else {
       asm_pushbk(&pcn->data, pic); 
     }
   }  
 }
 
+/* flatten nested acodes into a single acode */
 static node_t *fundef_flatten(node_t *pdn) 
 {
   node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
   node_t *pcn = npnewcode(pdn); 
-  size_t i; 
-  for (i = 0; i < ndlen(pbn); ++i) {
-    expr_flatten(ndref(pbn, i), pcn);
-  } 
-  for (i = ndlen(ptn); i > 1; --i) {
-    node_t *pdi = ndref(ptn, i-1);
-    if (pdi->nt == NT_VARDECL) {
-      inscode_t *pic = icbnewfr(&pcn->data); 
-      pic->in = IN_REGDECL; pic->relkey = pdi->name;
-      pic->arg.u = ts_to_blocktype(ndref(pdi, 0)->ts);      
+  size_t i; icbuf_t icb; icbinit(&icb);
+  for (i = 1; i < ndlen(ptn); ++i) {
+    node_t *pn = ndref(ptn, i);
+    if (pn->nt == NT_VARDECL) {
+      inscode_t *pic = icbnewbk(&icb); 
+      pic->in = IN_REGDECL; pic->relkey = pn->name;
+      pic->arg.u = ts_to_blocktype(ndref(pn, 0)->ts);      
       assert(VT_F64 <= pic->arg.u && pic->arg.u <= VT_I32);
     }
   }
+  for (i = 0; i < ndlen(pbn); ++i) {
+    node_t *pn = ndref(pbn, i);
+    if (pn->nt == NT_VARDECL) {
+      inscode_t *pic = icbnewbk(&icb); 
+      pic->in = IN_REGDECL; pic->relkey = pn->name;
+      pic->arg.u = ts_to_blocktype(ndref(pn, 0)->ts);      
+      assert(VT_F64 <= pic->arg.u && pic->arg.u <= VT_I32);
+    } else if (pn->nt == NT_ACODE) {
+      expr_flatten(pn, pcn, &icb);
+    } else assert(false);
+  } 
+  for (i = icblen(&icb); i > 0; --i) {
+    inscode_t *pic = icbnewfr(&pcn->data);
+    *pic = *icbref(&icb, i-1);
+  }
   ndswap(ndnewbk(pcn), ptn);
+  icbfini(&icb);
   return pcn;
+}
+
+/* simple peephole optimization */
+static void fundef_peephole(node_t *pcn)
+{
+  icbuf_t *picb = &pcn->data; size_t i;
+  for (i = 0; i < icblen(picb); /* rem or bump i */) {
+    bool nexti = i+1;
+    if (i > 0) {
+      inscode_t *pprevi = icbref(picb, i-1);
+      inscode_t *pthisi = icbref(picb, i);
+      if (pthisi->in == IN_DROP) {
+        if (pprevi->in == IN_LOCAL_TEE) {
+          pprevi->in = IN_LOCAL_SET;
+          icbrem(picb, i);
+          nexti = i;
+        } else if (pprevi->in == IN_LOCAL_GET || pprevi->in == IN_GLOBAL_GET) {
+          icbrem(picb, i-1);
+          icbrem(picb, i-1);
+          nexti = i-1;
+        } else if (IN_I32_LOAD <= pprevi->in && pprevi->in <= IN_I64_LOAD32_U) {
+          icbrem(picb, i-1);
+          icbrem(picb, i-1);
+          nexti = i-1;
+        }
+      } else if (pthisi->in == IN_LOCAL_GET) {
+        if (pprevi->in == IN_LOCAL_SET && pprevi->relkey && pprevi->relkey == pthisi->relkey) {
+          pprevi->in = IN_LOCAL_TEE;
+          icbrem(picb, i);
+          nexti = i;
+        }
+      }
+    }
+    i = nexti;
+  }
 }
 
 /* process function definition in main module */
@@ -2460,10 +2517,15 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
   fprintf(stderr, "fundef_compile ==>\n");
   dump_node(pcn, stderr);
 #endif
-  /* flatten */
+  /* flatten asm tree */
   pcn = fundef_flatten(pcn);
 #ifdef _DEBUG
   fprintf(stderr, "fundef_flatten ==>\n");
+  dump_node(pcn, stderr);
+#endif
+  fundef_peephole(pcn);
+#ifdef _DEBUG
+  fprintf(stderr, "fundef_peephole ==>\n");
   dump_node(pcn, stderr);
 #endif
 #endif

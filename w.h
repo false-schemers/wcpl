@@ -361,6 +361,7 @@ typedef buf_t icbuf_t;
 #define icbfini(pb) buffini(pb)
 #define icblen(pb) buflen(pb)
 #define icbref(pb, i) ((inscode_t*)bufref(pb, i))
+#define icbrem(pb, i) (bufrem(pb, i))
 #define icbnewfr(pb) ((inscode_t*)bufnewfr(pb))
 #define icbnewbk(pb) ((inscode_t*)bufnewbk(pb))
 #define icbpopbk(pb) bufpopbk(pb)

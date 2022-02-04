@@ -311,14 +311,15 @@ char *strtok_r(char *s, const char *delim, char **holder)
   return s;
 }
 
-/* can't get address of a global yet!
 static char *strtok_holder;
 
 char *strtok(char *s, const char *delim)
 {
-  return strtok_r(s, delim, &strtok_holder);
+  char *holder = s ? s : strtok_holder; 
+  do s = strsep(&holder, delim); while (s && !*s);
+  strtok_holder = holder;
+  return s;
 }
-*/
 
 int strcoll(const char *s1, const char *s2)
 {
