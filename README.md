@@ -19,6 +19,7 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 # C features not yet supported
 
 - vararg functions
+- taking address of a global var (needs 'auto' transformation, should be allowed for statics)
 
 
 # C features that won't be supported

@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 
@@ -169,7 +170,7 @@ size_t strcspn(const char *s1, const char *s2)
 
 char *strdup(const char *s)
 {
-  int l = strlen(s) + 1;
+  size_t l = strlen(s) + 1;
   char *d = malloc(l);
   if (d) memcpy(d, s, l);
   return d;
@@ -234,7 +235,7 @@ char *strncpy(char *dst, const char *src, size_t n)
 
 char *strndup(const char *s, size_t n)
 {
-  int l = n > strlen(s) ? strlen(s) + 1 : n + 1;
+  size_t sl = strlen(s), l = (n > sl ? sl : n) + 1;
   char *d = malloc(l);
   if (!d) return NULL;
   memcpy(d, s, l);
@@ -310,13 +311,14 @@ char *strtok_r(char *s, const char *delim, char **holder)
   return s;
 }
 
+/* can't get address of a global yet!
 static char *strtok_holder;
 
 char *strtok(char *s, const char *delim)
 {
   return strtok_r(s, delim, &strtok_holder);
 }
-
+*/
 
 int strcoll(const char *s1, const char *s2)
 {

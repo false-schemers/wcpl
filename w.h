@@ -5,7 +5,7 @@
 
 /* WASM writer */
 
-typedef enum {
+typedef enum valtype {
   VT_UNKN = 0,
   BT_VOID = 0x40,
   RT_EXTERNREF = 0x6F,
@@ -17,21 +17,21 @@ typedef enum {
   VT_I32 = 0x7F
 } valtype_t;
 
-typedef enum {
+typedef enum functype {
   FT_FUNCTYPE = 0x60 /* followed by two vectors of parameter and result types */
 } functype_t;
 
-typedef enum {
+typedef enum limtype {
   LT_MIN = 0x00,     /* followed by single u32 */
   LT_MINMAX = 0x01   /* followed by two u32s */
 } limtype_t;
 
-typedef enum {
+typedef enum muttype {
   MT_CONST = 0x00,   /* follows valtype */
   MT_VAR = 0x01      /* follows valtype */
 } muttype_t;
 
-typedef enum {
+typedef enum secid {
   SI_CUSTOM = 0,
   SI_TYPE = 1,
   SI_IMPORT = 2,
@@ -47,24 +47,24 @@ typedef enum {
   SI_DATACOUNT = 12
 } secid_t;
 
-typedef enum {
+typedef enum entkind {
   EK_FUNC = 0x00,
   EK_TABLE = 0x01,
   EK_MEM = 0x02,
   EK_GLOBAL = 0x03,
 } entkind_t;
 
-typedef enum {
+typedef enum dsmode {
   DS_ACTIVE /* ex bv */ = 0x00,
   DS_PASSIVE /* bv */ = 0x01,
   DS_ACTIVE_MI /* mi ex bv */ = 0x02 /* not used */
 } dsmode_t;
 
-typedef enum {
+typedef enum elemkind {
   ELK_FUNCREF = 0x00
 } elemkind_t;
 
-typedef enum {
+typedef enum esmode {
   ES_ACTIVE_EIV /* e fiv */ = 0x00,
   ES_PASSIVE_KIV /* k fiv */ = 0x01,
   ES_ACTIVE_TEKIV /* ti e k fiv */ = 0x02,
@@ -75,7 +75,7 @@ typedef enum {
   ES_DECLVE_TEV /* rt ev */ = 0x07
 } esmode_t;
 
-typedef enum {
+typedef enum instr {
   IN_UNREACHABLE = 0x00,
   IN_NOP = 0x01,
   IN_BLOCK /* [t]? */ = 0x02,
@@ -295,7 +295,7 @@ typedef enum {
   IN_REGDECL = -2, /* for internal use */
 } instr_t;
 
-typedef enum {
+typedef enum insig {
   INSIG_NONE = 0, 
   INSIG_BT, INSIG_L, INSIG_LS_L,
   INSIG_X, INSIG_X_Y, INSIG_T,
@@ -325,7 +325,7 @@ extern void emit_in(instr_t in);
 
 /* mid-level representations */
 typedef buf_t vtbuf_t; 
-typedef struct funcsig_tag {
+typedef struct funcsig {
   /* todo: add hash */ 
   vtbuf_t argtypes;   /* of valtype_t */ 
   vtbuf_t rettypes;   /* of valtype_t */
@@ -343,13 +343,13 @@ extern unsigned fsintern(fsbuf_t* pb, funcsig_t *pfs); /* may clear pfs */
 extern unsigned funcsig(fsbuf_t* pb, size_t argc, size_t retc, ...);
 
 /* numerical value */
-typedef union numval_tag {
+typedef union numval {
   long long i; unsigned long long u; 
   float f; double d;
 } numval_t;
 
 /* instruction */
-typedef struct inscode_tag {
+typedef struct inscode {
   sym_t relkey; /* 0 or relocation table key */
   instr_t in; 
   numval_t arg;
@@ -372,7 +372,7 @@ typedef buf_t icbuf_t;
 #define idxbref(pb, i) ((unsigned*)bufref(pb, i))
 #define idxbnewbk(pb) ((unsigned*)bufnewbk(pb))
 
-typedef struct entry_tag {
+typedef struct entry {
   entkind_t ek;     /* as used in import/export sections */
   sym_t mod;        /* != 0 for imported, 0 for internal */
   sym_t name;       /* != 0 for imported, may be 0 for internal */
@@ -397,7 +397,7 @@ extern void entbfini(entbuf_t* pb);
 #define entbnewbk(pb, ek) entinit(bufnewbk(pb), ek)
 #define entbins(pb, i, ek) entinit(bufins(pb, i), ek)
 
-typedef struct dseg_tag {
+typedef struct dseg {
   dsmode_t dsm;
   unsigned idx;
   chbuf_t data;
@@ -413,7 +413,7 @@ extern void dsegbfini(dsegbuf_t* pb);
 #define dsegbref(pb, i) ((dseg_t*)bufref(pb, i))
 #define dsegbnewbk(pb, dsm) dseginit(bufnewbk(pb), dsm)
 
-typedef struct eseg_tag {
+typedef struct eseg {
   esmode_t esm;
   unsigned idx; /* tableidx */
   elemkind_t ek; /* 0 (funcref) */
@@ -450,7 +450,7 @@ extern void emit_datas(dsegbuf_t *pdsb, icbuf_t *prelb);
 
 
 /* top-level representations */
-typedef struct module_tag {
+typedef struct module {
   fsbuf_t funcsigs;
   entbuf_t funcdefs; 
   entbuf_t tabdefs; 
