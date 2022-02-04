@@ -575,6 +575,12 @@ size_t bufoff(const buf_t* pb, const void *pe)
   return off;
 }
 
+void bufswap(buf_t* pb1, buf_t* pb2)
+{
+  assert(pb1); assert(pb2);
+  assert(pb1->esz == pb2->esz);
+  memswap(pb1, pb2, sizeof(buf_t));
+}
 
 /* unicode charsets */
 

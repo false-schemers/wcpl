@@ -12,8 +12,8 @@
 #include "l.h"
 #include "w.h"
 
-/* binary encoding globals */
-static FILE *g_binout = NULL; /* current binary output stream */
+/* wasm binary encoding globals */
+static FILE *g_wasmout = NULL; /* current binary output stream */
 static chbuf_t *g_curbuf = NULL; /* current destination or NULL */
 static chbuf_t *g_sectbuf = NULL; /* current section or NULL */
 static chbuf_t *g_ssecbuf = NULL; /* current subsection or NULL */
@@ -29,31 +29,31 @@ static int g_watindent = 0; /* cur line indent for wat dump */
 /* binary encoding */
 
 /* forwards */
-static void emit_unsigned(unsigned long long val);
-static void emit_byte(unsigned b);
+static void wasm_unsigned(unsigned long long val);
+static void wasm_byte(unsigned b);
 
-static void emit_header(void)
+static void wasm_header(void)
 {
-  fputc(0x00, g_binout); fputc(0x61, g_binout); fputc(0x73, g_binout); fputc(0x6D, g_binout);
-  fputc(0x01, g_binout); fputc(0x00, g_binout); fputc(0x00, g_binout); fputc(0x00, g_binout);
+  fputc(0x00, g_wasmout); fputc(0x61, g_wasmout); fputc(0x73, g_wasmout); fputc(0x6D, g_wasmout);
+  fputc(0x01, g_wasmout); fputc(0x00, g_wasmout); fputc(0x00, g_wasmout); fputc(0x00, g_wasmout);
 }
 
-static void emit_section_start(secid_t si)
+static void wasm_section_start(secid_t si)
 {
   assert(g_sectbuf == NULL);
-  fputc((unsigned)si & 0xFF, g_binout);
+  fputc((unsigned)si & 0xFF, g_wasmout);
   g_sectbuf = newchb(); /* buffer emits */
   g_curbuf = g_sectbuf; /* emits go here */
   g_sectcnt = 0; /* incremented as elements are added */
 }
 
-static void emit_section_bumpc(void)
+static void wasm_section_bumpc(void)
 {
   assert(g_sectbuf != NULL && g_sectbuf == g_curbuf);
   ++g_sectcnt;
 }
 
-static void emit_section_end(void)
+static void wasm_section_end(void)
 {
   chbuf_t *psb = g_sectbuf;
   assert(psb != NULL && psb == g_curbuf);
@@ -61,41 +61,41 @@ static void emit_section_end(void)
   if (g_sectcnt > 0 || chblen(psb) == 0) {
     /* element count needs to be inserted */
     chbuf_t cb; chbinit(&cb);
-    g_curbuf = &cb; emit_unsigned(g_sectcnt);
+    g_curbuf = &cb; wasm_unsigned(g_sectcnt);
     g_curbuf = NULL;
-    emit_unsigned(chblen(&cb) + chblen(psb));
-    fwrite(chbdata(&cb), 1, chblen(&cb), g_binout);
-    fwrite(chbdata(psb), 1, chblen(psb), g_binout);
+    wasm_unsigned(chblen(&cb) + chblen(psb));
+    fwrite(chbdata(&cb), 1, chblen(&cb), g_wasmout);
+    fwrite(chbdata(psb), 1, chblen(psb), g_wasmout);
     chbfini(&cb); 
   } else {
     /* element count is in psb */
-    emit_unsigned(chblen(psb));
-    fwrite(chbdata(psb), 1, chblen(psb), g_binout);
+    wasm_unsigned(chblen(psb));
+    fwrite(chbdata(psb), 1, chblen(psb), g_wasmout);
   }
   freechb(psb);
 }
 
-static void emit_subsection_start(unsigned ssi)
+static void wasm_subsection_start(unsigned ssi)
 {
   assert(g_ssecbuf == NULL);
   assert(g_sectbuf != NULL && g_sectbuf == g_curbuf);
-  emit_byte(ssi);
+  wasm_byte(ssi);
   g_ssecbuf = newchb(); /* buffer emits */
   g_curbuf = g_ssecbuf; /* emits go here */
 }
 
-static void emit_subsection_end(void)
+static void wasm_subsection_end(void)
 {
   chbuf_t *psb = g_ssecbuf;
   assert(psb != NULL && psb == g_curbuf);
   assert(g_sectbuf != NULL);
   g_ssecbuf = NULL, g_curbuf = g_sectbuf; /* emit to section from now on */
-  emit_unsigned(chblen(psb));
+  wasm_unsigned(chblen(psb));
   chbput(chbdata(psb), chblen(psb), g_curbuf);
   freechb(psb);
 }
 
-static void emit_code_start(void)
+static void wasm_code_start(void)
 {
   assert(g_sectbuf != NULL && g_sectbuf == g_curbuf);
   assert(g_codebuf == NULL);
@@ -103,82 +103,82 @@ static void emit_code_start(void)
   g_curbuf = g_codebuf; /* emits go here */
 }
 
-static void emit_code_end(void)
+static void wasm_code_end(void)
 {
   chbuf_t *psb = g_codebuf;
   assert(psb != NULL && psb == g_curbuf);
   assert(g_sectbuf != NULL);
   g_curbuf = g_sectbuf; /* emit to section from now on */
   g_codebuf = NULL;
-  emit_unsigned(chblen(psb));
+  wasm_unsigned(chblen(psb));
   chbput(chbdata(psb), chblen(psb), g_curbuf);
   freechb(psb);
 }
 
-static void emit_byte(unsigned b)
+static void wasm_byte(unsigned b)
 {
   if (g_curbuf) chbputc(b & 0xFF, g_curbuf);
-  else fputc(b & 0xFF, g_binout);
+  else fputc(b & 0xFF, g_wasmout);
 }
 
-static void emit_data(chbuf_t *pcb)
+static void wasm_data(chbuf_t *pcb)
 {
   char *s = pcb->buf; size_t n = pcb->fill;
-  while (n--) emit_byte(*s++);
+  while (n--) wasm_byte(*s++);
 }
 
-static void emit_signed(long long val)
+static void wasm_signed(long long val)
 {
   int more;
   do {
     unsigned b = (unsigned)(val & 0x7f);
     val >>= 7;
     more = b & 0x40 ? val != -1 : val != 0;
-    emit_byte(b | (more ? 0x80 : 0));
+    wasm_byte(b | (more ? 0x80 : 0));
   } while (more);
 }
 
-static void emit_unsigned(unsigned long long val)
+static void wasm_unsigned(unsigned long long val)
 {
   do {
     unsigned b = (unsigned)(val & 0x7f);
     val >>= 7;
 	  if (val != 0) b |= 0x80;
-	  emit_byte(b);
+	  wasm_byte(b);
   } while (val != 0);
 }
 
-static void emit_float(float val)
+static void wasm_float(float val)
 {
   union { float v; unsigned char bb[4]; } u; int i;
   assert(sizeof(float) == 4);
   u.v = val; 
-  for (i = 0; i < 4; ++i) emit_byte(u.bb[i]);
+  for (i = 0; i < 4; ++i) wasm_byte(u.bb[i]);
 }
 
-static void emit_double(double val)
+static void wasm_double(double val)
 {
   union { double v; unsigned char bb[8]; } u; int i;
   assert(sizeof(double) == 8);
   u.v = val; 
-  for (i = 0; i < 8; ++i) emit_byte(u.bb[i]);
+  for (i = 0; i < 8; ++i) wasm_byte(u.bb[i]);
 }
 
-static void emit_name(const char *name)
+static void wasm_name(const char *name)
 {
   size_t n; assert(name);
   n = strlen(name);
-  emit_unsigned(n);
-  while (n--) emit_byte(*name++);
+  wasm_unsigned(n);
+  while (n--) wasm_byte(*name++);
 }
 
-static void emit_in(instr_t in)
+static void wasm_in(instr_t in)
 {
   if ((in & 0xff) == in) { /* 1-byte */
-    emit_byte((unsigned)in & 0xff);
+    wasm_byte((unsigned)in & 0xff);
   } else if ((in & 0xff) == in) { /* 2-byte */
-    emit_byte(((unsigned)in >> 8) & 0xff);
-    emit_byte(((unsigned)in) & 0xff);
+    wasm_byte(((unsigned)in >> 8) & 0xff);
+    wasm_byte(((unsigned)in) & 0xff);
   } else assert(false);
 }
 
@@ -331,29 +331,29 @@ static void relocate_ins(inscode_t *pic, icbuf_t *prelb)
   pic->relkey = 0; pic->in = in;
 } 
 
-static void emit_expr(icbuf_t *pcb, icbuf_t *prelb)
+static void wasm_expr(icbuf_t *pcb, icbuf_t *prelb)
 {
   size_t i;
   for (i = 0; i < icblen(pcb); ++i) {
     inscode_t *pic = icbref(pcb, i);
     if (pic->relkey) relocate_ins(pic, prelb); 
-    emit_in(pic->in);
+    wasm_in(pic->in);
     switch (instr_sig(pic->in)) {
       case INSIG_NONE:
         break;
       case INSIG_BT:   case INSIG_L:   
       case INSIG_X:    case INSIG_T:
       case INSIG_I32:  case INSIG_I64:
-        emit_unsigned(pic->arg.u); 
+        wasm_unsigned(pic->arg.u); 
         break;
       case INSIG_X_Y:  case INSIG_MEMARG:
-        emit_unsigned(pic->arg.u); emit_unsigned(pic->argu2); 
+        wasm_unsigned(pic->arg.u); wasm_unsigned(pic->argu2); 
         break;
       case INSIG_F32:
-        emit_float(pic->arg.f); 
+        wasm_float(pic->arg.f); 
         break;
       case INSIG_F64:
-        emit_double(pic->arg.d); 
+        wasm_double(pic->arg.d); 
         break;
       case INSIG_LS_L:
         assert(false); /* fixme */
@@ -363,44 +363,44 @@ static void emit_expr(icbuf_t *pcb, icbuf_t *prelb)
   }    
 }
 
-static void emit_types(fsbuf_t *pftb)
+static void wasm_types(fsbuf_t *pftb)
 {
   size_t i, k;
   if (!pftb) return;
-  emit_section_start(SI_TYPE);
+  wasm_section_start(SI_TYPE);
   /* no type compression: types may repeat */
   for (i = 0; i < fsblen(pftb); ++i) {
     funcsig_t *pft = fsbref(pftb, i);
-    emit_byte(FT_FUNCTYPE);
-    emit_unsigned(vtblen(&pft->argtypes));
+    wasm_byte(FT_FUNCTYPE);
+    wasm_unsigned(vtblen(&pft->argtypes));
     for (k = 0; k < vtblen(&pft->argtypes); ++k) {
-      emit_byte(*vtbref(&pft->argtypes, k));
+      wasm_byte(*vtbref(&pft->argtypes, k));
     }    
-    emit_unsigned(vtblen(&pft->rettypes));
+    wasm_unsigned(vtblen(&pft->rettypes));
     for (k = 0; k < vtblen(&pft->rettypes); ++k) {
-      emit_byte(*vtbref(&pft->rettypes, k));
+      wasm_byte(*vtbref(&pft->rettypes, k));
     }
-    emit_section_bumpc();
+    wasm_section_bumpc();
   }
-  emit_section_end();
+  wasm_section_end();
 }
 
-static void emit_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb)
+static void wasm_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb)
 {
   size_t i;
   if (!pfdb && !ptdb && !pmdb && !pgdb) return;
-  emit_section_start(SI_IMPORT);
+  wasm_section_start(SI_IMPORT);
   /* all imported functions are at the front of pfdb */
   if (pfdb) for (i = 0; i < entblen(pfdb); ++i) {
     entry_t *pe = entbref(pfdb, i);
     assert(pe->ek == EK_FUNC);
     if (!pe->mod) continue; /* skip non-imported */
     assert(pe->name);
-    emit_name(symname(pe->mod));
-    emit_name(symname(pe->name));
-    emit_byte(EK_FUNC);
-    emit_unsigned(pe->fsi);
-    emit_section_bumpc(); 
+    wasm_name(symname(pe->mod));
+    wasm_name(symname(pe->name));
+    wasm_byte(EK_FUNC);
+    wasm_unsigned(pe->fsi);
+    wasm_section_bumpc(); 
   }
   /* imported tables */
   if (ptdb) for (i = 0; i < entblen(ptdb); ++i) {
@@ -408,14 +408,14 @@ static void emit_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_
     assert(pe->ek == EK_TABLE);
     if (!pe->mod) continue; /* skip non-imported */
     assert(pe->name);
-    emit_name(symname(pe->mod));
-    emit_name(symname(pe->name));
-    emit_byte(EK_TABLE);
-    emit_byte(pe->vt); /* RT_FUNCREF/RT_EXTERNREF */        
-    emit_byte(pe->lt);
-    emit_unsigned(pe->n);
-    if (pe->lt == LT_MINMAX) emit_unsigned(pe->m);
-    emit_section_bumpc(); 
+    wasm_name(symname(pe->mod));
+    wasm_name(symname(pe->name));
+    wasm_byte(EK_TABLE);
+    wasm_byte(pe->vt); /* RT_FUNCREF/RT_EXTERNREF */        
+    wasm_byte(pe->lt);
+    wasm_unsigned(pe->n);
+    if (pe->lt == LT_MINMAX) wasm_unsigned(pe->m);
+    wasm_section_bumpc(); 
   }    
   /* imported mems */
   if (pmdb) for (i = 0; i < entblen(pmdb); ++i) {
@@ -423,13 +423,13 @@ static void emit_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_
     assert(pe->ek == EK_MEM);
     if (!pe->mod) continue; /* skip non-imported */
     assert(pe->name);
-    emit_name(symname(pe->mod));
-    emit_name(symname(pe->name));
-    emit_byte(EK_MEM);
-    emit_byte(pe->lt);
-    emit_unsigned(pe->n);
-    if (pe->lt == LT_MINMAX) emit_unsigned(pe->m);
-    emit_section_bumpc(); 
+    wasm_name(symname(pe->mod));
+    wasm_name(symname(pe->name));
+    wasm_byte(EK_MEM);
+    wasm_byte(pe->lt);
+    wasm_unsigned(pe->n);
+    if (pe->lt == LT_MINMAX) wasm_unsigned(pe->m);
+    wasm_section_bumpc(); 
   }    
   /* imported globals */
   if (pgdb) for (i = 0; i < entblen(pgdb); ++i) {
@@ -437,132 +437,132 @@ static void emit_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_
     assert(pe->ek == EK_GLOBAL);
     if (!pe->mod) continue; /* skip non-imported */
     assert(pe->name);
-    emit_name(symname(pe->mod));
-    emit_name(symname(pe->name));
-    emit_byte(EK_GLOBAL);
-    emit_byte(pe->vt);
-    emit_byte(pe->mut);
-    emit_section_bumpc(); 
+    wasm_name(symname(pe->mod));
+    wasm_name(symname(pe->name));
+    wasm_byte(EK_GLOBAL);
+    wasm_byte(pe->vt);
+    wasm_byte(pe->mut);
+    wasm_section_bumpc(); 
   }
-  emit_section_end();
+  wasm_section_end();
 }
 
-static void emit_funcs(entbuf_t *pfdb)
+static void wasm_funcs(entbuf_t *pfdb)
 {
   size_t i;
   if (!pfdb) return;
-  emit_section_start(SI_FUNCTION);
+  wasm_section_start(SI_FUNCTION);
   for (i = 0; i < entblen(pfdb); ++i) {
     entry_t *pe = entbref(pfdb, i);
     assert(pe->ek == EK_FUNC);
     if (pe->mod) continue; /* skip imported functions */
-    emit_unsigned(pe->fsi);
-    emit_section_bumpc();
+    wasm_unsigned(pe->fsi);
+    wasm_section_bumpc();
   }
-  emit_section_end();
+  wasm_section_end();
 }
 
-static void emit_tables(entbuf_t *ptdb)
+static void wasm_tables(entbuf_t *ptdb)
 {
   size_t i;
   if (!ptdb) return;
-  emit_section_start(SI_TABLE);
+  wasm_section_start(SI_TABLE);
   for (i = 0; i < entblen(ptdb); ++i) {
     entry_t *pe = entbref(ptdb, i);
     assert(pe->ek == EK_TABLE);
     if (pe->mod) continue; /* skip imported tables */
-    emit_byte(pe->vt);
-    emit_byte(pe->lt);
-    emit_unsigned(pe->n);
-    if (pe->lt == LT_MINMAX) emit_unsigned(pe->m);
-    emit_section_bumpc();
+    wasm_byte(pe->vt);
+    wasm_byte(pe->lt);
+    wasm_unsigned(pe->n);
+    if (pe->lt == LT_MINMAX) wasm_unsigned(pe->m);
+    wasm_section_bumpc();
   }
-  emit_section_end();
+  wasm_section_end();
 }
 
-static void emit_mems(entbuf_t *pmdb)
+static void wasm_mems(entbuf_t *pmdb)
 {
   size_t i;
   if (!pmdb) return;
-  emit_section_start(SI_MEMORY);
+  wasm_section_start(SI_MEMORY);
   for (i = 0; i < entblen(pmdb); ++i) {
     entry_t *pe = entbref(pmdb, i);
     assert(pe->ek == EK_MEM);
     if (pe->mod) continue; /* skip imported mems */
-    emit_byte(pe->lt);
-    emit_unsigned(pe->n);
-    if (pe->lt == LT_MINMAX) emit_unsigned(pe->m);
-    emit_section_bumpc();
+    wasm_byte(pe->lt);
+    wasm_unsigned(pe->n);
+    if (pe->lt == LT_MINMAX) wasm_unsigned(pe->m);
+    wasm_section_bumpc();
   }
-  emit_section_end();
+  wasm_section_end();
 }
 
-static void emit_globals(entbuf_t *pgdb, icbuf_t *prelb)
+static void wasm_globals(entbuf_t *pgdb, icbuf_t *prelb)
 {
   size_t i;
   if (!pgdb) return;
-  emit_section_start(SI_GLOBAL);
+  wasm_section_start(SI_GLOBAL);
   for (i = 0; i < entblen(pgdb); ++i) {
     entry_t *pe = entbref(pgdb, i);
     assert(pe->ek == EK_GLOBAL);
     if (pe->mod) continue; /* skip imported globals */
-    emit_byte(pe->vt);
-    emit_byte(pe->mut);
-    emit_expr(&pe->code, prelb);
-    emit_section_bumpc();
+    wasm_byte(pe->vt);
+    wasm_byte(pe->mut);
+    wasm_expr(&pe->code, prelb);
+    wasm_section_bumpc();
   }
-  emit_section_end();
+  wasm_section_end();
 }
 
-static void emit_exports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb)
+static void wasm_exports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb)
 {
   size_t i;
   if (!pfdb && !ptdb && !pmdb && !pgdb) return;
-  emit_section_start(SI_EXPORT);
+  wasm_section_start(SI_EXPORT);
   if (pfdb) for (i = 0; i < entblen(pfdb); ++i) {
     entry_t *pe = entbref(pfdb, i);
     assert(pe->ek == EK_FUNC);
     if (!pe->mod && pe->name) {
-      emit_name(symname(pe->name));
-      emit_byte(EK_FUNC);
-      emit_unsigned(i);
-      emit_section_bumpc();
+      wasm_name(symname(pe->name));
+      wasm_byte(EK_FUNC);
+      wasm_unsigned(i);
+      wasm_section_bumpc();
     }
   }  
   if (ptdb) for (i = 0; i < entblen(ptdb); ++i) {
     entry_t *pe = entbref(ptdb, i);
     assert(pe->ek == EK_TABLE);
     if (!pe->mod && pe->name) {
-      emit_name(symname(pe->name));
-      emit_byte(EK_TABLE);
-      emit_unsigned(i);
-      emit_section_bumpc();
+      wasm_name(symname(pe->name));
+      wasm_byte(EK_TABLE);
+      wasm_unsigned(i);
+      wasm_section_bumpc();
     }
   }  
   if (pmdb) for (i = 0; i < entblen(pmdb); ++i) {
     entry_t *pe = entbref(pmdb, i);
     assert(pe->ek == EK_MEM);
     if (!pe->mod && pe->name) {
-      emit_name(symname(pe->name));
-      emit_byte(EK_MEM);
-      emit_unsigned(i);
-      emit_section_bumpc();
+      wasm_name(symname(pe->name));
+      wasm_byte(EK_MEM);
+      wasm_unsigned(i);
+      wasm_section_bumpc();
     }
   }  
   if (pgdb) for (i = 0; i < entblen(pgdb); ++i) {
     entry_t *pe = entbref(pgdb, i);
     assert(pe->ek == EK_GLOBAL);
     if (!pe->mod && pe->name) {
-      emit_name(symname(pe->name));
-      emit_byte(EK_GLOBAL);
-      emit_unsigned(i);
-      emit_section_bumpc();
+      wasm_name(symname(pe->name));
+      wasm_byte(EK_GLOBAL);
+      wasm_unsigned(i);
+      wasm_section_bumpc();
     }
   }
-  emit_section_end();
+  wasm_section_end();
 }
 
-static void emit_start(entbuf_t *pfdb)
+static void wasm_start(entbuf_t *pfdb)
 {
   size_t i;
   if (!pfdb) return;
@@ -570,119 +570,119 @@ static void emit_start(entbuf_t *pfdb)
     entry_t *pe = entbref(pfdb, i);
     assert(pe->ek == EK_FUNC);
     if (pe->isstart) {
-      emit_section_start(SI_START);
-      emit_unsigned((unsigned)i);
-      emit_section_end();
+      wasm_section_start(SI_START);
+      wasm_unsigned((unsigned)i);
+      wasm_section_end();
       break;
     }
   }
 }
 
-static void emit_elems(esegbuf_t *pesb, icbuf_t *prelb)
+static void wasm_elems(esegbuf_t *pesb, icbuf_t *prelb)
 {
   size_t i, k;
   if (!pesb) return;
-  emit_section_start(SI_ELEMENT);
+  wasm_section_start(SI_ELEMENT);
   for (i = 0; i < esegblen(pesb); ++i) {
     eseg_t *ps = esegbref(pesb, i);
-    emit_byte(ps->esm);
+    wasm_byte(ps->esm);
     switch (ps->esm) {
        case ES_ACTIVE_EIV: /* e fiv */
-         emit_expr(&ps->code, prelb);
-         emit_unsigned(idxblen(&ps->fidxs));
+         wasm_expr(&ps->code, prelb);
+         wasm_unsigned(idxblen(&ps->fidxs));
          goto emitfiv;
        case ES_ACTIVE_TEKIV: /* ti e k fiv */
-         emit_unsigned(ps->idx);
-         emit_expr(&ps->code, prelb);
+         wasm_unsigned(ps->idx);
+         wasm_expr(&ps->code, prelb);
          /* fall thru */
        case ES_DECLVE_KIV: /* k fiv */
        case ES_PASSIVE_KIV: /* k fiv */ 
-         emit_byte(ps->ek); /* must be 0 */
+         wasm_byte(ps->ek); /* must be 0 */
        emitfiv:
-         emit_unsigned(idxblen(&ps->fidxs));
+         wasm_unsigned(idxblen(&ps->fidxs));
          for (k = 0; k < idxblen(&ps->fidxs); ++k)
-           emit_unsigned(*idxbref(&ps->fidxs, k));
+           wasm_unsigned(*idxbref(&ps->fidxs, k));
          break;       
        case ES_ACTIVE_EEV: /* e ev */
-         emit_expr(&ps->code, prelb);
+         wasm_expr(&ps->code, prelb);
          goto emitev;
        case ES_ACTIVE_IETEV: /* ti e rt ev */       
-         emit_unsigned(ps->idx);
-         emit_expr(&ps->code, prelb);
+         wasm_unsigned(ps->idx);
+         wasm_expr(&ps->code, prelb);
          /* fall thru */
        case ES_DECLVE_TEV: /* rt ev */
        case ES_PASSIVE_TEV: /* rt ev */
-         emit_byte(ps->rt); /* must be RT_XXX */       
+         wasm_byte(ps->rt); /* must be RT_XXX */       
        emitev:
-         emit_unsigned(ps->cdc);
-         emit_expr(&ps->codes, prelb);
+         wasm_unsigned(ps->cdc);
+         wasm_expr(&ps->codes, prelb);
          break;
       default: assert(false);
     }  
-    emit_section_bumpc();
+    wasm_section_bumpc();
   }
-  emit_section_end();
+  wasm_section_end();
 }
 
-static void emit_datacount(dsegbuf_t *pdsb)
+static void wasm_datacount(dsegbuf_t *pdsb)
 {
   size_t i;
   if (!pdsb) return;
-  emit_section_start(SI_DATACOUNT);
+  wasm_section_start(SI_DATACOUNT);
   for (i = 0; i < dsegblen(pdsb); ++i) {
-    emit_section_bumpc();
+    wasm_section_bumpc();
   }  
-  emit_section_end();
+  wasm_section_end();
 }
 
-static void emit_codes(entbuf_t *pfdb, icbuf_t *prelb)
+static void wasm_codes(entbuf_t *pfdb, icbuf_t *prelb)
 {
   size_t i, k;
   if (!pfdb) return;
-  emit_section_start(SI_CODE);
+  wasm_section_start(SI_CODE);
   for (i = 0; i < entblen(pfdb); ++i) {
     entry_t *pe = entbref(pfdb, i);
     assert(pe->ek == EK_FUNC);
     if (pe->mod) continue; /* skip imported functions */
-    emit_code_start();
-    emit_unsigned(buflen(&pe->loctypes));
+    wasm_code_start();
+    wasm_unsigned(buflen(&pe->loctypes));
     for (k = 0; k < buflen(&pe->loctypes); ++k) {
       /* no type compression: types may repeat */
-      emit_unsigned(1);
-      emit_byte(*vtbref(&pe->loctypes, k));
+      wasm_unsigned(1);
+      wasm_byte(*vtbref(&pe->loctypes, k));
     }
-    emit_expr(&pe->code, prelb);
-    emit_code_end();
-    emit_section_bumpc();
+    wasm_expr(&pe->code, prelb);
+    wasm_code_end();
+    wasm_section_bumpc();
   }
-  emit_section_end();
+  wasm_section_end();
 }
 
-static void emit_datas(dsegbuf_t *pdsb, icbuf_t *prelb)
+static void wasm_datas(dsegbuf_t *pdsb, icbuf_t *prelb)
 {
   size_t i;
   if (!pdsb) return;
-  emit_section_start(SI_DATA);
+  wasm_section_start(SI_DATA);
   for (i = 0; i < dsegblen(pdsb); ++i) {
     dseg_t *ps = dsegbref(pdsb, i);
-    emit_byte(ps->dsm);
+    wasm_byte(ps->dsm);
     switch (ps->dsm) {
-      case DS_ACTIVE_MI: emit_unsigned(ps->idx); /* fall thru */
-      case DS_ACTIVE: emit_expr(&ps->code, prelb); /* fall thru */
-      case DS_PASSIVE: emit_unsigned(chblen(&ps->data)), emit_data(&ps->data); break;
+      case DS_ACTIVE_MI: wasm_unsigned(ps->idx); /* fall thru */
+      case DS_ACTIVE: wasm_expr(&ps->code, prelb); /* fall thru */
+      case DS_PASSIVE: wasm_unsigned(chblen(&ps->data)), wasm_data(&ps->data); break;
       default: assert(false);
     }  
-    emit_section_bumpc();
+    wasm_section_bumpc();
   }
-  emit_section_end();
+  wasm_section_end();
 }
 
 
 /* top-level representations */
 
-module_t* modinit(module_t* pm)
+wasm_module_t* wasm_module_init(wasm_module_t* pm)
 {
-  memset(pm, 0, sizeof(module_t));
+  memset(pm, 0, sizeof(wasm_module_t));
   fsbinit(&pm->funcsigs); 
   entbinit(&pm->funcdefs);
   entbinit(&pm->tabdefs);
@@ -694,7 +694,7 @@ module_t* modinit(module_t* pm)
   return pm;
 }
 
-void modfini(module_t* pm)
+void wasm_module_fini(wasm_module_t* pm)
 {
   fsbfini(&pm->funcsigs);
   entbfini(&pm->funcdefs);
@@ -707,25 +707,25 @@ void modfini(module_t* pm)
 }
 
 
-/* write wasm binary module */
+/* write final wasm binary module */
 
-void write_module(module_t* pm, FILE *pf)
+void write_wasm_module(wasm_module_t* pm, FILE *pf)
 {
-  g_binout = pf;
-  emit_header();
-  emit_types(&pm->funcsigs);
-  emit_imports(&pm->funcdefs, &pm->tabdefs, &pm->memdefs, &pm->globdefs);
-  emit_funcs(&pm->funcdefs);
-  emit_tables(&pm->tabdefs);
-  emit_mems(&pm->memdefs);
-  emit_globals(&pm->globdefs, &pm->reloctab);
-  emit_exports(&pm->funcdefs, &pm->tabdefs, &pm->memdefs, &pm->globdefs);
-  emit_start(&pm->funcdefs);
-  emit_elems(&pm->elemdefs, &pm->reloctab);
-  emit_datacount(&pm->datadefs);
-  emit_codes(&pm->funcdefs, &pm->reloctab);
-  emit_datas(&pm->datadefs, &pm->reloctab);
-  g_binout = NULL;
+  g_wasmout = pf;
+  wasm_header();
+  wasm_types(&pm->funcsigs);
+  wasm_imports(&pm->funcdefs, &pm->tabdefs, &pm->memdefs, &pm->globdefs);
+  wasm_funcs(&pm->funcdefs);
+  wasm_tables(&pm->tabdefs);
+  wasm_mems(&pm->memdefs);
+  wasm_globals(&pm->globdefs, &pm->reloctab);
+  wasm_exports(&pm->funcdefs, &pm->tabdefs, &pm->memdefs, &pm->globdefs);
+  wasm_start(&pm->funcdefs);
+  wasm_elems(&pm->elemdefs, &pm->reloctab);
+  wasm_datacount(&pm->datadefs);
+  wasm_codes(&pm->funcdefs, &pm->reloctab);
+  wasm_datas(&pm->datadefs, &pm->reloctab);
+  g_wasmout = NULL;
 }
 
 
@@ -1136,19 +1136,19 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
     case INSIG_L:   
     case INSIG_X:    case INSIG_T:
     case INSIG_I32:  case INSIG_I64:
-      if (pic->relkey) chbputf(pcb, " %s", symname(pic->relkey)); 
+      if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
       else chbputf(pcb, " %llu", pic->arg.u); 
       break;
     case INSIG_X_Y:  case INSIG_MEMARG:
-      if (pic->relkey) chbputf(pcb, " %s %u", symname(pic->relkey), pic->argu2); 
+      if (pic->relkey) chbputf(pcb, " $%s %u", symname(pic->relkey), pic->argu2); 
       else chbputf(pcb, " %llu %u", pic->arg.u, pic->argu2); 
       break;
     case INSIG_F32:
-      if (pic->relkey) chbputf(pcb, " %s", symname(pic->relkey)); 
+      if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
       else chbputf(pcb, " %g", (double)pic->arg.f); 
       break;
     case INSIG_F64:
-      if (pic->relkey) chbputf(pcb, " %s", symname(pic->relkey)); 
+      if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
       else chbputf(pcb, " %g", pic->arg.d); 
       break;
     case INSIG_LS_L:
@@ -1157,4 +1157,177 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       assert(false);     
   }
   return chbdata(pcb);
+}
+
+
+/* wat text representations */
+
+wati_t* watiinit(wati_t* pi, entkind_t ek)
+{
+  memset(pi, 0, sizeof(wati_t));
+  pi->ek = ek;
+  fsinit(&pi->fs);
+  return pi;
+}
+
+void watifini(wati_t* pi)
+{
+  fsfini(&pi->fs);
+}
+
+void watibfini(watibuf_t* pb)
+{
+  wati_t *pf; size_t i;
+  assert(pb); assert(pb->esz = sizeof(wati_t));
+  pf = (wati_t*)(pb->buf);
+  for (i = 0; i < pb->fill; ++i) watifini(pf+i);
+  buffini(pb);
+}
+
+watf_t* watfinit(watf_t* pf)
+{
+  memset(pf, 0, sizeof(watf_t));
+  fsinit(&pf->fs);
+  icbinit(&pf->code);
+  return pf;
+}
+
+void watffini(watf_t* pf)
+{
+  fsfini(&pf->fs);
+  icbfini(&pf->code);
+}
+
+void watfbfini(watfbuf_t* pb)
+{
+  watf_t *pf; size_t i;
+  assert(pb); assert(pb->esz = sizeof(watf_t));
+  pf = (watf_t*)(pb->buf);
+  for (i = 0; i < pb->fill; ++i) watffini(pf+i);
+  buffini(pb);
+}
+
+wat_module_t* wat_module_init(wat_module_t* pm)
+{
+  memset(pm, 0, sizeof(wat_module_t));
+  watibinit(&pm->imports);
+  watfbinit(&pm->funcs);
+  return pm;
+}
+
+void wat_module_fini(wat_module_t* pm)
+{
+  watibfini(&pm->imports);
+  watfbfini(&pm->funcs);
+}
+
+
+/* write object wat text module */
+
+static void wat_indent(void)
+{
+  if (g_watindent) fprintf(g_watout, "%*c", g_watindent, ' ');
+}
+
+static void wat_writeln(const char *s)
+{
+  fputs(s, g_watout);
+  fputc('\n', g_watout);
+}
+
+static void wat_line(const char *s)
+{
+  wat_indent();
+  wat_writeln(s);
+}
+
+static void wat_linef(const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  wat_indent();
+  vfprintf(g_watout, fmt, args);
+  fputc('\n', g_watout);
+  va_end(args);
+}
+
+static void wat_imports(watibuf_t *pib)
+{
+  size_t i, j;
+  for (i = 0; i < watiblen(pib); ++i) {
+    wati_t *pi = watibref(pib, i);
+    chbsetf(g_watbuf, "(import \"%s\" \"%s\" ", symname(pi->mod), symname(pi->name));
+    switch (pi->ek) {
+      case EK_FUNC: {
+        chbputf(g_watbuf, "(func");
+        for (j = 0; j < vtblen(&pi->fs.argtypes); ++j) {
+          valtype_t *pvt = vtbref(&pi->fs.argtypes, j);
+          chbputf(g_watbuf, " (param %s)", valtype_name(*pvt));
+        }
+        for (j = 0; j < vtblen(&pi->fs.rettypes); ++j) {
+          valtype_t *pvt = vtbref(&pi->fs.rettypes, j);
+          chbputf(g_watbuf, " (result %s)", valtype_name(*pvt));
+        }
+        chbputc(')', g_watbuf); 
+      } break;
+      case EK_TABLE: {
+      } break;
+      case EK_MEM: {
+      } break;
+      case EK_GLOBAL: {
+      } break;
+    }
+    wat_line(chbdata(g_watbuf));
+  }
+}
+
+static void wat_funcs(watfbuf_t *pfb)
+{
+  size_t i, j, k;
+  for (i = 0; i < watfblen(pfb); ++i) {
+    watf_t *pf = watfbref(pfb, i);
+    chbsetf(g_watbuf, "(func $%s", symname(pf->name));
+    for (j = 0; j < vtblen(&pf->fs.argtypes); ++j) {
+      valtype_t *pvt = vtbref(&pf->fs.argtypes, j);
+      inscode_t *pic = icbref(&pf->code, j);
+      assert(pic->in == IN_REGDECL && pic->relkey);
+      assert(*pvt == (valtype_t)pic->arg.u);
+      chbputf(g_watbuf, " (param $%s %s)", symname(pic->relkey), valtype_name(pic->arg.u));
+    }
+    for (k = 0; k < vtblen(&pf->fs.rettypes); ++k) {
+      valtype_t *pvt = vtbref(&pf->fs.rettypes, k);
+      chbputf(g_watbuf, " (result %s)", valtype_name(*pvt));
+    }
+    wat_line(chbdata(g_watbuf)); chbclear(g_watbuf);
+    g_watindent += 2;
+    for (/* use current j */; j < icblen(&pf->code); ++j) {
+      inscode_t *pic = icbref(&pf->code, j);
+      if (pic->in != IN_REGDECL) break;
+      chbputf(g_watbuf, "(local $%s %s) ", symname(pic->relkey), valtype_name(pic->arg.u));
+    }
+    if (chblen(g_watbuf) > 0) wat_line(chbdata(g_watbuf));
+    /* code */
+    for (/* use current j */; j < icblen(&pf->code); ++j) {
+      inscode_t *pic = icbref(&pf->code, j);
+      assert(pic->in != IN_REGDECL);
+      wat_line(format_inscode(pic, g_watbuf));
+    }
+    g_watindent -= 2;
+    wat_line(")");  
+  }
+}
+
+void write_wat_module(wat_module_t* pm, FILE *pf)
+{
+  chbuf_t cb;
+  g_watout = pf;
+  g_watbuf = chbinit(&cb);
+  wat_linef("(module $%s", symname(pm->name));
+  g_watindent += 2;
+  wat_imports(&pm->imports);
+  wat_funcs(&pm->funcs);
+  wat_writeln(")");
+  g_watout = NULL;
+  chbfini(&cb);
+  g_watbuf = NULL;
 }

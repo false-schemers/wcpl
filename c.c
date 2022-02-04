@@ -720,7 +720,7 @@ static void check_constnd(sym_t mmname, node_t *pn, node_t *pvn)
 }
 
 /* process var declaration in main module */
-static void process_vardecl(sym_t mmname, node_t *pdn, node_t *pin, module_t *pm)
+static void process_vardecl(sym_t mmname, node_t *pdn, node_t *pin)
 {
 #ifdef _DEBUG
   dump_node(pdn, stderr);
@@ -2518,9 +2518,9 @@ static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
 }
 
 /* process function definition in main module */
-static void process_fundef(sym_t mmname, node_t *pn, module_t *pm)
+static void process_fundef(sym_t mmname, node_t *pn, wat_module_t *pm)
 {
-  node_t *pcn; 
+  node_t *pcn; watf_t *pf;
   assert(pn->nt == NT_FUNDEF && pn->name && ndlen(pn) == 2);
   assert(ndref(pn, 0)->nt == NT_TYPE && ndref(pn, 0)->ts == TS_FUNCTION);
   clear_regpool(); /* reset reg name generator */
@@ -2567,42 +2567,18 @@ static void process_fundef(sym_t mmname, node_t *pn, module_t *pm)
   dump_node(pcn, stderr);
 #endif
 #endif
-
-#if 0
-  entry_t *pe;
-  /* add the resulting code to the module's funcdefs */
-  pe = entbnewbk(&pm->funcdefs, EK_FUNC);
-  pe->mod = 0; /* not imported */
-  pe->name = pn->name;
-  { /* calc and register function signature */
-    funcsig_t fs; fsinit(&fs);
-    pe->fsi = fsintern(&pm->funcsigs, ftn2fsig(acode_type(pcn), &fs)); 
-    fsfini(&fs);
-  }
-  pe->isstart = false;
-  { /* fill loctypes/locnames/code (args are included!) */
-    size_t i; 
-    for (i = 0; i < icblen(&pcn->data); ++i) {
-      inscode_t *pic = icbref(&pcn->data, i);
-      assert(pic->in != IN_PLACEHOLDER);
-      if (pic->in == IN_REGDECL) {
-        valtype_t *pvt = vtbnewbk(&pe->loctypes);
-        sym_t *psy = bufnewbk(&pe->locnames);
-        *pvt = (valtype_t)pic->arg.u; assert(pic->arg.u);
-        *psy = pic->relkey; assert(pic->relkey);
-      } else {
-        *icbnewbk(&pe->code) = *pic;
-      }
-    }
-  }
-#endif
+  /* add to watf module */
+  pf = watfbnewbk(&pm->funcs);
+  pf->name = pn->name;
+  ftn2fsig(acode_type(pcn), &pf->fs);
+  bufswap(&pcn->data, &pf->code);
   
   /* free all nodes allocated with np-functions at once */
   clear_nodepool();
 }
 
 /* process top-level intrinsic call */
-static void process_top_intrcall(node_t *pn, module_t *pm)
+static void process_top_intrcall(node_t *pn)
 {
 #ifdef _DEBUG
   dump_node(pn, stderr);
@@ -2612,7 +2588,7 @@ static void process_top_intrcall(node_t *pn, module_t *pm)
 }
 
 /* process single top node (from module or include) */
-static void process_top_node(sym_t mmname, node_t *pn, module_t *pm)
+static void process_top_node(sym_t mmname, node_t *pn, wat_module_t *pm)
 {
   /* ignore empty blocks left from macros */
   if (pn->nt == NT_BLOCK && ndlen(pn) == 0) return;
@@ -2631,7 +2607,7 @@ static void process_top_node(sym_t mmname, node_t *pn, module_t *pm)
     /* in header: declarations only */
     size_t i;
     if (pn->nt == NT_FUNDEF) neprintf(pn, "function definition in header");
-    else if (pn->nt == NT_INTRCALL) process_top_intrcall(pn, pm); 
+    else if (pn->nt == NT_INTRCALL) process_top_intrcall(pn); 
     else if (pn->nt != NT_BLOCK) neprintf(pn, "invalid top-level declaration");
     else if (!pn->name) neprintf(pn, "unscoped top-level declaration");
     else for (i = 0; i < ndlen(pn); ++i) {
@@ -2652,7 +2628,7 @@ static void process_top_node(sym_t mmname, node_t *pn, module_t *pm)
     /* in module mmname: produce code */
     size_t i;
     if (pn->nt == NT_FUNDEF) process_fundef(mmname, pn, pm);
-    else if (pn->nt == NT_INTRCALL) process_top_intrcall(pn, pm); 
+    else if (pn->nt == NT_INTRCALL) process_top_intrcall(pn); 
     else if (pn->nt != NT_BLOCK) neprintf(pn, "unexpected top-level declaration");
     else for (i = 0; i < ndlen(pn); ++i) {
       node_t *pni = ndref(pn, i);
@@ -2660,9 +2636,9 @@ static void process_top_node(sym_t mmname, node_t *pn, module_t *pm)
         neprintf(pni, "extern declaration in module (extern is for use in headers only)");
       } else if (pni->nt == NT_VARDECL) {
         if (i+1 < ndlen(pn) && ndref(pn, i+1)->nt == NT_ASSIGN) {
-          process_vardecl(mmname, pni, ndref(pn, ++i), pm);
+          process_vardecl(mmname, pni, ndref(pn, ++i));
         } else {
-          process_vardecl(mmname, pni, NULL, pm);
+          process_vardecl(mmname, pni, NULL);
         }
       } else {
         neprintf(pni, "top-level declaration or definition expected");
@@ -2672,7 +2648,7 @@ static void process_top_node(sym_t mmname, node_t *pn, module_t *pm)
 }
 
 /* parse/process include file and its includes */
-static void process_include(pws_t *pw, int startpos, sym_t name, module_t *pm)
+static void process_include(pws_t *pw, int startpos, sym_t name, wat_module_t *pm)
 {
   pws_t *pwi; node_t nd = mknd();
   pwi = pws_from_modname(name, &g_bases);
@@ -2696,7 +2672,7 @@ static void process_include(pws_t *pw, int startpos, sym_t name, module_t *pm)
 }
 
 /* parse/process module file and its includes; return module name on success */
-static sym_t process_module(const char *fname, module_t *pm)
+static sym_t process_module(const char *fname, wat_module_t *pm)
 {
   pws_t *pw; node_t nd = mknd(); sym_t mod = 0;
   pw = newpws(fname);
@@ -2720,17 +2696,15 @@ static sym_t process_module(const char *fname, module_t *pm)
   return mod;
 }
 
-/* compile module file to .wasm output file (if not NULL) */
+/* compile module file to wat output file (if not NULL) */
 void compile_module(const char *ifname, const char *ofname)
 {
-  module_t m; size_t i; sym_t mod;
-  size_t fino = 0, gino = 0; /* insertion indices */
-  funcsig_t fs;
-  modinit(&m); fsinit(&fs);
+  wat_module_t wm; size_t i; sym_t mod;
+  wat_module_init(&wm);
   
-  mod = process_module(ifname, &m); assert(mod);
-  m.name = mod;
-  
+  mod = process_module(ifname, &wm); assert(mod);
+  wm.name = mod;
+
   /* at this point, function/global tables are filled with mainmod definitions */
   /* walk g_syminfo/g_nodes to insert imports actually referenced in the code */
   for (i = 0; i < buflen(&g_syminfo); ++i) {
@@ -2744,22 +2718,15 @@ void compile_module(const char *ifname, const char *ofname)
         if (pn->name == mod) continue; /* not an import */
         if (ptn->ts == TS_FUNCTION) {
           /* mod=pn->name id=id ctype=ndref(pn, 0) */
-          /* this mod:id needs to be imported as function, will get its idx */
-          /* name=>idx info should be added to reloc table as function reloc */
-          entry_t *pe; inscode_t *pri;
+          /* this mod:id needs to be imported as function */
+          wati_t *pi;
 #ifdef _DEBUG
           fprintf(stderr, "imported function %s:%s =>\n", symname(pn->name), symname(id));
           dump_node(ptn, stderr);
 #endif
-          pe = entbins(&m.funcdefs, fino, EK_FUNC);
-          pe->mod = pn->name, pe->name = id;
-          pe->fsi = fsintern(&m.funcsigs, ftn2fsig(ptn, &fs));
-          /* add reloc table entry */
-          pri = icbnewbk(&m.reloctab); 
-          pri->relkey = id;
-          pri->in = IN_UNREACHABLE; 
-          pri->arg.u = fino;
-          ++fino;
+          pi = watibnewbk(&wm.imports, EK_FUNC);
+          pi->mod = pn->name, pi->name = id;
+          ftn2fsig(ptn, &pi->fs);
         } else {
 #ifdef _DEBUG
           fprintf(stderr, "imported global %s:%s =>\n", symname(pn->name), symname(id));
@@ -2769,7 +2736,8 @@ void compile_module(const char *ifname, const char *ofname)
       }
     }
   }
-  
+
+#if 0  
   /* use contents of g_dseg as passive data segment */
   /* fixme: global var $dp should be inited to the base address of dseg, and dsoff be taken from it! */
   if (chblen(&g_dseg) > 0) { 
@@ -2798,20 +2766,20 @@ void compile_module(const char *ifname, const char *ofname)
   }
   /* sort reloctab by symbol before emitting */
   bufqsort(&m.reloctab, sym_cmp);
+#endif
 
   /* emit wasm (use relocations) */
   if (ofname) {
-    FILE *pf = fopen(ofname, "wb");
+    FILE *pf = fopen(ofname, "w");
     if (!pf) exprintf("cannot open output file %s:", ofname);
-    write_module(&m, pf);
+    write_wat_module(&wm, pf);
     fclose(pf);
-  //} else {
-  //  watout_module(&m, stdout);
+  } else {
+    write_wat_module(&wm, stdout);
   }
 
   /* done */
-  fsfini(&fs);
-  modfini(&m); 
+  wat_module_fini(&wm); 
 }
 
 

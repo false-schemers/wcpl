@@ -120,6 +120,7 @@ extern void bufremdups(buf_t* pb, int (*cmp)(const void *, const void *), void (
 extern void* bufsearch(const buf_t* pb, const void *pe, int (*cmp)(const void *, const void *)); /* linear */
 extern void* bufbsearch(const buf_t* pb, const void *pe, int (*cmp)(const void *, const void *)); /* binary */
 extern size_t bufoff(const buf_t* pb, const void *pe); /* element offset of non-NULL pe inside pb: [0..len] */
+extern void bufswap(buf_t* pb1, buf_t* pb2);
 
 /* dstr_t buffers */
 #define dsbuf_t buf_t

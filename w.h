@@ -306,7 +306,8 @@ typedef enum insig {
 } insig_t;
 
 
-/* mid-level representations */
+/* wasm binary representations */
+
 typedef buf_t vtbuf_t; 
 typedef struct funcsig {
   /* todo: add hash */ 
@@ -418,9 +419,8 @@ extern void esegbfini(esegbuf_t* pb);
 #define esegbnewbk(pb, esm) eseginit(bufnewbk(pb), esm)
 
 
-/* top-level binary representation */
-typedef struct module {
-  sym_t name;
+/* wasm (binary) module for linked executable */
+typedef struct wasm_module {
   fsbuf_t funcsigs;
   entbuf_t funcdefs; 
   entbuf_t tabdefs; 
@@ -429,13 +429,13 @@ typedef struct module {
   esegbuf_t elemdefs;
   dsegbuf_t datadefs;
   icbuf_t reloctab;
-} module_t;
+} wasm_module_t;
 
-extern module_t* modinit(module_t* pm);
-extern void modfini(module_t* pm);
+extern wasm_module_t* wasm_module_init(wasm_module_t* pm);
+extern void wasm_module_fini(wasm_module_t* pm);
 
-/* write wasm binary module */
-extern void write_module(module_t* pm, FILE *pf);
+/* write 'executable' wasm binary module */
+extern void write_wasm_module(wasm_module_t* pm, FILE *pf);
 
 /* introspection */
 extern const char *instr_name(instr_t in);
@@ -443,5 +443,61 @@ extern const char *valtype_name(valtype_t vt);
 extern instr_t name_instr(const char *name);
 extern insig_t instr_sig(instr_t in);
 extern const char *format_inscode(inscode_t *pic, chbuf_t *pcb);
+
+
+/* wat text representations */
+
+/* wat import */
+typedef struct wati {
+  entkind_t ek;
+  sym_t mod;
+  sym_t name;
+  funcsig_t fs;   /* FUNC: funcsig index */
+  valtype_t vt;   /* GLOBAL/TABLE: value type (scalar) */
+  muttype_t mut;  /* GLOBAL: var/const */
+  limtype_t lt;   /* TABLE/MEM (imported) */
+  unsigned n;     /* TABLE/MEM (imported) */
+  unsigned m;     /* TABLE/MEM (imported) */
+} wati_t;
+
+extern wati_t* watiinit(wati_t* pi, entkind_t ek);
+extern void watifini(wati_t* pi);
+typedef buf_t watibuf_t; 
+#define watibinit(mem) bufinit(mem, sizeof(wati_t))
+extern void watibfini(watibuf_t* pb);
+#define watiblen(pb) buflen(pb)
+#define watibref(pb, i) ((wati_t*)bufref(pb, i))
+#define watibnewbk(pb, ek) watiinit(bufnewbk(pb), ek)
+
+/* wat function */
+typedef struct watf {
+  sym_t name;
+  bool exported;
+  funcsig_t fs;
+  buf_t code; /* of inscode_t; register pseudo-instrs for args&locals */
+} watf_t;
+
+extern watf_t* watfinit(watf_t* ps);
+extern void watffini(watf_t* ps);
+typedef buf_t watfbuf_t; 
+#define watfbinit(mem) bufinit(mem, sizeof(watf_t))
+extern void watfbfini(watfbuf_t* pb);
+#define watfblen(pb) buflen(pb)
+#define watfbref(pb, i) ((watf_t*)bufref(pb, i))
+#define watfbnewbk(pb) watfinit(bufnewbk(pb))
+
+/* wat (text) module for object files */
+typedef struct wat_module {
+  sym_t name; 
+  watibuf_t imports;
+  watfbuf_t funcs;
+} wat_module_t;
+
+extern wat_module_t* wat_module_init(wat_module_t* pm);
+extern void wat_module_fini(wat_module_t* pm);
+
+/* write 'object' wat text module */
+extern void write_wat_module(wat_module_t* pm, FILE *pf);
+
 
 #endif /* ndef _W_H_INCLUDED */
