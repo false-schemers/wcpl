@@ -704,7 +704,7 @@ static void post_vardecl(sym_t mod, node_t *pn)
 }
 
 /* check if this expression will produce valid const code */
-static void check_constnd(sym_t mainmod, node_t *pn, node_t *pvn)
+static void check_constnd(sym_t mmname, node_t *pn, node_t *pvn)
 {
   /* valid ins: t.const ref.null ref.func global.get referring to imported const */
   switch (pn->nt) {
@@ -713,14 +713,14 @@ static void check_constnd(sym_t mainmod, node_t *pn, node_t *pvn)
     case NT_IDENTIFIER: { /* may compile to valid global.get */
       const node_t *pin = lookup_global(pn->name);
       /* all our imported globals are const, so we need to check module only */ 
-      if (pin && pin->name != mainmod) return; 
+      if (pin && pin->name != mmname) return; 
     } break;  
   }
   n2eprintf(pn, pvn, "non-constant initializer expression");
 }
 
 /* process var declaration in main module */
-static void process_vardecl(sym_t mainmod, node_t *pdn, node_t *pin, module_t *pm)
+static void process_vardecl(sym_t mmname, node_t *pdn, node_t *pin, module_t *pm)
 {
 #ifdef _DEBUG
   dump_node(pdn, stderr);
@@ -731,10 +731,10 @@ static void process_vardecl(sym_t mainmod, node_t *pdn, node_t *pin, module_t *p
     assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
     assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
     /* todo: try to const-fold it first! */
-    check_constnd(mainmod, ndref(pin, 1), pin);
+    check_constnd(mmname, ndref(pin, 1), pin);
   }
   /* post it for later use */
-  post_vardecl(mainmod, pdn);
+  post_vardecl(mmname, pdn);
   /* todo: compile to global */
 }
 
@@ -2107,10 +2107,10 @@ retry:
             ts_t ts = acode_const(pan, &pnv);
             if (ts == TS_INT) { /* sizeof?: calc frame size statically */
               pnv->i = (pnv->i + 15) & ~0xFLL;
-              pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; pic->relkey = intern("env_stack_pointer");
-              pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; pic->relkey = intern("env_stack_pointer");
+              pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; pic->relkey = intern("__stack_pointer");
+              pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; pic->relkey = intern("__stack_pointer");
               acode_pushin(pan, IN_I32_SUB); 
-              acode_pushin_sym(pan, IN_GLOBAL_SET, intern("env_stack_pointer"));
+              acode_pushin_sym(pan, IN_GLOBAL_SET, intern("__stack_pointer"));
             } else { /* calc frame size dynamically */
               sym_t sname = rpalloc(VT_I32), pname = rpalloc(VT_I32); /* wasm32 */
               pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->relkey = sname; pic->arg.u = VT_I32;
@@ -2122,12 +2122,12 @@ retry:
               acode_pushin_uarg(pan, IN_I32_CONST, 0xFFFFFFF0);
               acode_pushin(pan, IN_I32_AND);   
               acode_pushin_sym(pan, IN_LOCAL_SET, sname);
-              acode_pushin_sym(pan, IN_GLOBAL_GET, intern("env_stack_pointer"));
+              acode_pushin_sym(pan, IN_GLOBAL_GET, intern("__stack_pointer"));
               acode_pushin_sym(pan, IN_LOCAL_TEE, pname);
               acode_pushin_sym(pan, IN_LOCAL_GET, sname);
               pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->relkey = pname; pic->arg.u = VT_I32;
               acode_pushin(pan, IN_I32_SUB);
-              acode_pushin_sym(pan, IN_GLOBAL_SET, intern("env_stack_pointer"));
+              acode_pushin_sym(pan, IN_GLOBAL_SET, intern("__stack_pointer"));
               acode_pushin_sym(pan, IN_LOCAL_GET, pname);
             }
             wrap_type_pointer(ndsettype(acode_type(pan), TS_VOID));
@@ -2142,7 +2142,7 @@ retry:
             node_t *ptni = acode_type(pan);
             if (ptni->ts != TS_PTR)
               neprintf(pn, "invalid freea() intrinsic's argument");
-            acode_pushin_sym(pan, IN_GLOBAL_SET, intern("env_stack_pointer"));
+            acode_pushin_sym(pan, IN_GLOBAL_SET, intern("__stack_pointer"));
             ndsettype(acode_type(pan), TS_VOID);
             pcn = pan;
           } else {
@@ -2422,6 +2422,7 @@ static node_t *fundef_flatten(node_t *pdn)
       pic->in = IN_REGDECL; pic->relkey = pn->name;
       pic->arg.u = ts_to_blocktype(ndref(pn, 0)->ts);      
       assert(VT_F64 <= pic->arg.u && pic->arg.u <= VT_I32);
+      lift_arg0(pn); /* vardecl => type */
     }
   }
   for (i = 0; i < ndlen(pbn); ++i) {
@@ -2479,10 +2480,47 @@ static void fundef_peephole(node_t *pcn)
   }
 }
 
-/* process function definition in main module */
-static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
+/* convert type node to a valtype */
+static void tn2vt(node_t *ptn, vtbuf_t *pvtb)
 {
-  node_t *pcn;
+  assert(ptn->nt == NT_TYPE);
+  switch (ptn->ts) {
+    case TS_VOID: /* put nothing */ break;
+    case TS_INT: case TS_UINT:  
+      *vtbnewbk(pvtb) = VT_I32; break;  
+    case TS_LONG: case TS_ULONG:  
+    case TS_PTR: case TS_ARRAY:
+      /* fixme: should depend on wasm32/wasm64 model */
+      *vtbnewbk(pvtb) = VT_I32; break;  
+    case TS_LLONG: case TS_ULLONG:  
+      *vtbnewbk(pvtb) = VT_I64; break;
+    case TS_FLOAT: /* legal in wasm, no auto promotion to double */
+      *vtbnewbk(pvtb) = VT_F32; break;
+    case TS_DOUBLE:
+      *vtbnewbk(pvtb) = VT_F64; break;
+    default:
+      neprintf(ptn, "function arguments of this type are not supported");
+  }
+}
+
+/* convert function type to a function signature */
+static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
+{
+  size_t i;
+  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
+  bufclear(&pfs->argtypes);
+  bufclear(&pfs->rettypes);
+  for (i = 0; i < ndlen(ptn); ++i) {
+    node_t *ptni = ndref(ptn, i); assert(ptni->nt == NT_TYPE);
+    tn2vt(ptni, i ? &pfs->argtypes : &pfs->rettypes);
+  }
+  return pfs;
+}
+
+/* process function definition in main module */
+static void process_fundef(sym_t mmname, node_t *pn, module_t *pm)
+{
+  node_t *pcn; 
   assert(pn->nt == NT_FUNDEF && pn->name && ndlen(pn) == 2);
   assert(ndref(pn, 0)->nt == NT_TYPE && ndref(pn, 0)->ts == TS_FUNCTION);
   clear_regpool(); /* reset reg name generator */
@@ -2495,7 +2533,7 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
     node_t nd = mknd();
     ndset(&nd, NT_VARDECL, pn->pwsid, pn->startpos);
     nd.name = pn->name; ndpushbk(&nd, ndref(pn, 0)); 
-    post_vardecl(mainmod, &nd); 
+    post_vardecl(mmname, &nd); 
     ndfini(&nd); 
   }
   /* hoist local variables */
@@ -2529,6 +2567,36 @@ static void process_fundef(sym_t mainmod, node_t *pn, module_t *pm)
   dump_node(pcn, stderr);
 #endif
 #endif
+
+#if 0
+  entry_t *pe;
+  /* add the resulting code to the module's funcdefs */
+  pe = entbnewbk(&pm->funcdefs, EK_FUNC);
+  pe->mod = 0; /* not imported */
+  pe->name = pn->name;
+  { /* calc and register function signature */
+    funcsig_t fs; fsinit(&fs);
+    pe->fsi = fsintern(&pm->funcsigs, ftn2fsig(acode_type(pcn), &fs)); 
+    fsfini(&fs);
+  }
+  pe->isstart = false;
+  { /* fill loctypes/locnames/code (args are included!) */
+    size_t i; 
+    for (i = 0; i < icblen(&pcn->data); ++i) {
+      inscode_t *pic = icbref(&pcn->data, i);
+      assert(pic->in != IN_PLACEHOLDER);
+      if (pic->in == IN_REGDECL) {
+        valtype_t *pvt = vtbnewbk(&pe->loctypes);
+        sym_t *psy = bufnewbk(&pe->locnames);
+        *pvt = (valtype_t)pic->arg.u; assert(pic->arg.u);
+        *psy = pic->relkey; assert(pic->relkey);
+      } else {
+        *icbnewbk(&pe->code) = *pic;
+      }
+    }
+  }
+#endif
+  
   /* free all nodes allocated with np-functions at once */
   clear_nodepool();
 }
@@ -2544,7 +2612,7 @@ static void process_top_intrcall(node_t *pn, module_t *pm)
 }
 
 /* process single top node (from module or include) */
-static void process_top_node(sym_t mainmod, node_t *pn, module_t *pm)
+static void process_top_node(sym_t mmname, node_t *pn, module_t *pm)
 {
   /* ignore empty blocks left from macros */
   if (pn->nt == NT_BLOCK && ndlen(pn) == 0) return;
@@ -2559,7 +2627,7 @@ static void process_top_node(sym_t mainmod, node_t *pn, module_t *pm)
     return;
   }
   /* remaining decls/defs are processed differently */
-  if (!mainmod) {
+  if (!mmname) {
     /* in header: declarations only */
     size_t i;
     if (pn->nt == NT_FUNDEF) neprintf(pn, "function definition in header");
@@ -2581,9 +2649,9 @@ static void process_top_node(sym_t mainmod, node_t *pn, module_t *pm)
       }
     }
   } else {
-    /* in module mainmod: produce code */
+    /* in module mmname: produce code */
     size_t i;
-    if (pn->nt == NT_FUNDEF) process_fundef(mainmod, pn, pm);
+    if (pn->nt == NT_FUNDEF) process_fundef(mmname, pn, pm);
     else if (pn->nt == NT_INTRCALL) process_top_intrcall(pn, pm); 
     else if (pn->nt != NT_BLOCK) neprintf(pn, "unexpected top-level declaration");
     else for (i = 0; i < ndlen(pn); ++i) {
@@ -2592,9 +2660,9 @@ static void process_top_node(sym_t mainmod, node_t *pn, module_t *pm)
         neprintf(pni, "extern declaration in module (extern is for use in headers only)");
       } else if (pni->nt == NT_VARDECL) {
         if (i+1 < ndlen(pn) && ndref(pn, i+1)->nt == NT_ASSIGN) {
-          process_vardecl(mainmod, pni, ndref(pn, ++i), pm);
+          process_vardecl(mmname, pni, ndref(pn, ++i), pm);
         } else {
-          process_vardecl(mainmod, pni, NULL, pm);
+          process_vardecl(mmname, pni, NULL, pm);
         }
       } else {
         neprintf(pni, "top-level declaration or definition expected");
@@ -2652,43 +2720,6 @@ static sym_t process_module(const char *fname, module_t *pm)
   return mod;
 }
 
-/* convert type node to a valtype */
-static void tn2vt(node_t *ptn, vtbuf_t *pvtb)
-{
-  assert(ptn->nt == NT_TYPE);
-  switch (ptn->ts) {
-    case TS_VOID: /* put nothing */ break;
-    case TS_INT: case TS_UINT:  
-      *vtbnewbk(pvtb) = VT_I32; break;  
-    case TS_LONG: case TS_ULONG:  
-    case TS_PTR: case TS_ARRAY:
-      /* fixme: should depend on wasm32/wasm64 model */
-      *vtbnewbk(pvtb) = VT_I32; break;  
-    case TS_LLONG: case TS_ULLONG:  
-      *vtbnewbk(pvtb) = VT_I64; break;
-    case TS_FLOAT: /* legal in wasm, no auto promotion to double */
-      *vtbnewbk(pvtb) = VT_F32; break;
-    case TS_DOUBLE:
-      *vtbnewbk(pvtb) = VT_F64; break;
-    default:
-      neprintf(ptn, "function arguments of this type are not supported");
-  }
-}
-
-/* convert function type to a function signature */
-static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
-{
-  size_t i;
-  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
-  bufclear(&pfs->argtypes);
-  bufclear(&pfs->rettypes);
-  for (i = 0; i < ndlen(ptn); ++i) {
-    node_t *ptni = ndref(ptn, i); assert(ptni->nt == NT_TYPE);
-    tn2vt(ptni, i ? &pfs->argtypes : &pfs->rettypes);
-  }
-  return pfs;
-}
-
 /* compile module file to .wasm output file (if not NULL) */
 void compile_module(const char *ifname, const char *ofname)
 {
@@ -2698,6 +2729,7 @@ void compile_module(const char *ifname, const char *ofname)
   modinit(&m); fsinit(&fs);
   
   mod = process_module(ifname, &m); assert(mod);
+  m.name = mod;
   
   /* at this point, function/global tables are filled with mainmod definitions */
   /* walk g_syminfo/g_nodes to insert imports actually referenced in the code */
@@ -2769,8 +2801,12 @@ void compile_module(const char *ifname, const char *ofname)
 
   /* emit wasm (use relocations) */
   if (ofname) {
-    freopen(ofname, "wb", stdout);
-    emit_module(&m);
+    FILE *pf = fopen(ofname, "wb");
+    if (!pf) exprintf("cannot open output file %s:", ofname);
+    write_module(&m, pf);
+    fclose(pf);
+  //} else {
+  //  watout_module(&m, stdout);
   }
 
   /* done */

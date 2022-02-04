@@ -12,36 +12,48 @@
 #include "l.h"
 #include "w.h"
 
-/* binary encoding */
-
+/* binary encoding globals */
+static FILE *g_binout = NULL; /* current binary output stream */
 static chbuf_t *g_curbuf = NULL; /* current destination or NULL */
 static chbuf_t *g_sectbuf = NULL; /* current section or NULL */
 static chbuf_t *g_ssecbuf = NULL; /* current subsection or NULL */
 static chbuf_t *g_codebuf = NULL; /* current code or NULL */
 static unsigned g_sectcnt = 0; /* section element count */
 
-void emit_header(void)
+/* wat text encoding globals */
+static FILE *g_watout = NULL; /* current text output stream */
+static chbuf_t *g_watbuf = NULL; /* work buffer for wat dump */
+static int g_watindent = 0; /* cur line indent for wat dump */
+
+
+/* binary encoding */
+
+/* forwards */
+static void emit_unsigned(unsigned long long val);
+static void emit_byte(unsigned b);
+
+static void emit_header(void)
 {
-  fputc(0x00, stdout); fputc(0x61, stdout); fputc(0x73, stdout); fputc(0x6D, stdout);
-  fputc(0x01, stdout); fputc(0x00, stdout); fputc(0x00, stdout); fputc(0x00, stdout);
+  fputc(0x00, g_binout); fputc(0x61, g_binout); fputc(0x73, g_binout); fputc(0x6D, g_binout);
+  fputc(0x01, g_binout); fputc(0x00, g_binout); fputc(0x00, g_binout); fputc(0x00, g_binout);
 }
 
-void emit_section_start(secid_t si)
+static void emit_section_start(secid_t si)
 {
   assert(g_sectbuf == NULL);
-  fputc((unsigned)si & 0xFF, stdout);
+  fputc((unsigned)si & 0xFF, g_binout);
   g_sectbuf = newchb(); /* buffer emits */
   g_curbuf = g_sectbuf; /* emits go here */
   g_sectcnt = 0; /* incremented as elements are added */
 }
 
-void emit_section_bumpc(void)
+static void emit_section_bumpc(void)
 {
   assert(g_sectbuf != NULL && g_sectbuf == g_curbuf);
   ++g_sectcnt;
 }
 
-void emit_section_end(void)
+static void emit_section_end(void)
 {
   chbuf_t *psb = g_sectbuf;
   assert(psb != NULL && psb == g_curbuf);
@@ -52,18 +64,18 @@ void emit_section_end(void)
     g_curbuf = &cb; emit_unsigned(g_sectcnt);
     g_curbuf = NULL;
     emit_unsigned(chblen(&cb) + chblen(psb));
-    fwrite(chbdata(&cb), 1, chblen(&cb), stdout);
-    fwrite(chbdata(psb), 1, chblen(psb), stdout);
+    fwrite(chbdata(&cb), 1, chblen(&cb), g_binout);
+    fwrite(chbdata(psb), 1, chblen(psb), g_binout);
     chbfini(&cb); 
   } else {
     /* element count is in psb */
     emit_unsigned(chblen(psb));
-    fwrite(chbdata(psb), 1, chblen(psb), stdout);
+    fwrite(chbdata(psb), 1, chblen(psb), g_binout);
   }
   freechb(psb);
 }
 
-void emit_subsection_start(unsigned ssi)
+static void emit_subsection_start(unsigned ssi)
 {
   assert(g_ssecbuf == NULL);
   assert(g_sectbuf != NULL && g_sectbuf == g_curbuf);
@@ -72,7 +84,7 @@ void emit_subsection_start(unsigned ssi)
   g_curbuf = g_ssecbuf; /* emits go here */
 }
 
-void emit_subsection_end(void)
+static void emit_subsection_end(void)
 {
   chbuf_t *psb = g_ssecbuf;
   assert(psb != NULL && psb == g_curbuf);
@@ -83,7 +95,7 @@ void emit_subsection_end(void)
   freechb(psb);
 }
 
-void emit_code_start(void)
+static void emit_code_start(void)
 {
   assert(g_sectbuf != NULL && g_sectbuf == g_curbuf);
   assert(g_codebuf == NULL);
@@ -91,7 +103,7 @@ void emit_code_start(void)
   g_curbuf = g_codebuf; /* emits go here */
 }
 
-void emit_code_end(void)
+static void emit_code_end(void)
 {
   chbuf_t *psb = g_codebuf;
   assert(psb != NULL && psb == g_curbuf);
@@ -103,19 +115,19 @@ void emit_code_end(void)
   freechb(psb);
 }
 
-void emit_byte(unsigned b)
+static void emit_byte(unsigned b)
 {
   if (g_curbuf) chbputc(b & 0xFF, g_curbuf);
-  else fputc(b & 0xFF, stdout);
+  else fputc(b & 0xFF, g_binout);
 }
 
-void emit_data(chbuf_t *pcb)
+static void emit_data(chbuf_t *pcb)
 {
   char *s = pcb->buf; size_t n = pcb->fill;
   while (n--) emit_byte(*s++);
 }
 
-void emit_signed(long long val)
+static void emit_signed(long long val)
 {
   int more;
   do {
@@ -126,7 +138,7 @@ void emit_signed(long long val)
   } while (more);
 }
 
-void emit_unsigned(unsigned long long val)
+static void emit_unsigned(unsigned long long val)
 {
   do {
     unsigned b = (unsigned)(val & 0x7f);
@@ -136,7 +148,7 @@ void emit_unsigned(unsigned long long val)
   } while (val != 0);
 }
 
-void emit_float(float val)
+static void emit_float(float val)
 {
   union { float v; unsigned char bb[4]; } u; int i;
   assert(sizeof(float) == 4);
@@ -144,7 +156,7 @@ void emit_float(float val)
   for (i = 0; i < 4; ++i) emit_byte(u.bb[i]);
 }
 
-void emit_double(double val)
+static void emit_double(double val)
 {
   union { double v; unsigned char bb[8]; } u; int i;
   assert(sizeof(double) == 8);
@@ -152,7 +164,7 @@ void emit_double(double val)
   for (i = 0; i < 8; ++i) emit_byte(u.bb[i]);
 }
 
-void emit_name(const char *name)
+static void emit_name(const char *name)
 {
   size_t n; assert(name);
   n = strlen(name);
@@ -160,7 +172,7 @@ void emit_name(const char *name)
   while (n--) emit_byte(*name++);
 }
 
-void emit_in(instr_t in)
+static void emit_in(instr_t in)
 {
   if ((in & 0xff) == in) { /* 1-byte */
     emit_byte((unsigned)in & 0xff);
@@ -351,7 +363,7 @@ static void emit_expr(icbuf_t *pcb, icbuf_t *prelb)
   }    
 }
 
-void emit_types(fsbuf_t *pftb)
+static void emit_types(fsbuf_t *pftb)
 {
   size_t i, k;
   if (!pftb) return;
@@ -373,7 +385,7 @@ void emit_types(fsbuf_t *pftb)
   emit_section_end();
 }
 
-void emit_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb)
+static void emit_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb)
 {
   size_t i;
   if (!pfdb && !ptdb && !pmdb && !pgdb) return;
@@ -435,7 +447,7 @@ void emit_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb
   emit_section_end();
 }
 
-void emit_funcs(entbuf_t *pfdb)
+static void emit_funcs(entbuf_t *pfdb)
 {
   size_t i;
   if (!pfdb) return;
@@ -450,7 +462,7 @@ void emit_funcs(entbuf_t *pfdb)
   emit_section_end();
 }
 
-void emit_tables(entbuf_t *ptdb)
+static void emit_tables(entbuf_t *ptdb)
 {
   size_t i;
   if (!ptdb) return;
@@ -468,7 +480,7 @@ void emit_tables(entbuf_t *ptdb)
   emit_section_end();
 }
 
-void emit_mems(entbuf_t *pmdb)
+static void emit_mems(entbuf_t *pmdb)
 {
   size_t i;
   if (!pmdb) return;
@@ -485,7 +497,7 @@ void emit_mems(entbuf_t *pmdb)
   emit_section_end();
 }
 
-void emit_globals(entbuf_t *pgdb, icbuf_t *prelb)
+static void emit_globals(entbuf_t *pgdb, icbuf_t *prelb)
 {
   size_t i;
   if (!pgdb) return;
@@ -502,7 +514,7 @@ void emit_globals(entbuf_t *pgdb, icbuf_t *prelb)
   emit_section_end();
 }
 
-void emit_exports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb)
+static void emit_exports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb)
 {
   size_t i;
   if (!pfdb && !ptdb && !pmdb && !pgdb) return;
@@ -550,7 +562,7 @@ void emit_exports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb
   emit_section_end();
 }
 
-void emit_start(entbuf_t *pfdb)
+static void emit_start(entbuf_t *pfdb)
 {
   size_t i;
   if (!pfdb) return;
@@ -566,7 +578,7 @@ void emit_start(entbuf_t *pfdb)
   }
 }
 
-void emit_elems(esegbuf_t *pesb, icbuf_t *prelb)
+static void emit_elems(esegbuf_t *pesb, icbuf_t *prelb)
 {
   size_t i, k;
   if (!pesb) return;
@@ -612,7 +624,7 @@ void emit_elems(esegbuf_t *pesb, icbuf_t *prelb)
   emit_section_end();
 }
 
-void emit_datacount(dsegbuf_t *pdsb)
+static void emit_datacount(dsegbuf_t *pdsb)
 {
   size_t i;
   if (!pdsb) return;
@@ -623,7 +635,7 @@ void emit_datacount(dsegbuf_t *pdsb)
   emit_section_end();
 }
 
-void emit_codes(entbuf_t *pfdb, icbuf_t *prelb)
+static void emit_codes(entbuf_t *pfdb, icbuf_t *prelb)
 {
   size_t i, k;
   if (!pfdb) return;
@@ -646,7 +658,7 @@ void emit_codes(entbuf_t *pfdb, icbuf_t *prelb)
   emit_section_end();
 }
 
-void emit_datas(dsegbuf_t *pdsb, icbuf_t *prelb)
+static void emit_datas(dsegbuf_t *pdsb, icbuf_t *prelb)
 {
   size_t i;
   if (!pdsb) return;
@@ -695,10 +707,11 @@ void modfini(module_t* pm)
 }
 
 
-/* top-level emits */
+/* write wasm binary module */
 
-void emit_module(module_t* pm)
+void write_module(module_t* pm, FILE *pf)
 {
+  g_binout = pf;
   emit_header();
   emit_types(&pm->funcsigs);
   emit_imports(&pm->funcdefs, &pm->tabdefs, &pm->memdefs, &pm->globdefs);
@@ -712,6 +725,7 @@ void emit_module(module_t* pm)
   emit_datacount(&pm->datadefs);
   emit_codes(&pm->funcdefs, &pm->reloctab);
   emit_datas(&pm->datadefs, &pm->reloctab);
+  g_binout = NULL;
 }
 
 

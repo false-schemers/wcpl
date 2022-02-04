@@ -1,9 +1,10 @@
-/* w.h (wasm writer) -- esl */
+/* w.h (wasm interface) -- esl */
 
 #ifndef _W_H_INCLUDED
 #define _W_H_INCLUDED
 
-/* WASM writer */
+
+/* wasm binary types */
 
 typedef enum valtype {
   VT_UNKN = 0,
@@ -304,24 +305,6 @@ typedef enum insig {
   INSIG_MEMARG
 } insig_t;
 
-/* low-level emits */
-extern void emit_header(void);
-extern void emit_section_start(secid_t si);
-extern void emit_section_bumpc(void);
-extern void emit_section_end(void);
-extern void emit_subsection_start(unsigned ssi);
-extern void emit_subsection_end(void);
-extern void emit_code_start(void);
-extern void emit_code_end(void);
-extern void emit_byte(unsigned b);
-extern void emit_data(chbuf_t *pcb);
-extern void emit_signed(long long val);
-extern void emit_unsigned(unsigned long long val);
-extern void emit_float(float val);
-extern void emit_double(double val);
-extern void emit_name(const char *name);
-extern void emit_in(instr_t in);
-
 
 /* mid-level representations */
 typedef buf_t vtbuf_t; 
@@ -435,23 +418,9 @@ extern void esegbfini(esegbuf_t* pb);
 #define esegbnewbk(pb, esm) eseginit(bufnewbk(pb), esm)
 
 
-/* mid-level emits */
-extern void emit_types(fsbuf_t *pfdb);
-extern void emit_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb);
-extern void emit_funcs(entbuf_t *pfdb);
-extern void emit_tables(entbuf_t *ptdb);
-extern void emit_mems(entbuf_t *pmdb);
-extern void emit_globals(entbuf_t *pgdb, icbuf_t *prelb);
-extern void emit_exports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_t *pgdb);
-extern void emit_start(entbuf_t *pfdb);
-extern void emit_elems(dsegbuf_t *pesb, icbuf_t *prelb);
-extern void emit_datacount(dsegbuf_t *pdsb);
-extern void emit_codes(entbuf_t *pfdb, icbuf_t *prelb);
-extern void emit_datas(dsegbuf_t *pdsb, icbuf_t *prelb);
-
-
-/* top-level representations */
+/* top-level binary representation */
 typedef struct module {
+  sym_t name;
   fsbuf_t funcsigs;
   entbuf_t funcdefs; 
   entbuf_t tabdefs; 
@@ -465,8 +434,8 @@ typedef struct module {
 extern module_t* modinit(module_t* pm);
 extern void modfini(module_t* pm);
 
-/* top-level emits */
-extern void emit_module(module_t* pm);
+/* write wasm binary module */
+extern void write_module(module_t* pm, FILE *pf);
 
 /* introspection */
 extern const char *instr_name(instr_t in);
