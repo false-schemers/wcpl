@@ -333,6 +333,7 @@ typedef union numval {
 } numval_t;
 
 /* instruction */
+/* NB: IN_BR_TABLE has count N in arg.u, and is followed by N+1 dummy IN_BR inscodes */
 typedef struct inscode {
   sym_t relkey; /* 0 or relocation table key */
   instr_t in; 

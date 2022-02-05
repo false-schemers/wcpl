@@ -118,7 +118,7 @@ typedef enum nt_tag {
   NT_ASSIGN,      /* x op= y */
   NT_COMMA,       /* x, y */
   NT_ACODE,       /* (t)asm(...) */
-  NT_BLOCK,       /* {...} */
+  NT_BLOCK,       /* {...} {l: ...} {... l:} */
   NT_IF,          /* if (x) y else z */
   NT_SWITCH,      /* switch (x) {case ...} */
   NT_CASE,        /* case x: y... */
@@ -126,6 +126,7 @@ typedef enum nt_tag {
   NT_WHILE,       /* while (x) y */
   NT_DO,          /* do x while (y) */
   NT_FOR,         /* for (a; b; c) t */
+  NT_GOTO,        /* goto l */
   NT_RETURN,      /* return x */
   NT_BREAK,       /* break */
   NT_CONTINUE,    /* continue */
@@ -145,7 +146,7 @@ typedef struct node_tag {
   int startpos;   /* start position in origin pws */
   sym_t name;     /* IDENTIFIER/TYPE/VARDECL/FUNDEF/INTRCALL */
   buf_t data;     /* LITERAL(chbuf)/ACODE(icbuf) */
-  numval_t val;   /* LITERAL (numeric); type defined by ts */
+  numval_t val;   /* LITERAL(numeric); type defined by ts */
   intr_t intr;    /* INTRCALL */
   tt_t op;        /* POSTFIX/PREFIX/INFIX; op is tt of an operator */
   ts_t ts;        /* TYPE/LITERAL */

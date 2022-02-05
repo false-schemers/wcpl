@@ -1550,6 +1550,11 @@ static tt_t peekt(pws_t *pw)
     pw->tokstr = chbdata(&pw->token); 
   } 
   return pw->ctk; 
+}
+
+static int peekc(pws_t *pw)
+{
+  return chbdata(&pw->chars)[pw->curi];
 } 
 
 static int peekpos(pws_t *pw)
@@ -3002,17 +3007,26 @@ static void parse_stmt(pws_t *pw, node_t *pn)
     case TT_LBRC: {
       ndset(pn, NT_BLOCK, pw->id, pw->pos);
       dropt(pw);
-      while (storage_class_specifier_ahead(pw) || type_specifier_ahead(pw)) {
-        sc_t sc = parse_decl(pw, &pn->body);
-        if (sc == SC_EXTERN || sc == SC_STATIC)
-          reprintf(pw, pw->pos, "block-level extern/static declarations are not supported"); 
-        /* auto and register are accepted and ignored */
-        expect(pw, TT_SEMICOLON, ";"); /* no block-level function definitions */
-      }
       while (peekt(pw) != TT_RBRC) {
-        if (peekt(pw) == TT_TYPEDEF_KW)
+        if (peekt(pw) == TT_TYPEDEF_KW) {
           reprintf(pw, pw->pos, "block-level typedef declarations are not supported");  
-        parse_stmt(pw, ndnewbk(pn)); 
+        } else if (peekt(pw) == TT_IDENTIFIER && peekc(pw) == ':') {
+          sym_t l; int startpos = peekpos(pw);
+          l = getid(pw); expect(pw, TT_COLON, ":");
+          if (peekt(pw) == TT_SEMICOLON) dropt(pw); /* optional, as in C23 */
+          pn->name = l; 
+          if (ndlen(pn) == 0 && peekt(pw) != TT_RBRC) pn->op = TT_CONTINUE_KW;
+          else if (ndlen(pn) > 0 && peekt(pw) == TT_RBRC) pn->op = TT_BREAK_KW; 
+          else reprintf(pw, startpos, "unexpected block label position");
+        } else if (storage_class_specifier_ahead(pw) || type_specifier_ahead(pw)) {
+          sc_t sc = parse_decl(pw, &pn->body);
+          if (sc == SC_EXTERN || sc == SC_STATIC)
+            reprintf(pw, pw->pos, "block-level extern/static declarations are not supported"); 
+          /* auto and register are accepted and ignored */
+          expect(pw, TT_SEMICOLON, ";"); /* no block-level function definitions */
+        } else {
+          parse_stmt(pw, ndnewbk(pn)); 
+        }
       }
       expect(pw, TT_RBRC, "}");
     } break;
@@ -3088,11 +3102,15 @@ static void parse_stmt(pws_t *pw, node_t *pn)
       expect(pw, TT_SEMICOLON, ";");
     } break;
     case TT_GOTO_KW: {
-      reprintf(pw, pw->pos, "goto statements are not supported"); 
+      ndset(pn, NT_GOTO, pw->id, pw->pos);
+      dropt(pw);
+      pn->name = getid(pw);
+      expect(pw, TT_SEMICOLON, ";");
     } break;
     default: {
       parse_expr(pw, pn);
-      if (peekt(pw) == TT_COLON) reprintf(pw, pw->pos, "labels are not supported"); 
+      if (pn->nt == NT_IDENTIFIER && peekt(pw) == TT_COLON) 
+        reprintf(pw, pw->pos, "arbitrary placed labels are not supported"); 
       expect(pw, TT_SEMICOLON, ";");
     } break;
   }
@@ -3110,10 +3128,11 @@ static void parse_top_decl(pws_t *pw, node_t *pn)
     if (peekt(pw) == TT_LBRC) {
       /* must be single function declaration */
       if (ndlen(pn) == 1 && ndref(pn, 0)->nt == NT_VARDECL) { 
-        node_t nd = mknd();
+        node_t nd = mknd(), *pbn;
         ndswap(ndref(pn, 0), &nd);
         nd.nt = NT_FUNDEF;
-        parse_stmt(pw, ndnewbk(&nd));
+        parse_stmt(pw, (pbn = ndnewbk(&nd)));
+        if (pbn->name) neprintf(pbn, "unexpected label on top function block");   
         ndswap(pn, &nd);
         ndfini(&nd);
       } else {
@@ -3179,7 +3198,7 @@ static void parse_define_directive(pws_t *pw, int startpos)
       reprintf(pw, peekpos(pw), "macro already defined; use #undef before redefinition");
     pn->name = getid(pw);
     /* do manual char-level lookahead */
-    if (chbdata(&pw->chars)[pw->curi] == '(') {
+    if (peekc(pw) == '(') {
       /* macro with parameters */
       node_t *ptn = ndnewbk(pn);
       ndset(ptn, NT_TYPE, pw->id, peekpos(pw));
@@ -3511,7 +3530,9 @@ const char *op_name(tt_t op)
     case TT_DOT: s = "."; break; 
     case TT_ARROW: s = "->"; break; 
     case TT_ASN: s = "="; break; 
-    case TT_TILDE: s = "~"; break; 
+    case TT_TILDE: s = "~"; break;
+    case TT_BREAK_KW: s = "break"; break;  
+    case TT_CONTINUE_KW: s = "continue"; break;  
   }
   return s;
 }
@@ -3626,7 +3647,8 @@ static void dump(node_t *pn, FILE* fp, int indent)
     }
     case NT_BLOCK: {
       if (!pn->name) fprintf(fp, "(block");
-      else fprintf(fp, "(block %s", symname(pn->name));
+      else if (!pn->op) fprintf(fp, "(block %s", symname(pn->name)); /* top-level special */
+      else fprintf(fp, "(block %s %s", op_name(pn->op), symname(pn->name)); /* labeled */
     } break;
     case NT_IF: {
       fprintf(fp, "(if");
@@ -3648,6 +3670,9 @@ static void dump(node_t *pn, FILE* fp, int indent)
     } break;
     case NT_FOR: {
       fprintf(fp, "(for");
+    } break;
+    case NT_GOTO: {
+      fprintf(fp, "(goto %s", symname(pn->name));
     } break;
     case NT_RETURN: {
       fprintf(fp, "(return");

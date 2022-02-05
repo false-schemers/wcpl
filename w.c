@@ -1081,6 +1081,8 @@ insig_t instr_sig(instr_t in)
       return INSIG_BT;
     case IN_BR:            case IN_BR_IF:
       return INSIG_L;
+    case IN_BR_TABLE:
+      return INSIG_LS_L;
     case IN_CALL:          case IN_RETURN_CALL:
       return INSIG_X;
     case IN_CALL_INDIRECT: case IN_RETURN_CALL_INDIRECT:
@@ -1129,9 +1131,9 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
     case INSIG_NONE:
       break;
     case INSIG_BT: {
-      const char *s = valtype_name((valtype_t)pic->arg.u);
-      if (*s != '?') chbputf(pcb, " %s", s); 
-      else chbputf(pcb, " %llu", pic->arg.u); 
+      valtype_t vt = pic->arg.u;
+      if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
+      if (vt != BT_VOID) chbputf(pcb, " %s", valtype_name(vt)); 
     } break;
     case INSIG_L:   
     case INSIG_X:    case INSIG_T:
