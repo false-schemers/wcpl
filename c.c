@@ -1128,8 +1128,11 @@ static const node_t *lookup_var_type(sym_t name, buf_t *prib, bool *pbgl)
     return pri->ptn;
   } else if ((pgn = lookup_global(name)) != NULL) {
     *pbgl = true;
-    if (pgn->nt == NT_IMPORT && ndlen(pgn) == 1)
+    if (pgn->nt == NT_IMPORT && ndlen(pgn) == 1) {
+      /* mark this import as actually referenced! */
+      if (pgn->sc == SC_NONE) ((node_t*)pgn)->sc = SC_EXTERN;
       return ndcref(pgn, 0);
+    }
   }
   return NULL;
 }
@@ -2511,7 +2514,9 @@ static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
   bufclear(&pfs->argtypes);
   bufclear(&pfs->rettypes);
   for (i = 0; i < ndlen(ptn); ++i) {
-    node_t *ptni = ndref(ptn, i); assert(ptni->nt == NT_TYPE);
+    node_t *ptni = ndref(ptn, i); 
+    if (ptni->nt == NT_VARDECL) { assert(ndlen(ptni) == 1); ptni = ndref(ptni, 0); }
+    assert(ptni->nt == NT_TYPE);
     tn2vt(ptni, i ? &pfs->argtypes : &pfs->rettypes);
   }
   return pfs;

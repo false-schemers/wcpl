@@ -429,7 +429,6 @@ const node_t *post_symbol(sym_t mod, node_t *pvn)
         if (same_type(ptn, ndref(pvn, 0))) return pin;
       }
     }
-    //neprintf(pvn, "symbol already defined differently: %s", symname(pvn->name));
     n2eprintf(pvn, pin, "symbol already defined differently: %s", symname(pvn->name));
   }
   info = (int)ndblen(&g_nodes); pin = ndbnewbk(&g_nodes);
