@@ -1125,6 +1125,10 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
     const char *ts = valtype_name((valtype_t)pic->arg.u);
     chbputf(pcb, "register %s %s", ts, symname(pic->relkey)); 
     return chbdata(pcb);
+  } else if (pic->in == IN_END) { /* has a label for display purposes */
+    if (pic->relkey) chbputf(pcb, "end $%s", symname(pic->relkey));
+    else chbputs("end", pcb);
+    return chbdata(pcb);
   }
   chbputs(instr_name(pic->in), pcb);
   switch (instr_sig(pic->in)) {
@@ -1133,7 +1137,7 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
     case INSIG_BT: {
       valtype_t vt = pic->arg.u;
       if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
-      if (vt != BT_VOID) chbputf(pcb, " %s", valtype_name(vt)); 
+      if (vt != BT_VOID) chbputf(pcb, "(result %s)", valtype_name(vt)); 
     } break;
     case INSIG_L:   
     case INSIG_X:    case INSIG_T:
@@ -1141,9 +1145,13 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
       else chbputf(pcb, " %llu", pic->arg.u); 
       break;
-    case INSIG_X_Y:  case INSIG_MEMARG:
+    case INSIG_X_Y:
       if (pic->relkey) chbputf(pcb, " $%s %u", symname(pic->relkey), pic->argu2); 
       else chbputf(pcb, " %llu %u", pic->arg.u, pic->argu2); 
+      break;
+    case INSIG_MEMARG:
+      if (pic->relkey) chbputf(pcb, " $%s %u", symname(pic->relkey), pic->argu2); 
+      else chbputf(pcb, " offset=%llu align=%u", pic->arg.u, 1<<pic->argu2); 
       break;
     case INSIG_F32:
       if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
@@ -1279,6 +1287,7 @@ static void wat_imports(watibuf_t *pib)
       case EK_GLOBAL: {
       } break;
     }
+    chbputc(')', g_watbuf); 
     wat_line(chbdata(g_watbuf));
   }
 }

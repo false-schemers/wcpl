@@ -689,14 +689,15 @@ static bool static_constant(node_t *pn)
 }
 
 /* post variable declaration for later use */
-static void post_vardecl(sym_t mod, node_t *pn)
+static void post_vardecl(sym_t mod, node_t *pn, bool final)
 {
   const node_t *pin;
   assert(pn->nt == NT_VARDECL && pn->name && ndlen(pn) == 1);
   assert(ndref(pn, 0)->nt == NT_TYPE);
   /* post in symbol table under pn->name as NT_IMPORT with modname and type;
-     set its sc to NONE to be changed to EXTERN when actually referenced from module */
-  pin = post_symbol(mod, pn);
+   * set its sc to final?STATIC:NONE to be changed to EXTERN when actually 
+   * referenced from module */
+  pin = post_symbol(mod, pn, final);
 #ifdef _DEBUG
   fprintf(stderr, "%s =>\n", symname(pn->name));
   dump_node(pin, stderr);
@@ -734,7 +735,7 @@ static void process_vardecl(sym_t mmname, node_t *pdn, node_t *pin)
     check_constnd(mmname, ndref(pin, 1), pin);
   }
   /* post it for later use */
-  post_vardecl(mmname, pdn);
+  post_vardecl(mmname, pdn, true); /* final */
   /* todo: compile to global */
 }
 
@@ -955,6 +956,72 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
         pn->op = TT_DOT;
       } 
     } break;
+    case NT_WHILE: {
+      /* while (x) s => {{cl: if (x) {s; goto cl;}} bl:} */
+      sym_t bl = rpalloc_label(), cl = rpalloc_label();
+      int *pil; node_t *psn; assert(ndlen(pn) == 2);
+      expr_wasmify(ndref(pn, 0), pvib, plib);
+      pil = bufnewbk(plib); pil[0] = bl, pil[1] = NT_BREAK;  
+      pil = bufnewbk(plib); pil[0] = cl, pil[1] = NT_CONTINUE;  
+      expr_wasmify(ndref(pn, 1), pvib, plib);
+      psn = wrap_node(ndref(pn, 1), NT_BLOCK);
+      psn = ndinsbk(psn, NT_GOTO); psn->name = cl;
+      pn->nt = NT_IF;
+      wrap_node(pn, NT_BLOCK); pn->name = cl; pn->op = TT_CONTINUE_KW;
+      wrap_node(pn, NT_BLOCK); pn->name = bl; pn->op = TT_BREAK_KW;
+      bufpopbk(plib);
+      bufpopbk(plib);
+    } break;
+    case NT_DO: {
+      /* do s while (x) => {{l: {s; cl:} if (x) goto l;} bl:} */
+      sym_t l = rpalloc_label(), bl = rpalloc_label(), cl = rpalloc_label();
+      int *pil; node_t *psn; assert(ndlen(pn) == 2);
+      expr_wasmify(ndref(pn, 1), pvib, plib); /* x */
+      pil = bufnewbk(plib); pil[0] = bl, pil[1] = NT_BREAK;  
+      pil = bufnewbk(plib); pil[0] = cl, pil[1] = NT_CONTINUE;  
+      expr_wasmify(ndref(pn, 0), pvib, plib); /* s */
+      psn = wrap_node(ndref(pn, 1), NT_IF); psn = ndinsbk(psn, NT_GOTO); psn->name = l;
+      psn = wrap_node(ndref(pn, 0), NT_BLOCK); psn->name = cl; psn->op = TT_BREAK_KW;
+      pn->nt = NT_BLOCK; pn->name = l; pn->op = TT_CONTINUE_KW;
+      wrap_node(pn, NT_BLOCK); pn->name = bl; pn->op = TT_BREAK_KW;
+      bufpopbk(plib);
+      bufpopbk(plib);
+    } break;
+    case NT_FOR: {
+      /* for (x; y; z) s => {x; {l: if (!y) goto bl; {s; cl:} z; goto l;} bl:} */
+      sym_t l = rpalloc_label(), bl = rpalloc_label(), cl = rpalloc_label();
+      int *pil; node_t nd = mknd(), *psn; assert(ndlen(pn) == 4);
+      psn = ndref(pn, 0); assert(psn->nt != NT_NULL || !ndlen(psn)); /* x */ 
+      if (psn->nt != NT_NULL) expr_wasmify(psn, pvib, plib); else psn->nt = NT_BLOCK; /* {} */
+      psn = ndref(pn, 1); assert(psn->nt != NT_NULL || !ndlen(psn)); /* y */ 
+      if (psn->nt != NT_NULL) expr_wasmify(psn, pvib, plib); else init_to_int(psn, 1); /* 1 */
+      psn = ndref(pn, 2); assert(psn->nt != NT_NULL || !ndlen(psn)); /* z */ 
+      if (psn->nt != NT_NULL) expr_wasmify(psn, pvib, plib); else psn->nt = NT_BLOCK; /* {} */
+      pil = bufnewbk(plib); pil[0] = bl, pil[1] = NT_BREAK;  
+      pil = bufnewbk(plib); pil[0] = cl, pil[1] = NT_CONTINUE;  
+      expr_wasmify(ndref(pn, 3), pvib, plib); /* s */
+      psn = wrap_node(ndref(pn, 3), NT_BLOCK); psn->name = cl; psn->op = TT_BREAK_KW;
+      psn = wrap_node(ndref(pn, 1), NT_PREFIX); psn->op = TT_NOT;
+      psn = wrap_node(psn, NT_IF); psn = ndinsbk(psn, NT_GOTO); psn->name = bl;
+      /* for x [if (!y) goto bl;] z {s; cl:} */
+      ndswap(ndref(pn, 2), ndref(pn, 3));
+      /* for x [if (!y) goto bl;] {s; cl:} z; */
+      psn = ndinsbk(pn, NT_GOTO); psn->name = l;
+      /* for x [if (!y) goto bl;] {s; cl:} z; goto l; */
+      ndswap(ndref(pn, 0), &nd); ndrem(pn, 0);
+      pn->nt = NT_BLOCK; pn->name = l; pn->op = TT_CONTINUE_KW; 
+      /* x  {l: if (!y) goto bl; {s; cl:} z; goto l;} */
+      wrap_node(pn, NT_BLOCK); pn->name = bl; pn->op = TT_BREAK_KW;
+      ndswap(ndnewfr(pn), &nd);
+      bufpopbk(plib);
+      bufpopbk(plib);
+      ndfini(&nd);
+    } break;
+    case NT_GOTO: {
+      int *pil = bufsearch(plib, &pn->name, sym_cmp);
+      if (!pil) neprintf(pn, "goto to unknown or mispositioned label");
+      else assert(pil[1] == 0); /* not a break/continue target */
+    } break;
     case NT_RETURN: {
       sym_t fp = intern("fp$"); node_t *psn;
       vi_t *pvi = bufbsearch(pvib, &fp, sym_cmp);
@@ -968,20 +1035,30 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
         psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = fp;
       }
     } break;
+    case NT_BREAK: case NT_CONTINUE: {
+      size_t i; 
+      for (i = buflen(plib); i > 0; --i) {
+        int *pil = bufref(plib, i-1);
+        if (pil[1] == pn->nt) {
+          pn->name = (sym_t)pil[0];
+          pn->nt = NT_GOTO;
+          return;
+        }
+      }
+      neprintf(pn, "unexpected %s operator", (pn->nt == NT_BREAK) ? "break" : "continue");
+    } break;
     case NT_BLOCK: {
       size_t i;
       if (pn->name) {
         int *pil = bufnewbk(plib);
         assert(pn->op == TT_BREAK_KW || pn->op == TT_CONTINUE_KW);
-        pil[0] = pn->name; pil[1] = pn->op; 
+        pil[0] = pn->name; pil[1] = 0; /* not a break/continue target */ 
       } 
       for (i = 0; i < ndlen(pn); ++i) expr_wasmify(ndref(pn, i), pvib, plib);
+      if (pn->name) {
+        bufpopbk(plib);
+      }
     } break;
-    case NT_GOTO: {
-      int *pil = bufsearch(plib, &pn->name, sym_cmp);
-      if (!pil) neprintf(pn, "goto to unknown or mispositioned label");
-    } break;
-    /* todo: split combo assignments using tmp registers */
     default: {
       size_t i;
       for (i = 0; i < ndlen(pn); ++i) expr_wasmify(ndref(pn, i), pvib, plib);
@@ -1997,77 +2074,15 @@ static node_t *compile_if(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan3)
   return pcn;
 }
 
-/* note on looping constructs: every looping construct is compiled into three
- * nested BLOCK/LOOP scopes such that outermost scope is targeted by 'break's
- * (level 2), and innermost scope is targeted by 'continue's (level 0) */
-
-/* compile while statement: while (1) 2  */
-static node_t *compile_while(node_t *prn, node_t *pan1, node_t *pan2)
-{
-  node_t *pcn = npnewcode(prn); ndsettype(ndnewbk(pcn), TS_VOID);
-  acode_pushin_uarg(pcn, IN_BLOCK, BT_VOID);
-  acode_pushin_uarg(pcn, IN_BLOCK, BT_VOID);
-  acode_pushin_uarg(pcn, IN_LOOP, BT_VOID);
-  acode_swapin(pcn, compile_booltest(prn, pan1));
-  acode_pushin(pcn, IN_I32_EQZ);
-  acode_pushin_uarg(pcn, IN_BR_IF, 2); /* exit */
-  acode_swapin(pcn, compile_stm(pan2));
-  acode_pushin_uarg(pcn, IN_BR, 0); /* loop */
-  acode_pushin(pcn, IN_END);
-  acode_pushin(pcn, IN_END);
-  acode_pushin(pcn, IN_END); 
-  return pcn;
-}
-
-/* compile do statement: do 1 while (2) */
-static node_t *compile_do(node_t *prn, node_t *pan1, node_t *pan2)
-{
-  node_t *pcn = npnewcode(prn); ndsettype(ndnewbk(pcn), TS_VOID);
-  acode_pushin_uarg(pcn, IN_BLOCK, BT_VOID);
-  acode_pushin_uarg(pcn, IN_LOOP, BT_VOID);
-  acode_pushin_uarg(pcn, IN_BLOCK, BT_VOID);
-  acode_swapin(pcn, compile_stm(pan1));
-  acode_pushin(pcn, IN_END); 
-  acode_swapin(pcn, compile_booltest(prn, pan2));
-  acode_pushin_uarg(pcn, IN_BR_IF, 0); /* loop */
-  acode_pushin(pcn, IN_END);
-  acode_pushin(pcn, IN_END);
-  return pcn;
-}
-
-/* compile for statement: for (1; 2; 3) 4 */
-static node_t *compile_for(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan3, node_t *pan4)
-{
-  node_t *pcn = npnewcode(prn); ndsettype(ndnewbk(pcn), TS_VOID);
-  if (pan1) acode_swapin(pcn, compile_stm(pan1));
-  acode_pushin_uarg(pcn, IN_BLOCK, BT_VOID);
-  acode_pushin_uarg(pcn, IN_LOOP, BT_VOID);
-  if (pan2) {
-    acode_swapin(pcn, compile_booltest(prn, pan2));
-    acode_pushin(pcn, IN_I32_EQZ);
-    acode_pushin_uarg(pcn, IN_BR_IF, 1); /* exit */
-  }
-  acode_pushin_uarg(pcn, IN_BLOCK, BT_VOID);
-  acode_swapin(pcn, compile_stm(pan4));
-  acode_pushin(pcn, IN_END);
-  if (pan3) acode_swapin(pcn, compile_stm(pan3));
-  acode_pushin_uarg(pcn, IN_BR, 0); /* loop */
-  acode_pushin(pcn, IN_END); 
-  acode_pushin(pcn, IN_END); 
-  return pcn;
-}
-
-/* compile break/continue statements; pan is condition or NULL */
-static node_t *compile_branch(node_t *prn, node_t *pan, tt_t op, sym_t lname)
-{ /* fixme!!! */
+/* compile if-goto/goto statements; pan is condition or NULL */
+static node_t *compile_branch(node_t *prn, node_t *pan, sym_t lname)
+{ 
   node_t *pcn = npnewcode(prn); ndsettype(ndnewbk(pcn), TS_VOID);
   if (pan) {
     acode_swapin(pcn, compile_booltest(prn, pan));
-    if (lname) acode_pushin_sym(pcn, IN_BR_IF, lname); 
-    else acode_pushin_uarg(pcn, IN_BR_IF, op == TT_CONTINUE_KW ? 0 : 2);
+    acode_pushin_sym(pcn, IN_BR_IF, lname); 
   } else {
-    if (lname) acode_pushin_sym(pcn, IN_BR, lname);
-    else acode_pushin_uarg(pcn, IN_BR, op == TT_CONTINUE_KW ? 0 : 2);
+    acode_pushin_sym(pcn, IN_BR, lname);
   }
   return pcn;
 }
@@ -2305,7 +2320,7 @@ retry:
         node_t *pcni = expr_compile(ndref(pn, i), prib, ret);
         acode_swapin(pcn, compile_stm(pcni));
       }
-      if (end) acode_pushin(pcn, IN_END);
+      if (end) acode_pushin_sym(pcn, IN_END, pn->name);
     } break;
     case NT_IF: {
       size_t n = ndlen(pn); 
@@ -2314,11 +2329,7 @@ retry:
       pan1 = expr_compile(ndref(pn, 0), prib, NULL);
       pn2 = ndref(pn, 1);
       if (n == 2 && pn2->nt == NT_GOTO) {
-        pcn = compile_branch(pn, pan1, 0, pn2->name);
-      } else if (n == 2 && pn2->nt == NT_CONTINUE) {
-        pcn = compile_branch(pn, pan1, TT_CONTINUE_KW, 0);
-      } else if (n == 2 && pn2->nt == NT_BREAK) {
-        pcn = compile_branch(pn, pan1, TT_BREAK_KW, 0);
+        pcn = compile_branch(pn, pan1, pn2->name);
       } else {
         pan2 = expr_compile(pn2, prib, ret);
         pan3 = n == 3 ? expr_compile(ndref(pn, 2), prib, ret) : NULL;
@@ -2328,31 +2339,11 @@ retry:
     /* case NT_SWITCH */
     /* case NT_CASE */
     /* case NT_DEFAULT */
-    case NT_WHILE: {
-      node_t *pan1, *pan2;
-      assert(ret);
-      pan1 = expr_compile(ndref(pn, 0), prib, NULL);
-      pan2 = expr_compile(ndref(pn, 1), prib, ret);
-      pcn = compile_while(pn, pan1, pan2);
-    } break;
-    case NT_DO: {
-      node_t *pan1, *pan2;
-      assert(ret);
-      pan1 = expr_compile(ndref(pn, 0), prib, ret);
-      pan2 = expr_compile(ndref(pn, 1), prib, NULL);
-      pcn = compile_do(pn, pan1, pan2);
-    } break;
-    case NT_FOR: {
-      node_t *pan1, *pan2, *pan3, *pan4;
-      assert(ret);
-      pan1 = (ndref(pn, 0)->nt != NT_NULL) ? expr_compile(ndref(pn, 0), prib, NULL) : NULL;
-      pan2 = (ndref(pn, 1)->nt != NT_NULL) ? expr_compile(ndref(pn, 1), prib, NULL) : NULL;
-      pan3 = (ndref(pn, 2)->nt != NT_NULL) ? expr_compile(ndref(pn, 2), prib, NULL) : NULL;
-      pan4 = expr_compile(ndref(pn, 3), prib, ret);
-      pcn = compile_for(pn, pan1, pan2, pan3, pan4);
-    } break;
+    case NT_WHILE: 
+    case NT_DO: 
+    case NT_FOR: assert(false); break; /* dewasmified */
     case NT_GOTO: {
-      pcn = compile_branch(pn, NULL, 0, pn->name);
+      pcn = compile_branch(pn, NULL, pn->name);
     } break; 
     case NT_RETURN: {
       node_t *pan = NULL;
@@ -2360,12 +2351,8 @@ retry:
       if (ndlen(pn) == 1) pan = expr_compile(ndref(pn, 0), prib, NULL);
       pcn = compile_return(pn, pan, ret);
     } break;
-    case NT_BREAK: {
-      pcn = compile_branch(pn, NULL, TT_BREAK_KW, 0);
-    } break;
-    case NT_CONTINUE: {
-      pcn = compile_branch(pn, NULL, TT_CONTINUE_KW, 0);
-    } break;
+    case NT_BREAK:
+    case NT_CONTINUE: assert(false); break; /* dewasmified */
     
     /* other */
     case NT_TYPE: assert(false); break; /* inside cast only */  
@@ -2574,7 +2561,7 @@ static void process_fundef(sym_t mmname, node_t *pn, wat_module_t *pm)
     node_t nd = mknd();
     ndset(&nd, NT_VARDECL, pn->pwsid, pn->startpos);
     nd.name = pn->name; ndpushbk(&nd, ndref(pn, 0)); 
-    post_vardecl(mmname, &nd); 
+    post_vardecl(mmname, &nd, true); /* final */ 
     ndfini(&nd); 
   }
   /* hoist local variables */
@@ -2660,7 +2647,7 @@ static void process_top_node(sym_t mmname, node_t *pn, wat_module_t *pm)
       } else if (pni->nt == NT_VARDECL && pni->name && ndlen(pni) == 1) {
         node_t *ptn = ndref(pni, 0); assert(ptn->nt == NT_TYPE);
         if (ptn->ts == TS_FUNCTION) fundef_check_type(ptn);
-        post_vardecl(pn->name, pni);
+        post_vardecl(pn->name, pni, false); /* not final */
       } else {
         neprintf(pni, "extern declaration expected");
       }

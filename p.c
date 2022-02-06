@@ -413,27 +413,32 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
   return true;
 }
 
-/* post imported/forward symbol to symbol table */
-const node_t *post_symbol(sym_t mod, node_t *pvn)
+/* post imported/forward symbol to symbol table; forward unless final */
+const node_t *post_symbol(sym_t mod, node_t *pvn, bool final)
 {
   node_t *pin = NULL; int *pi, info;
   assert(pvn->nt == NT_VARDECL && pvn->name && ndlen(pvn) == 1);
   assert(ndref(pvn, 0)->nt == NT_TYPE);
   if ((pi = bufbsearch(&g_syminfo, &pvn->name, int_cmp)) != NULL) {
-    /* see if what's there is equivalent to what we want */
+    /* see if what's there is an older one with the same name */
     if (pi[1] == TT_IDENTIFIER && pi[2] >= 0) {
       assert(pi[2] < (int)buflen(&g_nodes));
       pin = bufref(&g_nodes, (size_t)pi[2]);
       if (pin->nt == NT_IMPORT && ndlen(pin) == 1) {
-        node_t *ptn = ndref(pin, 0); assert(ptn->nt == NT_TYPE);
-        if (same_type(ptn, ndref(pvn, 0))) return pin;
+        if (pin->sc == SC_STATIC && final) {
+          n2eprintf(pvn, pin, "symbol already defined: %s", symname(pvn->name));
+        } else {
+          node_t *ptn = ndref(pin, 0); assert(ptn->nt == NT_TYPE);
+          if (same_type(ptn, ndref(pvn, 0))) return pin;
+        }
       }
     }
     n2eprintf(pvn, pin, "symbol already defined differently: %s", symname(pvn->name));
   }
   info = (int)ndblen(&g_nodes); pin = ndbnewbk(&g_nodes);
   ndset(pin, NT_IMPORT, pvn->pwsid, pvn->startpos);
-  pin->name = mod; pin->sc = SC_NONE; /* changed to SC_EXTERN on reference */
+  /* changed to SC_EXTERN on reference */
+  pin->name = mod; pin->sc = final ? SC_STATIC : SC_NONE; 
   ndpushbk(pin, ndref(pvn, 0));
   intern_symbol(symname(pvn->name), TT_IDENTIFIER, info);
   return pin;
@@ -1756,6 +1761,7 @@ static int g_rnum_f64 = 0;
 static int g_rnum_f32 = 0;
 static int g_rnum_i64 = 0;
 static int g_rnum_i32 = 0;
+static int g_rnum_lab = 0;
 
 void init_regpool(void)
 {
@@ -1763,6 +1769,7 @@ void init_regpool(void)
   g_rnum_f32 = 0;
   g_rnum_i64 = 0;
   g_rnum_i32 = 0;
+  g_rnum_lab = 0;
 }
 
 void fini_regpool(void)
@@ -1787,6 +1794,10 @@ sym_t rpalloc(valtype_t vt)
   return 0;
 }
 
+sym_t rpalloc_label(void)
+{
+  return internf("%d$", ++g_rnum_lab);
+}
 
 /* node builders */
 
@@ -1913,6 +1924,17 @@ node_t *lift_arg1(node_t *pn)
   ndfini(&nd);
   return pn;
 }
+
+/* replace NT_NULL content with int literal n */
+node_t *init_to_int(node_t *pn, int n)
+{
+  assert(pn->nt == NT_NULL);
+  pn->nt = NT_LITERAL;
+  pn->ts = TS_INT;
+  pn->val.i = n;
+  return pn;
+}
+
 
 /* wrap expr node into NT_CAST type node */
 node_t *wrap_cast(node_t *pcn, node_t *pn)

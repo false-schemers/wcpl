@@ -497,6 +497,11 @@ void *bufnewfr(buf_t* pb)
   return bufins(pb, 0);
 }
 
+void bufpopfr(buf_t* pb)
+{
+  bufrem(pb, 0);
+}
+
 void *bufalloc(buf_t* pb, size_t n)
 {
   size_t esz; char* pbk;

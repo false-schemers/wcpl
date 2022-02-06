@@ -177,6 +177,7 @@ extern void ndbclear(ndbuf_t* pb);
 #define ndlen(pn) ndblen(&(pn)->body)
 #define ndref(pn, i) ndbref(&(pn)->body, i)
 #define ndcref(pn, i) ndbref(&((node_t*)(pn))->body, i)
+#define ndnewfr(pn) ndbinsnew(&(pn)->body, 0)
 #define ndnewbk(pn) ndbnewbk(&(pn)->body)
 #define ndpushbk(pn, psn) ndbpushbk(&(pn)->body, psn)
 #define ndinsnew(pn, i) ndbinsnew(&(pn)->body, i)
@@ -197,11 +198,12 @@ extern void init_regpool(void);
 extern void fini_regpool(void);
 extern void clear_regpool(void);
 extern sym_t rpalloc(valtype_t vt);
+extern sym_t rpalloc_label(void);
 
 /* simple comparison of NT_TYPE nodes for equivalence */
 extern bool same_type(const node_t *pctn1, const node_t *pctn2);
 
-/* node builders; modify pn pn place and return it */
+/* node builders; modify pn in place and return it */
 /* wrap node into nt node as a subnode */
 extern node_t *wrap_node(node_t *pn, nt_t nt);
 /* wrap node into NT_SUBSCRIPT node */
@@ -232,6 +234,8 @@ extern node_t *flatten_type_array(node_t *pn);
 extern node_t *lift_arg0(node_t *pn);
 /* flatten node into its argument #1 */
 extern node_t *lift_arg1(node_t *pn);
+/* replace NT_NULL content with int literal n */
+extern node_t *init_to_int(node_t *pn, int n);
 
 /* parse single top-level declaration/definition */
 extern bool parse_top_form(pws_t *pw, node_t *pn);
@@ -243,8 +247,8 @@ extern void neprintf(const node_t *pn, const char *fmt, ...);
 extern void n2eprintf(const node_t *pn, const node_t *pn2, const char *fmt, ...);
 /* report node warning, possibly printing location information */
 extern void nwprintf(const node_t *pn, const char *fmt, ...);
-/* post imported/forward symbol to symbol table */
-extern const node_t *post_symbol(sym_t mod, node_t *pvn);
+/* post imported/forward symbol to symbol table; forward unless final */
+extern const node_t *post_symbol(sym_t mod, node_t *pvn, bool final);
 /* return ptr to NT_IMPORT node or NULL if name is not declared */
 extern const node_t *lookup_global(sym_t name);
 /* return ptr to NT_TYPE node or NULL if name is not declared */

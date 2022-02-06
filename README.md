@@ -12,6 +12,7 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - limited macros: `#define FOO 1234`, `#define FOO (expr)`, `#define FOO do {...} while (0)` as well as 
   corresponding parameterized forms (`#define FOO(a, b) ...`)   
 - `const` and `volatile` specifiers are allowed but ignored
+- labels can only label starts/ends of sub-blocks; `goto` can only target labels in the same block or its parent blocks
 - headers included as `#include <foo>` can have the following extensions: (none), `.h`, `.wh`
 - headers are looked up in directories given via `-L` option and `WCPL_LIBRARY_PATH` environment variable
 - lookup directory should end in separator char (`/` on Un*x, `\` on Windows), file name is just appended to it
