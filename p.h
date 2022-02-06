@@ -234,8 +234,8 @@ extern node_t *flatten_type_array(node_t *pn);
 extern node_t *lift_arg0(node_t *pn);
 /* flatten node into its argument #1 */
 extern node_t *lift_arg1(node_t *pn);
-/* replace NT_NULL content with int literal n */
-extern node_t *init_to_int(node_t *pn, int n);
+/* replace content with int literal n, keep posinfo */
+extern node_t *set_to_int(node_t *pn, int n);
 
 /* parse single top-level declaration/definition */
 extern bool parse_top_form(pws_t *pw, node_t *pn);

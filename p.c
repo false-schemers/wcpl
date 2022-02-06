@@ -1935,6 +1935,16 @@ node_t *init_to_int(node_t *pn, int n)
   return pn;
 }
 
+/* replace content with int literal n, keep posinfo */
+extern node_t *set_to_int(node_t *pn, int n)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_LITERAL, pn->pwsid, pn->startpos);
+  nd.ts = TS_INT, nd.val.i = n;
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
+}
 
 /* wrap expr node into NT_CAST type node */
 node_t *wrap_cast(node_t *pcn, node_t *pn)
@@ -3005,13 +3015,11 @@ static sc_t parse_decl(pws_t *pw, ndbuf_t *pnb)
 static void parse_switch_clause(pws_t *pw, node_t *pn)
 {
   tt_t ctk = peekt(pw);
-  if (ctk == TT_CASE_KW || ctk == NT_DEFAULT) {
+  if (ctk == TT_CASE_KW || ctk == TT_DEFAULT_KW) {
     ndset(pn, ctk == TT_CASE_KW ? NT_CASE : NT_DEFAULT, pw->id, pw->pos);
     dropt(pw);
-    if (ctk == TT_CASE_KW) {
-      parse_expr(pw, ndnewbk(pn));
-      expect(pw, TT_COLON, ":");
-    }
+    if (ctk == TT_CASE_KW) parse_expr(pw, ndnewbk(pn));
+    expect(pw, TT_COLON, ":");
     while ((ctk = peekt(pw)) != TT_RBRC && ctk != TT_CASE_KW && ctk != TT_DEFAULT_KW)
       parse_stmt(pw, ndnewbk(pn));
   } else {

@@ -912,6 +912,20 @@ typedef struct vi_tag {
   ts_t cast;   /* TS_VOID or TS_CHAR..TS_USHORT for widened vars */
 } vi_t;
 
+/* case sorting aid: sorts cases numerically, default is first; dupcheck */
+int case_cmp(const void *p1, const void *p2)
+{
+  const node_t *pn1 = p1, *pn2 = p2; int i1, i2;
+  if (pn1->nt == NT_DEFAULT && pn2->nt == NT_DEFAULT)
+    n2eprintf(pn1, pn2, "duplicate default cases"); 
+  if (pn1->nt == NT_DEFAULT) return -1;
+  if (pn2->nt == NT_DEFAULT) return 1;
+  assert(pn1->nt == NT_CASE && pn2->nt == NT_CASE);
+  i1 = (int)ndcref(pn1, 0)->val.i, i2 = (int)ndcref(pn2, 0)->val.i;
+  if (i1 == i2) n2eprintf(pn1, pn2, "duplicate cases"); 
+  return i1 < i2 ? -1 : 1;
+}
+
 /* convert node wasm conventions, simplify operators and control */
 static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
 {
@@ -994,7 +1008,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
       psn = ndref(pn, 0); assert(psn->nt != NT_NULL || !ndlen(psn)); /* x */ 
       if (psn->nt != NT_NULL) expr_wasmify(psn, pvib, plib); else psn->nt = NT_BLOCK; /* {} */
       psn = ndref(pn, 1); assert(psn->nt != NT_NULL || !ndlen(psn)); /* y */ 
-      if (psn->nt != NT_NULL) expr_wasmify(psn, pvib, plib); else init_to_int(psn, 1); /* 1 */
+      if (psn->nt != NT_NULL) expr_wasmify(psn, pvib, plib); else set_to_int(psn, 1); /* 1 */
       psn = ndref(pn, 2); assert(psn->nt != NT_NULL || !ndlen(psn)); /* z */ 
       if (psn->nt != NT_NULL) expr_wasmify(psn, pvib, plib); else psn->nt = NT_BLOCK; /* {} */
       pil = bufnewbk(plib); pil[0] = bl, pil[1] = NT_BREAK;  
@@ -1016,6 +1030,46 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
       bufpopbk(plib);
       bufpopbk(plib);
       ndfini(&nd);
+    } break;
+    case NT_SWITCH: {
+      /* switch (x) case c1: s1 ... => 
+       * {{..{switch (x) case c1: goto l1; ...; goto bl; l1:} s1 l2:} s2 ...} bl:} */
+      sym_t bl = rpalloc_label(); buf_t clb; ndbuf_t ndb;
+      int *pil; size_t i; assert(ndlen(pn) >= 1);
+      bufinit(&clb, sizeof(sym_t)); ndbinit(&ndb);
+      expr_wasmify(ndref(pn, 0), pvib, plib); /* x */
+      pil = bufnewbk(plib); pil[0] = bl, pil[1] = NT_BREAK;  
+      for (i = 1; i < ndlen(pn); ++i) { /* move clause stms to ndb, convert to gotos */
+        sym_t l = rpalloc_label(), *pl = bufnewbk(&clb);
+        node_t *psn = ndref(pn, i), *pni = ndset(ndbnewbk(&ndb), psn->nt, psn->pwsid, psn->startpos);
+        expr_wasmify(psn, pvib, plib); ndswap(psn, pni); pni->nt = NT_BLOCK;
+        if (psn->nt == NT_CASE) { ndswap(ndnewbk(psn), ndref(pni, 0)); ndrem(pni, 0); }
+        ndinsbk(psn, NT_GOTO)->name = l; *pl = l; 
+      }
+      if (ndlen(pn) > 2) qsort(ndref(pn, 1), ndlen(pn)-1, sizeof(node_t), case_cmp);
+      if (ndlen(pn) == 1 || ndref(pn, 1)->nt != NT_DEFAULT) {
+        node_t *psn = ndset(ndinsnew(pn, 1), NT_DEFAULT, pn->pwsid, pn->startpos);
+        ndinsbk(psn, NT_GOTO)->name = bl;  
+      } 
+      wrap_node(pn, NT_BLOCK);
+      for (i = 0; i < ndblen(&ndb); ++i) { /* nest labeled blocks */
+        sym_t *pl = bufref(&clb, i); node_t *pni = ndbref(&ndb, i);
+        pn->name = *pl; pn->op = TT_BREAK_KW;
+        ndswap(pn, ndnewfr(pni)); ndswap(pn, pni); 
+      } 
+      pn->name = bl; pn->op = TT_BREAK_KW;
+      bufpopbk(plib);
+      buffini(&clb), ndbfini(&ndb); 
+    } break;
+    case NT_CASE: {
+      int x; size_t i; assert(ndlen(pn) >= 1);
+      if (static_eval_to_int(ndref(pn, 0), &x)) set_to_int(ndref(pn, 0), x);
+      else neprintf(pn, "noninteger case label"); 
+      for (i = 1; i < ndlen(pn); ++i) expr_wasmify(ndref(pn, i), pvib, plib);
+    } break;
+    case NT_DEFAULT: {
+      size_t i;
+      for (i = 0; i < ndlen(pn); ++i) expr_wasmify(ndref(pn, i), pvib, plib);
     } break;
     case NT_GOTO: {
       int *pil = bufsearch(plib, &pn->name, sym_cmp);
@@ -1880,6 +1934,18 @@ node_t *compile_booltest(node_t *prn, node_t *pan)
   }
 }
 
+/* compile x to serve as an integer selector */
+node_t *compile_intsel(node_t *prn, node_t *pan)
+{
+  node_t *patn = acode_type(pan);
+  if (patn->ts != TS_INT) {
+    node_t tn = mknd(); ndsettype(&tn, TS_INT);
+    if (!assign_compatible(&tn, patn)) neprintf(prn, "integer expression is expected"); 
+    if (!same_type(&tn, patn)) pan = compile_cast(prn, &tn, pan);
+  }
+  return pan;
+}
+
 /* compile x ? y : z operator */
 static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan3)
 {
@@ -2084,6 +2150,36 @@ static node_t *compile_branch(node_t *prn, node_t *pan, sym_t lname)
   } else {
     acode_pushin_sym(pcn, IN_BR, lname);
   }
+  return pcn;
+}
+
+/* compile switch as a bunch of eq/br_if instructions */
+static node_t *compile_switch_ifs(node_t *prn, node_t *pan, node_t *pcv, size_t cc)
+{
+  size_t i; sym_t vname; inscode_t *pic;
+  node_t *psn, *pgn, *pcn = npnewcode(prn); ndsettype(ndnewbk(pcn), TS_VOID);
+  assert(cc >= 1); /* default goto, followed by 0 or more case gotos */
+  if (acode_rval_get(pan) == IN_LOCAL_GET) {
+    vname = icbref(&pan->data, 0)->relkey;
+  } else { 
+    vname = rpalloc(VT_I32); 
+    pic = icbnewfr(&pan->data); pic->in = IN_REGDECL;
+    pic->relkey = vname; pic->arg.u = VT_I32;
+    acode_swapin(pcn, pan);
+    acode_pushin_sym(pcn, IN_LOCAL_SET, vname);
+  }  
+  for (i = 1; i < cc; ++i) { /* in case-val increasing order */
+    node_t *pni = pcv+i; assert(pni->nt == NT_CASE && ndlen(pni) == 2);
+    psn = ndref(pni, 0); assert(psn->nt == NT_LITERAL && psn->ts == TS_INT);
+    pgn = ndref(pni, 1); assert(pgn->nt == NT_GOTO && pgn->name != 0);
+    acode_swapin(pcn, compile_numlit(psn, TS_INT, &psn->val));
+    acode_pushin_sym(pcn, IN_LOCAL_GET, vname);
+    acode_pushin(pcn, IN_I32_EQ);
+    acode_pushin_sym(pcn, IN_BR_IF, pgn->name); 
+  }
+  assert(pcv->nt == NT_DEFAULT && ndlen(pcv) == 1);
+  pgn = ndref(pcv, 0); assert(pgn->nt == NT_GOTO && pgn->name != 0);
+  acode_pushin_sym(pcn, IN_BR, pgn->name);
   return pcn;
 }
 
@@ -2336,9 +2432,14 @@ retry:
         pcn = compile_if(pn, pan1, pan2, pan3);
       }
     } break;
-    /* case NT_SWITCH */
-    /* case NT_CASE */
-    /* case NT_DEFAULT */
+    case NT_SWITCH: {
+      node_t *pan; assert(ndlen(pn) >= 2); /* (x) followed by default */
+      assert(ret);
+      pan = compile_intsel(pn, expr_compile(ndref(pn, 0), prib, NULL));
+      pcn = compile_switch_ifs(pn, pan, ndref(pn, 1), ndlen(pn)-1);
+    } break;
+    case NT_CASE:
+    case NT_DEFAULT: assert(false); break; /* handled by switch */
     case NT_WHILE: 
     case NT_DO: 
     case NT_FOR: assert(false); break; /* dewasmified */
