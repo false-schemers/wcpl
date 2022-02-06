@@ -1752,8 +1752,15 @@ static node_t *acode_pushin(node_t *pcn, instr_t in)
   return pcn;
 }
 
+/* push signed-argument instruction in to the end of pcn code */
+static node_t *acode_pushin_iarg(node_t *pcn, instr_t in, long long i)
+{
+  inscode_t *pic = icbnewbk(&pcn->data); pic->in = in; pic->arg.i = i;
+  return pcn;
+}
+
 /* push unsigned-argument instruction in to the end of pcn code */
-static node_t *acode_pushin_uarg(node_t *pcn, instr_t in, unsigned u)
+static node_t *acode_pushin_uarg(node_t *pcn, instr_t in, unsigned long long u)
 {
   inscode_t *pic = icbnewbk(&pcn->data); pic->in = in; pic->arg.u = u;
   return pcn;
@@ -1776,7 +1783,7 @@ static node_t *acode_pushin_sym_uarg(node_t *pcn, instr_t in, sym_t s, unsigned 
 
 
 /* copy contents of pan code to the end of pcn code */
-static node_t *acode_copyin(node_t *pcn, node_t *pan)
+static node_t *acode_copyin(node_t *pcn, const node_t *pan)
 {
   ndcpy(ndnewbk(pcn), pan);
   return acode_pushin(pcn, IN_PLACEHOLDER);
@@ -2153,7 +2160,45 @@ static node_t *compile_branch(node_t *prn, node_t *pan, sym_t lname)
   return pcn;
 }
 
-/* compile switch as a bunch of eq/br_if instructions */
+/* try to compile switch to a jump table (br_table) or return NULL if too sparse */
+static node_t *compile_switch_table(node_t *prn, const node_t *pan, const node_t *pcv, size_t cc)
+{
+  size_t i, ti; sym_t dlname; int off, curidx, idx;
+  const node_t *pni, *psn, *pgn; node_t *pcn; size_t dfillc = 0;
+  assert(cc >= 1); /* default goto, followed by 0 or more case gotos */
+  if (cc < 3) return NULL; /* we need at least 2 cases */
+  pcn = npnewcode(prn); ndsettype(ndnewbk(pcn), TS_VOID);
+  acode_copyin(pcn, pan);
+  assert(pcv->nt == NT_DEFAULT && ndlen(pcv) == 1);
+  pgn = ndcref(pcv, 0); assert(pgn->nt == NT_GOTO && pgn->name != 0);  
+  dlname = pgn->name; /* default label */
+  pni = pcv+1; assert(pni->nt == NT_CASE && ndlen(pni) == 2);
+  psn = ndcref(pni, 0); assert(psn->nt == NT_LITERAL && psn->ts == TS_INT);
+  if ((off = (int)psn->val.i) != 0) {
+    acode_pushin_iarg(pcn, IN_I32_CONST, off); 
+    acode_pushin(pcn, IN_I32_SUB);
+  }
+  ti = icblen(&pcn->data); /* index of br_table */
+  acode_pushin_uarg(pcn, IN_BR_TABLE, 42); /* to be patched later */ 
+  for (curidx = 0, i = 1; i < cc; ++i) {
+    const node_t *pni = pcv+i; assert(pni->nt == NT_CASE && ndlen(pni) == 2);
+    psn = ndcref(pni, 0); assert(psn->nt == NT_LITERAL && psn->ts == TS_INT);
+    pgn = ndcref(pni, 1); assert(pgn->nt == NT_GOTO && pgn->name != 0);
+    idx = (int)psn->val.i - off; assert(idx >= 0);
+    while (curidx < idx) { /* fill gap with defaults */
+      acode_pushin_sym(pcn, IN_BR, dlname); /* NB: not an actual instruction! */
+      ++curidx; ++dfillc;
+      if (dfillc > cc) return NULL; /* nah.. */
+    }
+    acode_pushin_sym(pcn, IN_BR, pgn->name); /* NB: not an actual instruction! */
+    ++curidx;
+  }
+  icbref(&pcn->data, ti)->arg.u = (unsigned)curidx; /* patch size, add default */
+  acode_pushin_sym(pcn, IN_BR, dlname); /* NB: not an actual instruction! */
+  return pcn;
+}
+
+/* compile switch to a bunch of eq/br_if instructions */
 static node_t *compile_switch_ifs(node_t *prn, node_t *pan, node_t *pcv, size_t cc)
 {
   size_t i; sym_t vname; inscode_t *pic;
@@ -2436,7 +2481,8 @@ retry:
       node_t *pan; assert(ndlen(pn) >= 2); /* (x) followed by default */
       assert(ret);
       pan = compile_intsel(pn, expr_compile(ndref(pn, 0), prib, NULL));
-      pcn = compile_switch_ifs(pn, pan, ndref(pn, 1), ndlen(pn)-1);
+      pcn = compile_switch_table(pn, pan, ndref(pn, 1), ndlen(pn)-1);
+      if (!pcn) pcn = compile_switch_ifs(pn, pan, ndref(pn, 1), ndlen(pn)-1);
     } break;
     case NT_CASE:
     case NT_DEFAULT: assert(false); break; /* handled by switch */

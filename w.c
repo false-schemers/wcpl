@@ -1162,7 +1162,8 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       else chbputf(pcb, " %g", pic->arg.d); 
       break;
     case INSIG_LS_L:
-      assert(false); /* fixme */
+      chbputf(pcb, " (see next %llu+1 branches)", pic->arg.u);
+      break; /* takes multiple inscodes, should be taken care of by caller */
     default:
       assert(false);     
   }
@@ -1320,8 +1321,20 @@ static void wat_funcs(watfbuf_t *pfb)
     /* code */
     for (/* use current j */; j < icblen(&pf->code); ++j) {
       inscode_t *pic = icbref(&pf->code, j);
-      assert(pic->in != IN_REGDECL);
-      wat_line(format_inscode(pic, g_watbuf));
+      assert(pic->in != IN_REGDECL && pic->in != IN_PLACEHOLDER);
+      if (pic->in == IN_BR_TABLE) { /* takes multiple inscodes */
+        size_t n = (unsigned)pic->arg.u + 1;
+        chbsetf(g_watbuf, "br_table"); 
+        for (k = j+1; k < j+1+n; ++k) {
+          assert(k < icblen(&pf->code));
+          pic = icbref(&pf->code, k); assert(pic->in == IN_BR && pic->relkey);
+          chbputf(g_watbuf, " %s", symname(pic->relkey));
+        }
+        wat_line(chbdata(g_watbuf));
+        j += n; /* account for n aditional inscodes */
+      } else { /* taksed single inscode */
+        wat_line(format_inscode(pic, g_watbuf));
+      }
     }
     g_watindent -= 2;
     wat_line(")");  
