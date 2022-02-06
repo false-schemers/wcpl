@@ -2245,7 +2245,43 @@ static node_t *compile_return(node_t *prn, node_t *pan, const node_t *ptn)
   return pcn;
 }
 
-/* compile expression -- that is, convert it to asm tree; prib is var/reg info,
+/* defined just a few lines below; never returns NULL */
+static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret);
+
+/* compile nonscalar expr in lval/reference context prib is var/reg info
+ * returns NULL as soon as it discovers that pn is not bulk object reference */
+static node_t *expr_compile_bulkref(node_t *pn, buf_t *prib)
+{
+  node_t *pcn = NULL;
+  node_t *pni = pn; buf_t fb; bufinit(&fb, sizeof(sym_t));
+  while (pni->nt == NT_POSTFIX && pni->op == TT_DOT) { 
+    *(sym_t*)bufnewfr(&fb) = pni->name;
+    pni = ndref(pni, 0); 
+  }
+  if (pni->nt == NT_PREFIX && pni->op == TT_STAR)
+    pcn = compile_deref(pn, expr_compile(ndref(pni, 0), prib, NULL), &fb, false);
+  buffini(&fb);
+  return pcn;
+}
+
+/* compile bulk assignment from two reference codes */
+static node_t *compile_bulkasn(node_t *prn, node_t *pdan, node_t *psan)
+{
+  node_t *ptdan = acode_type(pdan), *ptsan = acode_type(psan), *ptn;
+  node_t *pcn = npnewcode(prn); size_t size, align;
+  if (!same_type(ptdan, ptsan)) neprintf(prn, "source and destination have different types"); 
+  assert(ptdan->ts == TS_PTR && ndlen(ptdan) == 1);
+  ptn = ndref(ptdan, 0); assert(ptn->ts == TS_STRUCT || ptn->ts == TS_UNION);
+  ndsettype(ndnewbk(pcn), TS_VOID); /* todo: chained bulk assignment nyi */
+  measure_type(ptn, prn, &size, &align, 0);
+  acode_swapin(pcn, pdan);
+  acode_swapin(pcn, psan);
+  acode_pushin_uarg(pcn, IN_I32_CONST, size);
+  acode_pushin(pcn, IN_MEMORY_COPY);
+  return pcn;
+}
+
+/* compile expr/statement (that is, convert it to asm tree); prib is var/reg info,
  * ret is return type for statements, NULL for expressions returning a value */
 static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
 {
@@ -2426,10 +2462,20 @@ retry:
     case NT_ASSIGN: {
       node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
       node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL;
-      node_t *pan = expr_compile(pln, prib, NULL);
-      node_t *pan2 = expr_compile(ndcref(pn, 1), prib, NULL);
-      tt_t op = (pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? pn->op - 1 : 0;  
-      pcn = compile_asncombo(pn, pan, ptn, op, pan2, false); 
+      node_t *pan = NULL, *pan2 = NULL; pcn = NULL;
+      if (pn->op == TT_ASN && ptn == NULL) { /* check for bulk assignment */
+        pan = expr_compile_bulkref(pln, prib);
+        /* todo: check if rhs is function call!! then pass it pan instead of doing all this */
+        if (pan) pan2 = expr_compile_bulkref(ndref(pn, 1), prib);
+        if (pan2) pcn = compile_bulkasn(pn, pan, pan2);
+      }  
+      if (!pcn) { /* failed? must be scalar assignment */
+        tt_t op;
+        pan = expr_compile(pln, prib, NULL);
+        pan2 = expr_compile(ndref(pn, 1), prib, NULL);
+        op = (pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? pn->op - 1 : 0;  
+        pcn = compile_asncombo(pn, pan, ptn, op, pan2, false); 
+      }
     } break;
     case NT_COMMA: {
       size_t i; pcn = npnewcode(pn); assert(ndlen(pn) > 0);
