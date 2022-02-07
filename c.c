@@ -100,6 +100,11 @@ static bool ts_numerical(ts_t ts)
   return TS_CHAR <= ts && ts <= TS_DOUBLE;
 }
 
+static bool ts_bulk(ts_t ts) 
+{
+  return ts == TS_ARRAY || ts == TS_STRUCT || ts == TS_UNION;
+}
+
 static bool ts_unsigned(ts_t ts) 
 {
   switch (ts) {
@@ -765,10 +770,10 @@ static void fundef_check_type(node_t *ptn)
         neprintf(ptn, "not supported: array as function parameter/return type");
         break;
       case TS_STRUCT:
-        neprintf(ptn, "not supported: struct as function parameter/return type");
+        if (i > 0) neprintf(ptn, "not supported: struct as function parameter type");
         break;
        case TS_UNION:
-        neprintf(ptn, "not supported: union as function parameter/return type");
+        if (i > 0) neprintf(ptn, "not supported: union as function parameter type");
         break;
       default:
         neprintf(ptn, "function arguments of this type are not supported");
@@ -948,7 +953,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           node_t cn = mknd(); ndset(&cn, NT_TYPE, -1, -1); cn.ts = pvi->cast;
           ndswap(&cn, pn); wrap_cast(pn, &cn); ndfini(&cn);
         }
-      } /* else global */
+      } /* else global: todo: static globals may need to be converted too! */
     } break;
     case NT_TYPE: {
       /* nothing of interest in here */
@@ -1077,13 +1082,26 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
       else assert(pil[1] == 0); /* not a break/continue target */
     } break;
     case NT_RETURN: {
-      sym_t fp = intern("fp$"); node_t *psn;
-      vi_t *pvi = bufbsearch(pvib, &fp, sym_cmp);
+      sym_t rp = intern("rp$"), fp = intern("fp$"); 
+      vi_t *prvi, *pfvi; node_t *psn;
       if (ndlen(pn) > 0) {
         assert(ndlen(pn) == 1);
         expr_wasmify(ndref(pn, 0), pvib, plib);
       }
-      if (pvi) { /* return ... => { freea(fp$); return ... } */
+      prvi = bufbsearch(pvib, &rp, sym_cmp);
+      pfvi = bufbsearch(pvib, &fp, sym_cmp);
+      if (prvi) { /* return x => { *rp$ = x; return; } */
+        if (ndlen(pn) != 1) neprintf(pn, "return value expected"); 
+        wrap_node(lift_arg0(pn), NT_ASSIGN); pn->op = TT_ASN;
+        psn = ndinsfr(pn, NT_PREFIX); psn->op = TT_STAR;
+        psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = rp;
+        wrap_node(pn, NT_BLOCK); 
+        if (pfvi) { /* insert freea(fp$) if needed */
+          psn = ndinsbk(pn, NT_INTRCALL); psn->intr = INTR_FREEA;
+          psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = fp;
+        }
+        ndinsbk(pn, NT_RETURN);
+      } else if (pfvi) { /* just insert freea(fp$) */
         wrap_node(pn, NT_BLOCK);
         psn = ndinsfr(pn, NT_INTRCALL); psn->intr = INTR_FREEA;
         psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = fp;
@@ -1165,6 +1183,15 @@ static void fundef_wasmify(node_t *pdn)
           pvi->sc = SC_REGISTER; pvi->cast = cast;
         }
       } break;
+      case TS_ARRAY: case TS_STRUCT: case TS_UNION: { 
+        if (i == 0) { /* return value: insert $rp as first arg */
+          node_t *prn = ndinsnew(ptn, 1), *pn; ptni = ndref(ptn, 0); /* re-fetch */
+          ndset(prn, NT_VARDECL, ptni->pwsid, ptni->startpos);
+          pn = ndinsbk(prn, NT_TYPE), pn->ts = TS_VOID; ndswap(pn, ptni);
+          wrap_type_pointer(pn); prn->name = intern("rp$");
+          break;
+        } /* else fall through */ 
+      }
       default:
         neprintf(ptn, "function arguments of this type are not supported");
     }
@@ -2089,8 +2116,8 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op,
   }
 } 
 
-/* compile call expression */
-static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab)
+/* compile call expression; pdn != NULL for bulk return call */
+static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
 {
   node_t *pcn = npnewcode(prn), *pftn = acode_type(pfn); size_t i;
   inscode_t cic; 
@@ -2099,14 +2126,25 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab)
   if (ndlen(pftn) != buflen(pab)+1)
     n2eprintf(ndref(prn, 0), prn, "%d-parameter function called with %d arguments",
       (int)ndlen(pftn)-1, (int)buflen(pab));
-  ndpushbk(pcn, ndref(pftn, 0));      
+  if (ts_bulk(ndref(pftn, 0)->ts)) {
+    if (!pdn) n2eprintf(ndref(prn, 0), prn, "no lval to accept bulk return value"); 
+    /* adjust to bulk return convention */
+    pftn = npdup(pftn); wrap_type_pointer(ndref(pftn, 0));
+    ndsettype(ndnewfr(pftn), TS_VOID);
+    *(node_t **)bufins(pab, 0) = pdn;
+    ndsettype(ndnewbk(pcn), TS_VOID);
+  } else { 
+    assert(!pdn);
+    ndpushbk(pcn, ndref(pftn, 0));
+  }
   if (acode_rval_get(pfn)) {
     inscode_t ic; asm_getbk(&pfn->data, &ic);
     if (ic.in != IN_GLOBAL_GET) 
       n2eprintf(ndref(prn, 0), prn, "not a function: %s", symname(ic.relkey));
     cic.in = IN_CALL; cic.relkey = ic.relkey;
   } else {
-    n2eprintf(ndref(prn, 0), prn, "NYI: non-identifier functions are not yet supported");
+    n2eprintf(ndref(prn, 0), prn, 
+      "non-global-identifier function expressions are not yet supported");
   }
   for (i = 0; i < buflen(pab); ++i) {
     node_t **ppani = bufref(pab, i), *pani = *ppani;
@@ -2272,7 +2310,7 @@ static node_t *compile_bulkasn(node_t *prn, node_t *pdan, node_t *psan)
   if (!same_type(ptdan, ptsan)) neprintf(prn, "source and destination have different types"); 
   assert(ptdan->ts == TS_PTR && ndlen(ptdan) == 1);
   ptn = ndref(ptdan, 0); /* must be a bulk type -- otherwise memcopy isn't needed */ 
-  if (ptn->ts != TS_STRUCT && ptn->ts != TS_UNION && ptn->ts != TS_ARRAY) return NULL;
+  if (!ts_bulk(ptn->ts)) return NULL;
   pcn = npnewcode(prn);
   ndsettype(ndnewbk(pcn), TS_VOID); /* todo: chained bulk assignment nyi */
   measure_type(ptn, prn, &size, &align, 0);
@@ -2314,8 +2352,9 @@ retry:
     case NT_CALL: {
       size_t i; buf_t apb = mkbuf(sizeof(node_t*));
       node_t *pfn = expr_compile(ndref(pn, 0), prib, NULL);
-      for (i = 1; i < ndlen(pn); ++i) *(node_t**)bufnewbk(&apb) = expr_compile(ndref(pn, i), prib, NULL);
-      pcn = compile_call(pn, pfn, &apb);
+      for (i = 1; i < ndlen(pn); ++i) 
+        *(node_t**)bufnewbk(&apb) = expr_compile(ndref(pn, i), prib, NULL);
+      pcn = compile_call(pn, pfn, &apb, NULL); /* regular call (no lval = on the left) */
       buffini(&apb);
     } break;
     case NT_INTRCALL: {
@@ -2463,19 +2502,28 @@ retry:
     } break;
     case NT_ASSIGN: {
       node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
-      node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL;
-      node_t *pan = NULL, *pan2 = NULL; pcn = NULL;
+      node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL, *pvn = ndref(pn, 1);
+      pcn = NULL;
       if (pn->op == TT_ASN && ptn == NULL) { /* check for bulk assignment */
-        pan = expr_compile_bulkref(pln, prib);
-        /* todo: check if rhs is function call!! then pass it pan instead of doing all this */
-        if (pan) pan2 = expr_compile_bulkref(ndref(pn, 1), prib);
-        if (pan2) pcn = compile_bulkasn(pn, pan, pan2);
+        node_t *pan = expr_compile_bulkref(pln, prib); 
+        if (pan) {
+          if (pvn->nt == NT_CALL) { /* pass pan reference as extra arg */
+            size_t i; buf_t apb = mkbuf(sizeof(node_t*));
+            node_t *pfn = expr_compile(ndref(pvn, 0), prib, NULL);
+            for (i = 1; i < ndlen(pvn); ++i) 
+              *(node_t**)bufnewbk(&apb) = expr_compile(ndref(pvn, i), prib, NULL);
+            pcn = compile_call(pvn, pfn, &apb, pan); /* regular call (no lval = on the left) */
+            buffini(&apb);
+          } else { /* try regular bulk assignment */
+            node_t *pan2 = expr_compile_bulkref(pvn, prib);
+            if (pan2) pcn = compile_bulkasn(pn, pan, pan2);
+          }
+        }
       }  
       if (!pcn) { /* failed? must be scalar assignment */
-        tt_t op;
-        pan = expr_compile(pln, prib, NULL);
-        pan2 = expr_compile(ndref(pn, 1), prib, NULL);
-        op = (pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? pn->op - 1 : 0;  
+        node_t *pan = expr_compile(pln, prib, NULL);
+        node_t *pan2 = expr_compile(pvn, prib, NULL);
+        tt_t op = (pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? pn->op - 1 : 0;  
         pcn = compile_asncombo(pn, pan, ptn, op, pan2, false); 
       }
     } break;
@@ -2548,22 +2596,8 @@ retry:
     } break;
     case NT_BREAK:
     case NT_CONTINUE: assert(false); break; /* dewasmified */
-    
-    /* other */
-    case NT_TYPE: assert(false); break; /* inside cast only */  
-    /* leave statement layer as-is for now (fixme!) */
-    default: {
-      /* for now, dup outside structure and compile nodes */
-      size_t i;
-      pcn = npnew(pn->nt, pn->pwsid, pn->startpos); 
-      pcn->intr = pn->intr; pcn->op = pn->op;
-      pcn->name = pn->name; /* shouldn't be there */
-      for (i = 0; i < ndlen(pn); ++i) {
-        node_t *pcni = expr_compile(ndref(pn, i), prib, ret);
-        ndswap(pcni, ndnewbk(pcn));
-      }
-    } break;
   }
+
   if (!pcn) neprintf(pn, "failed to compile expression");
   assert(pcn->nt == NT_ACODE);
   if (pcn->nt == NT_ACODE) assert(ndlen(pcn) > 0 && ndref(pcn, 0)->nt == NT_TYPE);
@@ -2727,15 +2761,22 @@ static void tn2vt(node_t *ptn, vtbuf_t *pvtb)
 /* convert function type to a function signature */
 static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
 {
-  size_t i;
+  size_t i; node_t *ptni;
   assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
   bufclear(&pfs->argtypes);
   bufclear(&pfs->rettypes);
-  for (i = 0; i < ndlen(ptn); ++i) {
-    node_t *ptni = ndref(ptn, i); 
+  ptni = ndref(ptn, 0); assert(ptn->nt == NT_TYPE);
+  if (ts_bulk(ptni->ts)) { /* passed as pointer in 1st arg */
+    /* fixme: should depend on wasm32/wasm64 model */
+    *vtbnewbk(&pfs->argtypes) = VT_I32; /* rettypes stays empty */  
+  } else {
+    tn2vt(ptni, &pfs->rettypes);
+  }
+  for (i = 1; i < ndlen(ptn); ++i) {
+    ptni = ndref(ptn, i); 
     if (ptni->nt == NT_VARDECL) { assert(ndlen(ptni) == 1); ptni = ndref(ptni, 0); }
     assert(ptni->nt == NT_TYPE);
-    tn2vt(ptni, i ? &pfs->argtypes : &pfs->rettypes);
+    tn2vt(ptni, &pfs->argtypes);
   }
   return pfs;
 }
