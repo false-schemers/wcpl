@@ -395,10 +395,13 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
     }
   } else if (ptn1->ts == TS_ARRAY || ptn1->ts == TS_ARRAY) {
     /* allow incomplete array to be equivalent to a complete one */
-    node_t *pn1, *pn2;
-    if (!ndlen(ptn1) || !ndlen(ptn2)) return true;
-    if (ndlen(ptn1) != 1 || ndlen(ptn2) != 1) return false;
+    node_t *pn1, *pn2; 
+    assert(ndlen(ptn1) > 0 && ndlen(ptn2) > 0);
     pn1 = ndref(ptn1, 0), pn2 = ndref(ptn2, 0);
+    if (!same_type(pn1, pn2)) return false;
+    if (ndlen(ptn1) == 1 || ndlen(ptn2) == 1) return true;
+    if (ndlen(ptn1) != 2 || ndlen(ptn2) != 2) return false;
+    pn1 = ndref(ptn1, 1), pn2 = ndref(ptn2, 1);
     if (pn1->nt != NT_LITERAL || pn2->nt != NT_LITERAL) return false;
     if (pn1->ts != pn2->ts) return false;
     switch (pn1->ts) { 
@@ -406,7 +409,6 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
         return ptn1->val.i == ptn2->val.i;
       case TS_UINT: case TS_ULONG: case TS_ULLONG:
         return ptn1->val.u == ptn2->val.u;
-      case TS_VOID: return true;
       default: return false;
     }
   }

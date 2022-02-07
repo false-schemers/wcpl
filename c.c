@@ -2268,10 +2268,12 @@ static node_t *expr_compile_bulkref(node_t *pn, buf_t *prib)
 static node_t *compile_bulkasn(node_t *prn, node_t *pdan, node_t *psan)
 {
   node_t *ptdan = acode_type(pdan), *ptsan = acode_type(psan), *ptn;
-  node_t *pcn = npnewcode(prn); size_t size, align;
+  node_t *pcn; size_t size, align;
   if (!same_type(ptdan, ptsan)) neprintf(prn, "source and destination have different types"); 
   assert(ptdan->ts == TS_PTR && ndlen(ptdan) == 1);
-  ptn = ndref(ptdan, 0); assert(ptn->ts == TS_STRUCT || ptn->ts == TS_UNION);
+  ptn = ndref(ptdan, 0); /* must be a bulk type -- otherwise memcopy isn't needed */ 
+  if (ptn->ts != TS_STRUCT && ptn->ts != TS_UNION && ptn->ts != TS_ARRAY) return NULL;
+  pcn = npnewcode(prn);
   ndsettype(ndnewbk(pcn), TS_VOID); /* todo: chained bulk assignment nyi */
   measure_type(ptn, prn, &size, &align, 0);
   acode_swapin(pcn, pdan);
