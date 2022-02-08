@@ -99,7 +99,7 @@ typedef enum ts_tag {
 typedef enum intr_tag {
   INTR_NONE,   INTR_ALLOCA,  INTR_FREEA,
   INTR_SIZEOF, INTR_ALIGNOF, INTR_OFFSETOF,
-  INTR_SASSERT
+  INTR_VAETC,  INTR_VAARG,   INTR_SASSERT
 } intr_t;
 
 /* grammar node data type */

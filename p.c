@@ -352,6 +352,8 @@ void init_symbols(void)
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
   intern_symbol("ptrdiff_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
+  intern_symbol("va_arg_t", TT_TYPE_NAME, ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_ULLONG;
   intern_symbol("NULL", TT_MACRO_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_CAST, -1, -1);
   psn = ndnewbk(pn); ndsettype(psn, TS_PTR);
@@ -364,6 +366,8 @@ void init_symbols(void)
   intern_symbol("offsetof", TT_INTR_NAME, INTR_OFFSETOF);
   intern_symbol("alloca", TT_INTR_NAME, INTR_ALLOCA);
   intern_symbol("freea", TT_INTR_NAME, INTR_FREEA);
+  intern_symbol("va_etc", TT_INTR_NAME, INTR_VAETC);
+  intern_symbol("va_arg", TT_INTR_NAME, INTR_VAARG);
   intern_symbol("static_assert", TT_INTR_NAME, INTR_SASSERT);
 }
 
@@ -2271,6 +2275,24 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
             reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
           expect(pw, TT_RPAR, ")"); 
         } break;
+        case INTR_VAETC: { /* () */
+          expect(pw, TT_LPAR, "(");
+          expect(pw, TT_RPAR, ")"); 
+        } break;
+        case INTR_VAARG: { /* (id, type) */
+          node_t *ptn = ndnewbk(pn);
+          expect(pw, TT_LPAR, "(");
+          ndset(ptn, NT_IDENTIFIER, pw->id, peekpos(pw));
+          ptn->name = getid(pw); 
+          expect(pw, TT_COMMA, ",");
+          ptn = ndnewbk(pn);
+          parse_base_type(pw, ptn);
+          if (parse_declarator(pw, ptn)) 
+            reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+          if (ptn->ts != TS_PTR && !(TS_INT <= ptn->ts && ptn->ts <= TS_DOUBLE))
+            reprintf(pw, startpos, "unsuported vararg type");
+          expect(pw, TT_RPAR, ")"); 
+        } break;
         case INTR_OFFSETOF: { /* (type, id) */
           node_t *ptn = ndnewbk(pn);
           expect(pw, TT_LPAR, "(");
@@ -2283,7 +2305,8 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           ptn->name = getid(pw); 
           expect(pw, TT_RPAR, ")"); 
         } break;
-        case INTR_ALLOCA: case INTR_SASSERT: { /* (expr ...) */
+        case INTR_ALLOCA: case INTR_FREEA:
+        case INTR_SASSERT: { /* (expr ...) */
           size_t n = 0;
           expect(pw, TT_LPAR, "(");
           while (peekt(pw) != TT_RPAR) {
@@ -2293,7 +2316,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
             dropt(pw); 
           }
           expect(pw, TT_RPAR, ")"); 
-          if ((intr == INTR_ALLOCA && n != 1) || 
+          if (((intr == INTR_ALLOCA || intr == INTR_FREEA) && n != 1) || 
               (intr == INTR_SASSERT && !(n == 1 || n == 2)))  
            reprintf(pw, startpos, "unexpected arguments for %s", intr_name(pn->intr));
         } break;
@@ -3518,6 +3541,8 @@ const char *intr_name(intr_t intr)
     case INTR_SIZEOF: s = "sizeof"; break; 
     case INTR_ALIGNOF: s = "alignof"; break; 
     case INTR_OFFSETOF: s = "offsetof"; break; 
+    case INTR_VAETC: s = "va_etc"; break; 
+    case INTR_VAARG: s = "va_arg"; break; 
     case INTR_SASSERT: s = "static_assert"; break; 
     default: assert(false);
   }

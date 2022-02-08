@@ -1123,7 +1123,7 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
   chbclear(pcb);
   if (pic->in == IN_REGDECL) {
     const char *ts = valtype_name((valtype_t)pic->arg.u);
-    chbputf(pcb, "register %s %s", ts, symname(pic->relkey)); 
+    chbputf(pcb, "register %s $%s", ts, symname(pic->relkey)); 
     return chbdata(pcb);
   } else if (pic->in == IN_END) { /* has a label for display purposes */
     if (pic->relkey) chbputf(pcb, "end $%s", symname(pic->relkey));
@@ -1137,7 +1137,7 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
     case INSIG_BT: {
       valtype_t vt = pic->arg.u;
       if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
-      if (vt != BT_VOID) chbputf(pcb, "(result %s)", valtype_name(vt)); 
+      if (vt != BT_VOID) chbputf(pcb, " (result %s)", valtype_name(vt)); 
     } break;
     case INSIG_L:   
     case INSIG_X:    case INSIG_T:

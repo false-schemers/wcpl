@@ -5,10 +5,9 @@
 #define MB_CUR_MAX 6 /* utf-8 */
 /* NULL is built-in */
 #define RAND_MAX 0x7fffffff
-// structs cannot be returned directly
-// typedef struct { int quot, rem; } div_t;
-// typedef struct { long quot, rem; } ldiv_t;
-// typedef struct { long long quot, rem; } lldiv_t;
+typedef struct { int quot, rem; } div_t;
+typedef struct { long quot, rem; } ldiv_t;
+typedef struct { long long quot, rem; } lldiv_t;
 /* size_t is built-in */
 /* wchar_t is built-in */
 
@@ -39,10 +38,9 @@ extern void qsort(const void *base,
 extern int abs(int n);
 extern long labs(long n);
 extern long long llabs(long long n);
-// structs cannot be returned directly
-// extern div_t div(int n, int d);
-// extern ldiv_t ldiv(long n, long d);
-// extern lldiv_t lldiv(long long n, long long d);
+extern div_t div(int n, int d);
+extern ldiv_t ldiv(long n, long d);
+extern lldiv_t lldiv(long long n, long long d);
 extern int mblen(const char *s, size_t n);
 extern int mbtowc(wchar_t *pwc, const char *s, size_t n);
 extern int wctomb(char *s, wchar_t wc);

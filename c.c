@@ -756,7 +756,7 @@ static void fundef_check_type(node_t *ptn)
     switch (ptni->ts) {
       case TS_VOID:
         if (i == 0) break; /* return type can be void */
-        neprintf(ptn, "unexpected void function argument type");
+        neprintf(ptni, "unexpected void function argument type");
       case TS_ENUM: /* ok, treated as int */
       case TS_CHAR: case TS_UCHAR:   /* ok but widened to int */
       case TS_SHORT: case TS_USHORT: /* ok but widened to int */
@@ -767,16 +767,19 @@ static void fundef_check_type(node_t *ptn)
       case TS_PTR: 
         break;
       case TS_ARRAY: 
-        neprintf(ptn, "not supported: array as function parameter/return type");
+        neprintf(ptni, "not supported: array as function parameter/return type");
         break;
       case TS_STRUCT:
-        if (i > 0) neprintf(ptn, "not supported: struct as function parameter type");
+        if (i > 0) neprintf(ptni, "not supported: struct as function parameter type");
         break;
-       case TS_UNION:
-        if (i > 0) neprintf(ptn, "not supported: union as function parameter type");
+      case TS_UNION:
+        if (i > 0) neprintf(ptni, "not supported: union as function parameter type");
         break;
+      case TS_ETC:
+        if (i+1 != ndlen(ptn)) neprintf(ptni, "nonfinal ... in function parameter list");
+        break; 
       default:
-        neprintf(ptn, "function arguments of this type are not supported");
+        neprintf(ptni, "function arguments of this type are not supported");
     }
   }
 }
@@ -954,6 +957,26 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           ndswap(&cn, pn); wrap_cast(pn, &cn); ndfini(&cn);
         }
       } /* else global: todo: static globals may need to be converted too! */
+    } break;
+    case NT_INTRCALL: {
+      switch (pn->intr) {
+        case INTR_VAETC: { /* () => ap$ */
+          sym_t ap = intern("ap$");
+          vi_t *pvi = bufbsearch(pvib, &ap, sym_cmp);
+          if (!pvi) neprintf(pn, "access to ... in non-vararg function");
+          assert(pvi->sc == SC_REGISTER && !pvi->fld);
+          pn->nt = NT_IDENTIFIER; pn->name = pvi->reg;
+        } break;
+        case INTR_VAARG: { /* (id, type) => *(type*)id++ */
+          node_t *pin, *ptn; assert(ndlen(pn) == 2);
+          pin = ndref(pn, 0), ptn = ndref(pn, 1);
+          assert(pin->nt == NT_IDENTIFIER && ptn->nt == NT_TYPE);
+          wrap_postfix_operator(pin, TT_PLUS_PLUS, 0);
+          wrap_type_pointer(ptn);
+          ndswap(pin, ptn); pn->nt = NT_CAST;
+          wrap_unary_operator(pn, pn->startpos, TT_STAR);
+        } break;
+      }
     } break;
     case NT_TYPE: {
       /* nothing of interest in here */
@@ -1142,7 +1165,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
 static void fundef_wasmify(node_t *pdn)
 {
   /* special registers (scalar/poiner vars with internal names): 
-   * fp$ (frame pointer), ap$ (... data pointer)? */
+   * fp$ (frame pointer), ap$ (... data pointer) */
   node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
   buf_t vib = mkbuf(sizeof(vi_t)); node_t frame = mknd();
   ndbuf_t asb; buf_t lib; size_t i; 
@@ -1158,6 +1181,14 @@ static void fundef_wasmify(node_t *pdn)
     node_t *pdni = ndref(ptn, i), *ptni = pdni; sym_t name = 0; ts_t cast = TS_VOID; 
     if (pdni->nt == NT_VARDECL) name = ptni->name, ptni = ndref(pdni, 0); 
     switch (ptni->ts) {
+      case TS_ETC: { /* last */
+        vi_t *pvi = bufnewbk(&vib);
+        assert(i+1 == ndlen(ptn));
+        ndset(pdni, NT_VARDECL, pdni->pwsid, pdni->startpos);
+        pdni->name = intern("ap$");
+        ptni = ndinsbk(pdni, NT_TYPE); ptni->ts = TS_ULLONG; wrap_type_pointer(ptni);
+        pvi->name = pvi->reg = pdni->name; pvi->sc = SC_REGISTER;
+      } break; 
       case TS_VOID: /* ok if alone */ 
         assert(i == 0); /* we have checked earlier: this is return type */
         break;
@@ -1193,7 +1224,7 @@ static void fundef_wasmify(node_t *pdn)
         } /* else fall through */ 
       }
       default:
-        neprintf(ptn, "function arguments of this type are not supported");
+        neprintf(pdni, "function arguments of this type are not supported");
     }
   }
 
@@ -1443,9 +1474,9 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
 }
 
 /* produce load instruction to fetch from a scalar pointer */
-static void asm_load(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
-{
-  instr_t in = 0; unsigned align = 0, off = 0; inscode_t *pin;
+static inscode_t *asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
+{ /* tsfrom may be narrow, tsto is integral-promoted */
+  instr_t in = 0; unsigned align = 0; inscode_t *pin;
   switch (tsto) { /* TS_PTR or result of ts_integral_promote(tsfrom) */
     case TS_PTR: case TS_LONG: case TS_ULONG: /* wasm32 */
     case TS_INT: case TS_UINT:
@@ -1481,6 +1512,7 @@ static void asm_load(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
   assert(in);
   pin = icbnewbk(pdata); 
   pin->in = in; pin->arg.u = off; pin->argu2 = align;
+  return pin;
 }
 
 /* produce store instruction from a load instruction */
@@ -1502,6 +1534,14 @@ static void asm_instr_load_to_store(const inscode_t *plic, inscode_t *psic)
   }
   assert(in);
   *psic = *plic; psic->in = in;
+}
+
+/* produce store instruction to write thru a scalar pointer */
+static inscode_t *asm_store(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
+{ /* tsto may be narrow, tsfrom is integral-promoted */
+  inscode_t *plic = asm_load(tsfrom, tsto, off, pdata), sic;
+  asm_instr_load_to_store(plic, &sic);
+  *plic = sic; return plic;
 }
 
 /* produce cast instructions as needed to convert tsn to cast_compatible ttn type */
@@ -2026,7 +2066,7 @@ static node_t *compile_ataddr(node_t *prn, node_t *pan)
     node_t *pcn = npnewcode(prn), *ptn = ndpushbk(pcn, petn);
     if (ts_numerical(petn->ts)) ptn->ts = ts_integral_promote(petn->ts);
     acode_swapin(pcn, pan);
-    asm_load(ptn->ts, petn->ts, &pcn->data);
+    asm_load(ptn->ts, petn->ts, 0, &pcn->data);
     return pcn;
   }
 } 
@@ -2052,10 +2092,10 @@ static node_t *compile_dot(node_t *prn, node_t *pan, sym_t fld)
     acode_swapin(pcn, psn);
     if (ts_numerical(petn->ts)) {
       ts_t ipts = ts_integral_promote(petn->ts);
-      asm_load(ipts, petn->ts, &pcn->data);
+      asm_load(ipts, petn->ts, 0, &pcn->data);
       petn->ts = ipts;
     } else {
-      asm_load(petn->ts, petn->ts, &pcn->data);
+      asm_load(petn->ts, petn->ts, 0, &pcn->data);
     }
   }
   return pcn;
@@ -2157,11 +2197,17 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op,
 /* compile call expression; pdn != NULL for suspected bulk return call */
 static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
 {
-  node_t *pcn = npnewcode(prn), *pftn = acode_type(pfn); size_t i;
-  inscode_t cic; 
+  node_t *pcn = npnewcode(prn), *pftn = acode_type(pfn), *psn; size_t i;
+  inscode_t cic; size_t alen = ndlen(pftn); bool etc = false;
   if (pftn->ts != TS_FUNCTION) 
     n2eprintf(ndref(prn, 0), prn, "can't call non-function type");
-  if (ndlen(pftn) != buflen(pab)+1)
+  if (alen > 1 && (psn = ndref(pftn, alen-1))->nt == NT_VARDECL
+    && ndlen(psn) == 1 && ndref(psn, 0)->ts == TS_ETC) { 
+    etc = true;
+    if (ndlen(pftn) > buflen(pab)+2)
+      n2eprintf(ndref(prn, 0), prn, "%d-or-more-parameter function called with %d arguments",
+        (int)ndlen(pftn)-2, (int)buflen(pab));
+  } else if (ndlen(pftn) != buflen(pab)+1)
     n2eprintf(ndref(prn, 0), prn, "%d-parameter function called with %d arguments",
       (int)ndlen(pftn)-1, (int)buflen(pab));
   if (ts_bulk(ndref(pftn, 0)->ts)) {
@@ -2184,16 +2230,48 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     n2eprintf(ndref(prn, 0), prn, 
       "non-global-identifier function expressions are not yet supported");
   }
-  for (i = 0; i < buflen(pab); ++i) {
+  for (i = 0; i < buflen(pab) && (!etc || i < ndlen(pftn)-2); ++i) {
     node_t **ppani = bufref(pab, i), *pani = *ppani;
     node_t *ptni = acode_type(pani), *pftni = ndref(pftn, i+1);
     if (pftni->nt == NT_VARDECL) pftni = ndref(pftni, 0);
     if (!assign_compatible(pftni, ptni))
       n2eprintf(pani, prn, "can't pass argument[%d]: unexpected type", i);
     if (!same_type(pftni, ptni)) pani = compile_cast(prn, pftni, pani);
-    acode_swapin(pcn, pani);
+    acode_swapin(pcn, pani); /* leaves arg on stack */
   }
-  asm_pushbk(&pcn->data, &cic);
+  if (etc && i < buflen(pab)) {
+    /* collect remaining arguments into a stack array of va_arg_t */
+    sym_t pname = rpalloc(VT_I32); /* arg frame ptr (wasm32) */
+    /* frame is an array of uint64s (va_arg_t), aligned to 16 */
+    size_t asz = 8, nargs = buflen(pab)-i, framesz = (nargs*asz + 15) & ~0xFLL, basei;
+    inscode_t *pic = icbnewfr(&pcn->data); pic->in = IN_REGDECL;
+    pic->relkey = pname; pic->arg.u = VT_I32; /* wasm32 pointer */
+    acode_pushin_sym(pcn, IN_GLOBAL_GET, intern("__stack_pointer"));
+    acode_pushin_sym(pcn, IN_LOCAL_TEE, pname);
+    acode_pushin_uarg(pcn, IN_I32_CONST, framesz);
+    acode_pushin(pcn, IN_I32_SUB);
+    acode_pushin_sym(pcn, IN_GLOBAL_SET, intern("__stack_pointer")); 
+    /* start of va_arg_t[nargs] array is now in pname, fill it */
+    for (basei = i; i < buflen(pab); ++i) {
+      node_t **ppani = bufref(pab, i), *pani = *ppani;
+      node_t *ptni = acode_type(pani); size_t size, align;
+      measure_type(ptni, prn, &size, &align, 0);
+      if (ts_bulk(ptni->ts) || size > asz || align > asz)
+        n2eprintf(pani, prn, "can't pass argument[%d]: unsupported type for ... call", i);
+      if (ts_numerical(ptni->ts)) assert(ptni->ts == ts_integral_promote(ptni->ts));
+      acode_pushin_sym(pcn, IN_LOCAL_GET, pname);
+      acode_swapin(pcn, pani); /* arg on stack */
+      asm_store(ptni->ts, ptni->ts, (i-basei)*asz, &pcn->data);
+    }
+    acode_pushin_sym(pcn, IN_LOCAL_GET, pname); 
+    /* put the call instruction followed by sp restore */
+    asm_pushbk(&pcn->data, &cic);
+    acode_pushin_sym(pcn, IN_LOCAL_GET, pname);
+    acode_pushin_sym(pcn, IN_GLOBAL_SET, intern("__stack_pointer")); 
+  } else {
+    /* just put the call instruction */
+    asm_pushbk(&pcn->data, &cic);
+  }
   return pcn;
 }
 
@@ -2426,6 +2504,8 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             neprintf(pn, "freea() intrinsic expects one argument");
           }
         } break;
+        case INTR_VAETC: 
+        case INTR_VAARG: assert(false); /* wasmified */
         case INTR_SASSERT: {
           check_static_assert(pn);
           pcn = ndsettype(npnewcode(pn), TS_VOID);
@@ -2777,7 +2857,12 @@ static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
     ptni = ndref(ptn, i); 
     if (ptni->nt == NT_VARDECL) { assert(ndlen(ptni) == 1); ptni = ndref(ptni, 0); }
     assert(ptni->nt == NT_TYPE);
-    tn2vt(ptni, &pfs->argtypes);
+    if (i+1 == ndlen(ptn) && ptni->ts == TS_ETC) {
+      /* fixme: should depend on wasm32/wasm64 model */
+      *vtbnewbk(&pfs->argtypes) = VT_I32; /* ... => ap$ */  
+    } else {
+      tn2vt(ptni, &pfs->argtypes);
+    }
   }
   return pfs;
 }
