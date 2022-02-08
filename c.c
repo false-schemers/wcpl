@@ -1443,9 +1443,9 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
 }
 
 /* produce load instruction to fetch from a scalar pointer */
-static void asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
+static void asm_load(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
 {
-  instr_t in = 0; unsigned align = 0; inscode_t *pin;
+  instr_t in = 0; unsigned align = 0, off = 0; inscode_t *pin;
   switch (tsto) { /* TS_PTR or result of ts_integral_promote(tsfrom) */
     case TS_PTR: case TS_LONG: case TS_ULONG: /* wasm32 */
     case TS_INT: case TS_UINT:
@@ -1831,8 +1831,7 @@ static node_t *compile_cast(node_t *prn, const node_t *ptn, node_t *pan)
 {
   node_t *pcn, *patn = acode_type(pan);
   if (ptn->ts == TS_VOID) ; /* ok, any value can be dropped */
-  else if (!cast_compatible(ptn, patn))
-    n2eprintf(ndref(prn, 1), prn, "compile: impossible cast");
+  else if (!cast_compatible(ptn, patn)) neprintf(prn, "compile: impossible cast");
   pcn = npnewcode(prn); ndcpy(ndnewbk(pcn), ptn);
   acode_swapin(pcn, pan);
   if (ptn->ts == TS_VOID) acode_pushin(pcn, IN_DROP);
@@ -2012,36 +2011,75 @@ static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan
   return pcn;
 }
 
-/* compile non-reduceable *x{.f...} returning scalar value (load) or pointer (!load) */
-static node_t *compile_deref(node_t *prn, node_t *pan, buf_t *psymb, bool load)
+/* compile *x */
+static node_t *compile_ataddr(node_t *prn, node_t *pan)
+{
+  node_t *patn = acode_type(pan), *petn = NULL;
+  if (patn->ts == TS_PTR) petn = ndref(patn, 0);
+  else neprintf(prn, "cannot dereference non-pointer expression");  
+  if (ts_bulk(petn->ts)) {
+    /* {bulk_t* | x} => {bulk_t | x} */
+    lift_arg0(patn);
+    return pan;
+  } else { 
+    /* {scalar_t* | x} => {IP(scalar_t) | {scalar_t* | x} fetch} */
+    node_t *pcn = npnewcode(prn), *ptn = ndpushbk(pcn, petn);
+    if (ts_numerical(petn->ts)) ptn->ts = ts_integral_promote(petn->ts);
+    acode_swapin(pcn, pan);
+    asm_load(ptn->ts, petn->ts, &pcn->data);
+    return pcn;
+  }
+} 
+
+/* compile x.fld; expects bulk struct/union type */
+static node_t *compile_dot(node_t *prn, node_t *pan, sym_t fld)
 {
   node_t *patn = acode_type(pan), *petn = NULL; 
-  size_t off = 0, i;
-  if (patn->ts == TS_PTR) petn = ndref(patn, 0);
-  else neprintf(prn, "cannot dereference non-pointer expression");
-  if (psymb) for (i = 0; i < buflen(psymb); ++i) {
-    sym_t fld = *(sym_t*)bufref(psymb, i);
-    off += measure_offset(petn, prn, fld, &petn);
-  }
-  if (load) { /* code for scalar value */
-    node_t *pcn = npnewcode(prn), *ptn = ndpushbk(pcn, petn);
-    if (petn->ts != TS_PTR && !ts_numerical(petn->ts))
-     neprintf(prn, "cannot dereference pointer to non-scalar expression");
-    if (petn->ts != TS_PTR) ptn->ts = ts_integral_promote(petn->ts);
+  size_t off; node_t *pcn = npnewcode(prn); 
+  if (patn->ts != TS_STRUCT && patn->ts != TS_UNION)
+    neprintf(prn, "cannot take field of non-struct/union expression");
+  off = measure_offset(patn, prn, fld, &petn); assert(petn);
+  ndpushbk(pcn, petn); /* type of field is return type */
+  if (ts_bulk(petn->ts)) { /* field type is fbulk_t  */
+    /* {bulk_t | x} => {fbulk_t | {bulk_t | x} +off?} */
     acode_swapin(pcn, pan);
-    asm_load(ptn->ts, petn->ts, off, &pcn->data);
-    return pcn;
-  } else {
-    node_t *pcn = npnewcode(prn); 
-    ndpushbk(ndsettype(ndnewbk(pcn), TS_PTR), petn);
-    if (off > 0) {
-      numval_t v; node_t *pon = compile_numlit(prn, TS_ULONG, (v.u = off, &v));
-      pan = compile_binary(prn, compile_cast(prn, acode_type(pon), pan), TT_PLUS, pon);
+    if (off > 0) { acode_pushin_uarg(pcn, IN_I32_CONST, off); acode_pushin(pcn, IN_I32_ADD); }
+  } else { /* field type is fscalar_t */
+    /* {bulk_t | x} => {IP(fscalar_t) | {fscalar_t* | {bulk_t | x} +off?} fetch} */
+    node_t *psn = npnewcode(prn); wrap_type_pointer(ndpushbk(psn, petn));
+    acode_swapin(psn, pan); petn = acode_type(pcn);
+    if (off > 0) { acode_pushin_uarg(psn, IN_I32_CONST, off); acode_pushin(psn, IN_I32_ADD); }
+    acode_swapin(pcn, psn);
+    if (ts_numerical(petn->ts)) {
+      ts_t ipts = ts_integral_promote(petn->ts);
+      asm_load(ipts, petn->ts, &pcn->data);
+      petn->ts = ipts;
+    } else {
+      asm_load(petn->ts, petn->ts, &pcn->data);
     }
-    acode_swapin(pcn, pan);
-    return pcn;
-  } 
+  }
+  return pcn;
 }
+
+/* compile &x */
+static node_t *compile_addrof(node_t *prn, node_t *pan)
+{
+  node_t *patn = acode_type(pan); 
+  if (ts_bulk(patn->ts)) { 
+    /* {bulk_t | x} => {bulk_t* | x} */
+    wrap_type_pointer(patn); 
+  } else {
+    /* {IP(scalar_t) | {scalar_t* | x} fetch} => {scalar_t* | x} */
+    if (ndlen(pan) == 2 && icblen(&pan->data) == 2 && acode_rval_load(pan)) {
+      assert(icbref(&pan->data, 1)->arg.u == 0); /* no offset! */
+      lift_arg1(pan); /* flatten node into its ndref(1) */
+      assert(acode_type(pan)->ts == TS_PTR);
+    } else {
+      neprintf(prn, "cannot take address of expression");
+    }   
+  }
+  return pan;
+} 
 
 /* compile ++x --x x++ x-- and assignments; ptn is cast type or NULL */
 static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op, node_t *pvn, bool post)
@@ -2116,7 +2154,7 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op,
   }
 } 
 
-/* compile call expression; pdn != NULL for bulk return call */
+/* compile call expression; pdn != NULL for suspected bulk return call */
 static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
 {
   node_t *pcn = npnewcode(prn), *pftn = acode_type(pfn); size_t i;
@@ -2283,34 +2321,14 @@ static node_t *compile_return(node_t *prn, node_t *pan, const node_t *ptn)
   return pcn;
 }
 
-/* defined just a few lines below; never returns NULL */
-static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret);
-
-/* compile nonscalar expr in lval/reference context prib is var/reg info
- * returns NULL as soon as it discovers that pn is not bulk object reference */
-static node_t *expr_compile_bulkref(node_t *pn, buf_t *prib)
-{
-  node_t *pcn = NULL;
-  node_t *pni = pn; buf_t fb; bufinit(&fb, sizeof(sym_t));
-  while (pni->nt == NT_POSTFIX && pni->op == TT_DOT) { 
-    *(sym_t*)bufnewfr(&fb) = pni->name;
-    pni = ndref(pni, 0); 
-  }
-  if (pni->nt == NT_PREFIX && pni->op == TT_STAR)
-    pcn = compile_deref(pn, expr_compile(ndref(pni, 0), prib, NULL), &fb, false);
-  buffini(&fb);
-  return pcn;
-}
-
 /* compile bulk assignment from two reference codes */
 static node_t *compile_bulkasn(node_t *prn, node_t *pdan, node_t *psan)
 {
   node_t *ptdan = acode_type(pdan), *ptsan = acode_type(psan), *ptn;
   node_t *pcn; size_t size, align;
+  if (!ts_bulk(ptdan->ts) || !ts_bulk(ptsan->ts)) return NULL;
   if (!same_type(ptdan, ptsan)) neprintf(prn, "source and destination have different types"); 
-  assert(ptdan->ts == TS_PTR && ndlen(ptdan) == 1);
-  ptn = ndref(ptdan, 0); /* must be a bulk type -- otherwise memcopy isn't needed */ 
-  if (!ts_bulk(ptn->ts)) return NULL;
+  ptn = ptdan; /* bulk type -- otherwise memcopy isn't needed */ 
   pcn = npnewcode(prn);
   ndsettype(ndnewbk(pcn), TS_VOID); /* todo: chained bulk assignment nyi */
   measure_type(ptn, prn, &size, &align, 0);
@@ -2322,7 +2340,8 @@ static node_t *compile_bulkasn(node_t *prn, node_t *pdan, node_t *psan)
 }
 
 /* compile expr/statement (that is, convert it to asm tree); prib is var/reg info,
- * ret is return type for statements, NULL for expressions returning a value */
+ * ret is return type for statements, NULL for expressions returning a value
+ * NB: code that has bulk type actually produces a pointer (cf. arrays) */
 static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
 {
   node_t *pcn = NULL; numval_t v;
@@ -2332,7 +2351,6 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
     if (static_eval(pn, &nd)) ndswap(&nd, pn);
     ndfini(&nd);
   }
-retry:
   switch (pn->nt) {
 
     /* expressions */
@@ -2420,14 +2438,7 @@ retry:
     case NT_POSTFIX: {
       switch (pn->op) {
         case TT_DOT: {
-          node_t *pni = pn; buf_t fb; bufinit(&fb, sizeof(sym_t));
-          while (pni->nt == NT_POSTFIX && pni->op == TT_DOT) {
-            *(sym_t*)bufnewfr(&fb) = pni->name;
-            pni = ndref(pni, 0); 
-          }
-          if (pni->nt == NT_PREFIX && pni->op == TT_STAR)
-            pcn = compile_deref(pn, expr_compile(ndref(pni, 0), prib, NULL), &fb, true);
-          buffini(&fb);
+          pcn = compile_dot(pn, expr_compile(ndref(pn, 0), prib, NULL), pn->name);  
         } break;
         case TT_PLUS_PLUS: case TT_MINUS_MINUS: {
           node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
@@ -2445,25 +2456,16 @@ retry:
       switch (pn->op) {
         case TT_AND: {
           if (pn0->nt == NT_PREFIX && pn0->op == TT_STAR) {
-            pn = ndref(pn0, 0); goto retry;
+            pcn = expr_compile(ndref(pn0, 0), prib, NULL);
           } else {
-            node_t *pni = pn0; buf_t fb; bufinit(&fb, sizeof(sym_t));
-            while (pni->nt == NT_POSTFIX && pni->op == TT_DOT) {
-              *(sym_t*)bufnewfr(&fb) = pni->name;
-              pni = ndref(pni, 0); 
-            }
-            if (pni->nt == NT_PREFIX && pni->op == TT_STAR)
-              pcn = compile_deref(pn, expr_compile(ndref(pni, 0), prib, NULL), &fb, false);
-            else neprintf(pn, "cannot get address of expression");
-            buffini(&fb);
+            pcn = compile_addrof(pn, expr_compile(pn0, prib, NULL));
           }
         } break;
         case TT_STAR: {
           if (pn0->nt == NT_PREFIX && pn0->op == TT_AND) {
-            pn = ndref(pn0, 0); goto retry;
-          } else { /* nb: struct/union pointers handled in TT_DOT */
-            node_t *pan = expr_compile(pn0, prib, NULL); /* scalar ptr expected */
-            pcn = compile_deref(pn, pan, NULL, true); /* no extra (sub)field offset */ 
+            pcn = expr_compile(ndref(pn0, 0), prib, NULL);
+          } else {
+            pcn = compile_ataddr(pn, expr_compile(pn0, prib, NULL));
           }
         } break;
         case TT_PLUS_PLUS: case TT_MINUS_MINUS: {
@@ -2503,27 +2505,26 @@ retry:
     case NT_ASSIGN: {
       node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
       node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL, *pvn = ndref(pn, 1);
+      node_t *pan = expr_compile(pln, prib, NULL), *pan2 = NULL;
       pcn = NULL;
-      if (pn->op == TT_ASN && ptn == NULL) { /* check for bulk assignment */
-        node_t *pan = expr_compile_bulkref(pln, prib); 
-        if (pan) {
-          if (pvn->nt == NT_CALL) { /* pass pan reference as extra arg */
-            size_t i; buf_t apb = mkbuf(sizeof(node_t*));
-            node_t *pfn = expr_compile(ndref(pvn, 0), prib, NULL);
-            for (i = 1; i < ndlen(pvn); ++i) 
-              *(node_t**)bufnewbk(&apb) = expr_compile(ndref(pvn, i), prib, NULL);
-            pcn = compile_call(pvn, pfn, &apb, pan); /* regular call (no lval = on the left) */
-            buffini(&apb);
-          } else { /* try regular bulk assignment */
-            node_t *pan2 = expr_compile_bulkref(pvn, prib);
-            if (pan2) pcn = compile_bulkasn(pn, pan, pan2);
-          }
+      if (pn->op == TT_ASN && ptn == NULL && ts_bulk(acode_type(pan)->ts)) { 
+        if (pvn->nt == NT_CALL) { /* pass pan reference as extra arg */
+          size_t i; buf_t apb = mkbuf(sizeof(node_t*));
+          node_t *pfn = expr_compile(ndref(pvn, 0), prib, NULL);
+          for (i = 1; i < ndlen(pvn); ++i) 
+            *(node_t**)bufnewbk(&apb) = expr_compile(ndref(pvn, i), prib, NULL);
+          /* compile_call will return NULL if it is given lval and it is not bulk */
+          pcn = compile_call(pvn, pfn, &apb, compile_addrof(pln, pan)); 
+          buffini(&apb);
+        } else { /* try regular bulk assignment */
+          pan2 = expr_compile(pvn, prib, NULL);
+          pcn = compile_bulkasn(pn, pan, pan2); /* returns NULL on failure */
         }
-      }  
+      }
       if (!pcn) { /* failed? must be scalar assignment */
-        node_t *pan = expr_compile(pln, prib, NULL);
-        node_t *pan2 = expr_compile(pvn, prib, NULL);
-        tt_t op = (pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? pn->op - 1 : 0;  
+        tt_t op; /* TT_PLUS from TT_PLUS_ASN etc. */
+        if (!pan2) pan2 = expr_compile(pvn, prib, NULL);
+        op = (pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? pn->op - 1 : 0;  
         pcn = compile_asncombo(pn, pan, ptn, op, pan2, false); 
       }
     } break;

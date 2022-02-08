@@ -1143,11 +1143,11 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
     case INSIG_X:    case INSIG_T:
     case INSIG_I32:  case INSIG_I64:
       if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
-      else chbputf(pcb, " %llu", pic->arg.u); 
+      else chbputf(pcb, " %lld", pic->arg.i); 
       break;
     case INSIG_X_Y:
       if (pic->relkey) chbputf(pcb, " $%s %u", symname(pic->relkey), pic->argu2); 
-      else chbputf(pcb, " %llu %u", pic->arg.u, pic->argu2); 
+      else chbputf(pcb, " %lld %u", pic->arg.i, pic->argu2); 
       break;
     case INSIG_MEMARG:
       if (pic->relkey) chbputf(pcb, " $%s %u", symname(pic->relkey), pic->argu2); 
