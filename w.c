@@ -1123,7 +1123,8 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
   chbclear(pcb);
   if (pic->in == IN_REGDECL) {
     const char *ts = valtype_name((valtype_t)pic->arg.u);
-    chbputf(pcb, "register %s $%s", ts, symname(pic->relkey)); 
+    if (!pic->relkey) chbputf(pcb, "register %s", ts); 
+    else chbputf(pcb, "register %s $%s", ts, symname(pic->relkey)); 
     return chbdata(pcb);
   } else if (pic->in == IN_END) { /* has a label for display purposes */
     if (pic->relkey) chbputf(pcb, "end $%s", symname(pic->relkey));
@@ -1270,7 +1271,7 @@ static void wat_imports(watibuf_t *pib)
     chbsetf(g_watbuf, "(import \"%s\" \"%s\" ", symname(pi->mod), symname(pi->name));
     switch (pi->ek) {
       case EK_FUNC: {
-        chbputf(g_watbuf, "(func");
+        chbputf(g_watbuf, "(func $%s", symname(pi->name));
         for (j = 0; j < vtblen(&pi->fs.argtypes); ++j) {
           valtype_t *pvt = vtbref(&pi->fs.argtypes, j);
           chbputf(g_watbuf, " (param %s)", valtype_name(*pvt));
@@ -1284,8 +1285,12 @@ static void wat_imports(watibuf_t *pib)
       case EK_TABLE: {
       } break;
       case EK_MEM: {
+        if (pi->lt == LT_MIN) chbputf(g_watbuf, "(memory %u)", pi->n);
+        else chbputf(g_watbuf, "(memory %u %u)", pi->n, pi->m);
       } break;
       case EK_GLOBAL: {
+        if (pi->mut == MT_CONST) chbputf(g_watbuf, "(global %s)", valtype_name(pi->vt));
+        else chbputf(g_watbuf, "(global (mut %s))", valtype_name(pi->vt));
       } break;
     }
     chbputc(')', g_watbuf); 
@@ -1302,9 +1307,10 @@ static void wat_funcs(watfbuf_t *pfb)
     for (j = 0; j < vtblen(&pf->fs.argtypes); ++j) {
       valtype_t *pvt = vtbref(&pf->fs.argtypes, j);
       inscode_t *pic = icbref(&pf->code, j);
-      assert(pic->in == IN_REGDECL && pic->relkey);
+      assert(pic->in == IN_REGDECL);
       assert(*pvt == (valtype_t)pic->arg.u);
-      chbputf(g_watbuf, " (param $%s %s)", symname(pic->relkey), valtype_name(pic->arg.u));
+      if (!pic->relkey) chbputf(g_watbuf, " (param %s)", valtype_name(pic->arg.u));
+      else chbputf(g_watbuf, " (param $%s %s)", symname(pic->relkey), valtype_name(pic->arg.u));
     }
     for (k = 0; k < vtblen(&pf->fs.rettypes); ++k) {
       valtype_t *pvt = vtbref(&pf->fs.rettypes, k);

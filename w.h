@@ -468,6 +468,7 @@ typedef buf_t watibuf_t;
 extern void watibfini(watibuf_t* pb);
 #define watiblen(pb) buflen(pb)
 #define watibref(pb, i) ((wati_t*)bufref(pb, i))
+#define watibnewfr(pb, ek) watiinit(bufnewfr(pb), ek)
 #define watibnewbk(pb, ek) watiinit(bufnewbk(pb), ek)
 
 /* wat function */
@@ -487,11 +488,18 @@ extern void watfbfini(watfbuf_t* pb);
 #define watfbref(pb, i) ((watf_t*)bufref(pb, i))
 #define watfbnewbk(pb) watfinit(bufnewbk(pb))
 
+typedef enum main {
+  MAIN_ABSENT = 0, 
+  MAIN_VOID,
+  MAIN_ARGC_ARGV
+} main_t;
+
 /* wat (text) module for object files */
 typedef struct wat_module {
   sym_t name; 
   watibuf_t imports;
   watfbuf_t funcs;
+  main_t main;
 } wat_module_t;
 
 extern wat_module_t* wat_module_init(wat_module_t* pm);

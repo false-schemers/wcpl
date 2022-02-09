@@ -13,14 +13,14 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
   corresponding parameterized forms (`#define FOO(a, b) ...`)   
 - `const` and `volatile` specifiers are allowed but ignored
 - labels can only label starts/ends of sub-blocks; `goto` can only target labels in the same block or its parent blocks
+- assignment of structures/unions (and possibly same-type arrays?)
+- vararg macros and stdarg.h
 - headers included as `#include <foo>` can have the following extensions: (none), `.h`, `.wh`
 - headers are looked up in directories given via `-L` option and `WCPL_LIBRARY_PATH` environment variable
 - lookup directory should end in separator char (`/` on Un*x, `\` on Windows), file name is just appended to it
 
-
 # C features not yet supported
 
-- vararg functions
 - taking address of a global var (needs 'auto' transformation, should be allowed for statics)
 
 
@@ -30,7 +30,6 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - `#if`-category directives for conditional compilation
 - bit fields
 - structures/unions as parameters and return values
-- assignment of structures/unions
 - free-form `switch`: nothing but cases in curly braces after test will be supported
 - free-form labels and `goto`
 - `setjmp`/`longjmp` (not in WASM model)

@@ -766,8 +766,11 @@ static void fundef_check_type(node_t *ptn)
       case TS_FLOAT: case TS_DOUBLE:
       case TS_PTR: 
         break;
-      case TS_ARRAY: 
-        neprintf(ptni, "not supported: array as function parameter/return type");
+      case TS_ARRAY:
+        assert(ndlen(ptni) == 2);
+        if (ndref(ptni, 1)->nt == NT_NULL) { /* t foo[] == t* foo */
+          ndbrem(&ptni->body, 1); ptni->ts = TS_PTR;
+        } else neprintf(ptni, "not supported: array as function parameter/return type");
         break;
       case TS_STRUCT:
         if (i > 0) neprintf(ptni, "not supported: struct as function parameter type");
@@ -2870,15 +2873,32 @@ static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
 /* process function definition in main module */
 static void process_fundef(sym_t mmname, node_t *pn, wat_module_t *pm)
 {
-  node_t *pcn; watf_t *pf;
+  node_t *pcn, *ptn; watf_t *pf;
   assert(pn->nt == NT_FUNDEF && pn->name && ndlen(pn) == 2);
-  assert(ndref(pn, 0)->nt == NT_TYPE && ndref(pn, 0)->ts == TS_FUNCTION);
+  ptn = ndref(pn, 0); assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
   clear_regpool(); /* reset reg name generator */
 #ifdef _DEBUG
   fprintf(stderr, "process_fundef:\n");
   dump_node(pn, stderr);
 #endif  
   fundef_check_type(ndref(pn, 0));
+  if (pn->name == intern("main")) {
+    if (ndlen(ptn) == 1 && ndref(ptn, 0)->ts == TS_INT) {
+      pm->main = MAIN_VOID;
+    } else { /* expect argc, argv */ 
+      int sigok = true; node_t *psn;
+      if (ndlen(ptn) != 3 || ndref(ptn, 0)->ts != TS_INT) 
+        sigok = false;
+      if (sigok && (psn = ndref(ptn, 1), psn = (psn->nt == NT_VARDECL) ? ndref(psn, 0) : psn)->ts != TS_INT) 
+        sigok = false;
+      if (sigok && (psn = ndref(ptn, 2), psn = (psn->nt == NT_VARDECL) ? ndref(psn, 0) : psn)->ts != TS_PTR) 
+        sigok = false;
+      if (sigok && ndref(psn, 0)->ts != TS_PTR && (psn = ndref(psn, 0))->ts != TS_CHAR) 
+        sigok = false;
+      if (!sigok) neprintf(ptn, "main function should be defined as int main(int argc, char *argv[])");  
+      pm->main = MAIN_ARGC_ARGV;
+    }
+  }
   { /* post appropriate vardecl for later use */
     node_t nd = mknd();
     ndset(&nd, NT_VARDECL, pn->pwsid, pn->startpos);
@@ -3054,6 +3074,20 @@ void compile_module(const char *ifname, const char *ofname)
   
   mod = process_module(ifname, &wm); assert(mod);
   wm.name = mod;
+
+  /* add standard imports/exports */
+  switch (wm.main) {
+    case MAIN_ABSENT: {
+      /* fixme: add standard imports */
+    } break;
+    case MAIN_ARGC_ARGV: {
+      /* fixme: add standard startup code and exports */
+    } break;
+    case MAIN_VOID: {
+      /* fixme: add standard startup code and exports */
+    } break;
+    default: assert(false);
+  }
 
   /* at this point, function/global tables are filled with mainmod definitions */
   /* walk g_syminfo/g_nodes to insert imports actually referenced in the code */

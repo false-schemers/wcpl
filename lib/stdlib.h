@@ -30,7 +30,7 @@ extern void abort(void);
 extern int atexit(void (*func)(void));
 extern void exit(int status);
 extern char *getenv(const char *name);
-// system() is not in WASI
+/* int system(const char *cmd) -- not in WASI */
 extern void *bsearch(const void *key, const void *base, 
  size_t n, size_t sz, int (*) (const void *, const void *));
 extern void qsort(const void *base, 
