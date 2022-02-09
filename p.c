@@ -420,8 +420,13 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
 }
 
 /* post imported/forward symbol to symbol table; forward unless final */
-const node_t *post_symbol(sym_t mod, node_t *pvn, bool final)
+const node_t *post_symbol(sym_t mod, node_t *pvn, bool final, bool hide)
 {
+  /* kluge: symbol's status is encoded in pin->ts as follows:  
+   * not final: not hide: NONE/EXTERN(if referenced) | hide: STATIC
+   *     final: not hide: REGISTER                   | hide: AUTO
+   * (not final means 'just a declaration', final means 'definition')
+   * (not hide means external linkage, hide means internal linkage) */
   node_t *pin = NULL; int *pi, info;
   assert(pvn->nt == NT_VARDECL && pvn->name && ndlen(pvn) == 1);
   assert(ndref(pvn, 0)->nt == NT_TYPE);
@@ -431,11 +436,19 @@ const node_t *post_symbol(sym_t mod, node_t *pvn, bool final)
       assert(pi[2] < (int)buflen(&g_nodes));
       pin = bufref(&g_nodes, (size_t)pi[2]);
       if (pin->nt == NT_IMPORT && ndlen(pin) == 1) {
-        if (pin->sc == SC_STATIC && final) {
+        bool curfinal = (pin->sc == SC_REGISTER || pin->sc == SC_AUTO); 
+        if (final && curfinal) { /* redefinition attempt */
           n2eprintf(pvn, pin, "symbol already defined: %s", symname(pvn->name));
-        } else {
+        } else { /* redeclaration attempt: allow if no change */
+          bool curhide = (pin->sc == SC_STATIC || pin->sc == SC_AUTO);
           node_t *ptn = ndref(pin, 0); assert(ptn->nt == NT_TYPE);
-          if (same_type(ptn, ndref(pvn, 0))) return pin;
+          if (curhide == hide && same_type(ptn, ndref(pvn, 0))) {
+            if (final) {
+              pin->pwsid = pvn->pwsid; pin->startpos = pvn->startpos;
+              pin->sc = (hide ? SC_AUTO : SC_REGISTER);
+            }
+            return pin;
+          }
         }
       }
     }
@@ -443,8 +456,9 @@ const node_t *post_symbol(sym_t mod, node_t *pvn, bool final)
   }
   info = (int)ndblen(&g_nodes); pin = ndbnewbk(&g_nodes);
   ndset(pin, NT_IMPORT, pvn->pwsid, pvn->startpos);
-  /* changed to SC_EXTERN on reference */
-  pin->name = mod; pin->sc = final ? SC_STATIC : SC_NONE; 
+  /* changed to SC_EXTERN on reference; SC_AUTO is for private, SC_REGISTER for public */
+  pin->name = mod; assert(mod);
+  pin->sc = final ? (hide ? SC_AUTO : SC_REGISTER) : (hide ? SC_STATIC : SC_NONE); 
   ndpushbk(pin, ndref(pvn, 0));
   intern_symbol(symname(pvn->name), TT_IDENTIFIER, info);
   return pin;
@@ -484,6 +498,13 @@ const node_t *lookup_global(sym_t name)
   }
   return pn;
 }
+
+void mark_global_referenced(const node_t *pgn)
+{
+  assert(pgn && pgn->nt == NT_IMPORT);
+  if (pgn->sc == SC_NONE) ((node_t*)pgn)->sc = SC_EXTERN;
+}
+
 
 const node_t *lookup_eus_type(ts_t ts, sym_t name)
 {
@@ -3766,9 +3787,14 @@ static void dump(node_t *pn, FILE* fp, int indent)
       fprintf(fp, "(include %s", symname(pn->name));
     } break;
     case NT_IMPORT: {
-      const char *s = sc_name(pn->sc);
-      if (!pn->name) fprintf(fp, "(import %s", s);
-      else fprintf(fp, "(import %s %s", symname(pn->name), s);
+      bool final = (pn->sc == SC_REGISTER || pn->sc == SC_AUTO);  
+      bool referenced = (pn->sc == SC_EXTERN); /* nonfinals only */
+      bool hide = (pn->sc == SC_STATIC || pn->sc == SC_AUTO);
+      const char *fs = final ? " final" : "";
+      const char *rs = referenced ? " referenced" : "";
+      const char *hs = hide ? " hide" : "";
+      assert(pn->name);
+      fprintf(fp, "(import %s %s%s%s", symname(pn->name), fs, rs, hs);
     } break;
     default: assert(false);
   }

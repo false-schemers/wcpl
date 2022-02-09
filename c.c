@@ -694,17 +694,17 @@ static bool static_constant(node_t *pn)
 }
 
 /* post variable declaration for later use */
-static void post_vardecl(sym_t mod, node_t *pn, bool final)
+static void post_vardecl(sym_t mod, node_t *pn, bool final, bool hide)
 {
   const node_t *pin;
   assert(pn->nt == NT_VARDECL && pn->name && ndlen(pn) == 1);
   assert(ndref(pn, 0)->nt == NT_TYPE);
   /* post in symbol table under pn->name as NT_IMPORT with modname and type;
-   * set its sc to final?STATIC:NONE to be changed to EXTERN when actually 
-   * referenced from module */
-  pin = post_symbol(mod, pn, final);
+   * set its sc to final?(hide?AUTO:REGISTER):NONE
+   * NONE is to be changed to EXTERN when actually referenced from module */
+  pin = post_symbol(mod, pn, final, hide);
 #ifdef _DEBUG
-  fprintf(stderr, "%s =>\n", symname(pn->name));
+  fprintf(stderr, "%s final=%d, hide=%d =>\n", symname(pn->name), final, hide);
   dump_node(pin, stderr);
 #endif
 }
@@ -728,6 +728,7 @@ static void check_constnd(sym_t mmname, node_t *pn, node_t *pvn)
 /* process var declaration in main module */
 static void process_vardecl(sym_t mmname, node_t *pdn, node_t *pin)
 {
+  bool final, hide;
 #ifdef _DEBUG
   dump_node(pdn, stderr);
   if (pin) dump_node(pin, stderr);
@@ -740,7 +741,10 @@ static void process_vardecl(sym_t mmname, node_t *pdn, node_t *pin)
     check_constnd(mmname, ndref(pin, 1), pin);
   }
   /* post it for later use */
-  post_vardecl(mmname, pdn, true); /* final */
+  final = true; hide = (pdn->sc == SC_STATIC);
+  /* if it is just function declared, allow definition to come later */
+  if (ndlen(pdn) > 0 && ndref(pdn, 0)->ts == TS_FUNCTION) final = false;
+  post_vardecl(mmname, pdn, final, hide); /* final */
   /* todo: compile to global */
 }
 
@@ -1325,17 +1329,18 @@ typedef struct ri_tag {
   const node_t *ptn; /* NT_TYPE (not owned) */
 } ri_t;
 
-static const node_t *lookup_var_type(sym_t name, buf_t *prib, bool *pbgl)
+static const node_t *lookup_var_type(sym_t name, buf_t *prib, sym_t *pmod)
 {
   ri_t *pri; const node_t *pgn;
   if ((pri = bufbsearch(prib, &name, sym_cmp)) != NULL) {
-    *pbgl = false;
+    *pmod = 0; /* local symbol */
     return pri->ptn;
   } else if ((pgn = lookup_global(name)) != NULL) {
-    *pbgl = true;
     if (pgn->nt == NT_IMPORT && ndlen(pgn) == 1) {
+      *pmod = pgn->name; /* global symbol's module name */
+      assert(*pmod);
       /* mark this import as actually referenced! */
-      if (pgn->sc == SC_NONE) ((node_t*)pgn)->sc = SC_EXTERN;
+      mark_global_referenced(pgn);
       return ndcref(pgn, 0);
     }
   }
@@ -1890,12 +1895,13 @@ static node_t *compile_numlit(node_t *prn, ts_t ts, numval_t *pnv)
   return pcn;
 }
 
-/* compile identifier reference (as rval); ptn is type node (copied) */
-static node_t *compile_idref(node_t *prn, bool global, sym_t name, const node_t *ptn)
+/* compile id reference (as rval); ptn is type node (copied), mod != 0 for globals */
+static node_t *compile_idref(node_t *prn, sym_t mod, sym_t name, const node_t *ptn)
 {
   inscode_t *pic; node_t *pcn = npnewcode(prn); ndpushbk(pcn, ptn);
   pic = icbnewbk(&pcn->data); pic->relkey = name;
-  pic->in = global ? IN_GLOBAL_GET : IN_LOCAL_GET;
+  if (mod) pic->in = IN_GLOBAL_GET;
+  else pic->in = IN_LOCAL_GET;
   return pcn;
 }
 
@@ -2164,7 +2170,7 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op,
     acode_pushin_sym(pan, post ? IN_LOCAL_TEE : IN_LOCAL_SET, pname);
     if (post) asm_pushbk(&pan->data, &lic); /* old val on stack */
     ptn = wrap_type_pointer(npdup(acode_type(pan))); 
-    pdn = compile_idref(prn, false, pname, ptn);
+    pdn = compile_idref(prn, 0/*local*/, pname, ptn);
     acode_copyin(pan, pdn);
     if (op) {
       node_t *pln = npdup(pdn); 
@@ -2442,10 +2448,10 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
       asm_numerical_constant(pn->ts, &pn->val, &pcn->data);
     } break; 
     case NT_IDENTIFIER: {
-      bool bgl; const node_t *ptn = lookup_var_type(pn->name, prib, &bgl);
+      sym_t mod = 0; const node_t *ptn = lookup_var_type(pn->name, prib, &mod);
       if (!ptn) neprintf(pn, "compile: undefined identifier");
       if (ret && getwlevel() < 1) nwprintf(pn, "warning: identifier value is not used");
-      pcn = compile_idref(pn, bgl, pn->name, ptn);
+      pcn = compile_idref(pn, mod, pn->name, ptn);
     } break;
     case NT_SUBSCRIPT: assert(false); break; /* dewasmified */
     case NT_CALL: {
@@ -2903,7 +2909,8 @@ static void process_fundef(sym_t mmname, node_t *pn, wat_module_t *pm)
     node_t nd = mknd();
     ndset(&nd, NT_VARDECL, pn->pwsid, pn->startpos);
     nd.name = pn->name; ndpushbk(&nd, ndref(pn, 0)); 
-    post_vardecl(mmname, &nd, true); /* final */ 
+    /* post function symbol as final, hide it if static */ 
+    post_vardecl(mmname, &nd, true, pn->sc == SC_STATIC); 
     ndfini(&nd); 
   }
   /* hoist local variables */
@@ -2989,7 +2996,7 @@ static void process_top_node(sym_t mmname, node_t *pn, wat_module_t *pm)
       } else if (pni->nt == NT_VARDECL && pni->name && ndlen(pni) == 1) {
         node_t *ptn = ndref(pni, 0); assert(ptn->nt == NT_TYPE);
         if (ptn->ts == TS_FUNCTION) fundef_check_type(ptn);
-        post_vardecl(pn->name, pni, false); /* not final */
+        post_vardecl(pn->name, pni, false, false); /* not final, not hidden */
       } else {
         neprintf(pni, "extern declaration expected");
       }

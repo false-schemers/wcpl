@@ -248,9 +248,11 @@ extern void n2eprintf(const node_t *pn, const node_t *pn2, const char *fmt, ...)
 /* report node warning, possibly printing location information */
 extern void nwprintf(const node_t *pn, const char *fmt, ...);
 /* post imported/forward symbol to symbol table; forward unless final */
-extern const node_t *post_symbol(sym_t mod, node_t *pvn, bool final);
+extern const node_t *post_symbol(sym_t mod, node_t *pvn, bool final, bool hide);
 /* return ptr to NT_IMPORT node or NULL if name is not declared */
 extern const node_t *lookup_global(sym_t name);
+/* mark NT_IMPORT node as referenced (affects imports only) */
+void mark_global_referenced(const node_t *pgn);
 /* return ptr to NT_TYPE node or NULL if name is not declared */
 extern const node_t *lookup_eus_type(ts_t ts, sym_t name); /* enum/union/struct */
 
