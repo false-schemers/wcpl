@@ -335,10 +335,9 @@ typedef union numval {
 /* instruction */
 /* NB: IN_BR_TABLE has count N in arg.u, and is followed by N+1 dummy IN_BR inscodes */
 typedef struct inscode {
-  sym_t relkey; /* 0 or relocation table key */
   instr_t in; 
-  numval_t arg;
-  unsigned argu2; 
+  numval_t arg; sym_t id;
+  union { unsigned u; sym_t mod; } arg2; 
 } inscode_t;
 
 typedef buf_t icbuf_t; 
@@ -429,7 +428,6 @@ typedef struct wasm_module {
   entbuf_t globdefs; 
   esegbuf_t elemdefs;
   dsegbuf_t datadefs;
-  icbuf_t reloctab;
 } wasm_module_t;
 
 extern wasm_module_t* wasm_module_init(wasm_module_t* pm);
@@ -473,7 +471,8 @@ extern void watibfini(watibuf_t* pb);
 
 /* wat function */
 typedef struct watf {
-  sym_t name;
+  sym_t id;
+  sym_t mod;
   bool exported;
   funcsig_t fs;
   buf_t code; /* of inscode_t; register pseudo-instrs for args&locals */

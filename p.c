@@ -2483,9 +2483,10 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
     if (tt == TT_IDENTIFIER || 
       (TT_AUTO_KW <= tt && tt <= TT_WHILE_KW) ||
       (TT_TYPE_NAME <= tt && tt <= TT_INTR_NAME)) {
+      bool dot = peekc(pw) == '.';
       chbputs(pw->tokstr, &cb); dropt(pw);
-      if (peekt(pw) == TT_DOT) {
-        chbputc('.', &cb); dropt(pw);
+      if (dot) {
+        expect(pw, TT_DOT, "."); chbputc('.', &cb); 
         tt = peekt(pw);
         if (tt == TT_IDENTIFIER || 
           (TT_AUTO_KW <= tt && tt <= TT_WHILE_KW) ||
@@ -2506,7 +2507,7 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
       else reprintf(pw, pw->pos, "unexpected register type");
       dropt(pw);
       pic->in = IN_REGDECL;
-      pic->relkey = getid(pw);
+      pic->id = getid(pw);
       pic->arg.u = vt;  
       chbfini(&cb);
       return;
@@ -2521,13 +2522,20 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
       case INSIG_BT:   case INSIG_L:   
       case INSIG_X:    case INSIG_T:
       case INSIG_I32:  case INSIG_I64:
-        if (peekt(pw) == TT_IDENTIFIER) pic->relkey = getid(pw);
-        else pic->arg.u = parse_asm_unsigned(pw);
+        if (peekt(pw) == TT_IDENTIFIER) {
+          if (peekc(pw) == ':') { /* mod:id */
+            pic->arg2.mod = getid(pw);
+            expect(pw, TT_COLON, ":");
+          } 
+          pic->id = getid(pw);
+        } else {
+          pic->arg.u = parse_asm_unsigned(pw);
+        }
         break;
       case INSIG_X_Y:  case INSIG_MEMARG:
-        if (peekt(pw) == TT_IDENTIFIER) pic->relkey = getid(pw);
+        if (peekt(pw) == TT_IDENTIFIER) pic->id = getid(pw);
         else pic->arg.u = parse_asm_unsigned(pw);
-        pic->argu2 = (unsigned)parse_asm_unsigned(pw);
+        pic->arg2.u = (unsigned)parse_asm_unsigned(pw);
         break;
       case INSIG_F32:
         pic->arg.f = (float)parse_asm_double(pw);

@@ -320,23 +320,12 @@ void esegbfini(esegbuf_t* pb)
 
 /* mid-level emits */
 
-static void relocate_ins(inscode_t *pic, icbuf_t *prelb)
-{
-  sym_t k = pic->relkey; instr_t in = pic->in;
-  inscode_t *pri = bufbsearch(prelb, &k, sym_cmp);
-  if (!pri) exprintf("internal error: can't relocate symbol %s", symname(k));
-  assert(pri->in == IN_UNREACHABLE);
-  /* copy over arguments part, keeping the original instruction */
-  memcpy(pic, pri, sizeof(inscode_t));
-  pic->relkey = 0; pic->in = in;
-} 
-
-static void wasm_expr(icbuf_t *pcb, icbuf_t *prelb)
+static void wasm_expr(icbuf_t *pcb)
 {
   size_t i;
   for (i = 0; i < icblen(pcb); ++i) {
     inscode_t *pic = icbref(pcb, i);
-    if (pic->relkey) relocate_ins(pic, prelb); 
+    assert(!pic->id);
     wasm_in(pic->in);
     switch (instr_sig(pic->in)) {
       case INSIG_NONE:
@@ -347,7 +336,7 @@ static void wasm_expr(icbuf_t *pcb, icbuf_t *prelb)
         wasm_unsigned(pic->arg.u); 
         break;
       case INSIG_X_Y:  case INSIG_MEMARG:
-        wasm_unsigned(pic->arg.u); wasm_unsigned(pic->argu2); 
+        wasm_unsigned(pic->arg.u); wasm_unsigned(pic->arg2.u); 
         break;
       case INSIG_F32:
         wasm_float(pic->arg.f); 
@@ -497,7 +486,7 @@ static void wasm_mems(entbuf_t *pmdb)
   wasm_section_end();
 }
 
-static void wasm_globals(entbuf_t *pgdb, icbuf_t *prelb)
+static void wasm_globals(entbuf_t *pgdb)
 {
   size_t i;
   if (!pgdb) return;
@@ -508,7 +497,7 @@ static void wasm_globals(entbuf_t *pgdb, icbuf_t *prelb)
     if (pe->mod) continue; /* skip imported globals */
     wasm_byte(pe->vt);
     wasm_byte(pe->mut);
-    wasm_expr(&pe->code, prelb);
+    wasm_expr(&pe->code);
     wasm_section_bumpc();
   }
   wasm_section_end();
@@ -578,7 +567,7 @@ static void wasm_start(entbuf_t *pfdb)
   }
 }
 
-static void wasm_elems(esegbuf_t *pesb, icbuf_t *prelb)
+static void wasm_elems(esegbuf_t *pesb)
 {
   size_t i, k;
   if (!pesb) return;
@@ -588,12 +577,12 @@ static void wasm_elems(esegbuf_t *pesb, icbuf_t *prelb)
     wasm_byte(ps->esm);
     switch (ps->esm) {
        case ES_ACTIVE_EIV: /* e fiv */
-         wasm_expr(&ps->code, prelb);
+         wasm_expr(&ps->code);
          wasm_unsigned(idxblen(&ps->fidxs));
          goto emitfiv;
        case ES_ACTIVE_TEKIV: /* ti e k fiv */
          wasm_unsigned(ps->idx);
-         wasm_expr(&ps->code, prelb);
+         wasm_expr(&ps->code);
          /* fall thru */
        case ES_DECLVE_KIV: /* k fiv */
        case ES_PASSIVE_KIV: /* k fiv */ 
@@ -604,18 +593,18 @@ static void wasm_elems(esegbuf_t *pesb, icbuf_t *prelb)
            wasm_unsigned(*idxbref(&ps->fidxs, k));
          break;       
        case ES_ACTIVE_EEV: /* e ev */
-         wasm_expr(&ps->code, prelb);
+         wasm_expr(&ps->code);
          goto emitev;
        case ES_ACTIVE_IETEV: /* ti e rt ev */       
          wasm_unsigned(ps->idx);
-         wasm_expr(&ps->code, prelb);
+         wasm_expr(&ps->code);
          /* fall thru */
        case ES_DECLVE_TEV: /* rt ev */
        case ES_PASSIVE_TEV: /* rt ev */
          wasm_byte(ps->rt); /* must be RT_XXX */       
        emitev:
          wasm_unsigned(ps->cdc);
-         wasm_expr(&ps->codes, prelb);
+         wasm_expr(&ps->codes);
          break;
       default: assert(false);
     }  
@@ -635,7 +624,7 @@ static void wasm_datacount(dsegbuf_t *pdsb)
   wasm_section_end();
 }
 
-static void wasm_codes(entbuf_t *pfdb, icbuf_t *prelb)
+static void wasm_codes(entbuf_t *pfdb)
 {
   size_t i, k;
   if (!pfdb) return;
@@ -651,14 +640,14 @@ static void wasm_codes(entbuf_t *pfdb, icbuf_t *prelb)
       wasm_unsigned(1);
       wasm_byte(*vtbref(&pe->loctypes, k));
     }
-    wasm_expr(&pe->code, prelb);
+    wasm_expr(&pe->code);
     wasm_code_end();
     wasm_section_bumpc();
   }
   wasm_section_end();
 }
 
-static void wasm_datas(dsegbuf_t *pdsb, icbuf_t *prelb)
+static void wasm_datas(dsegbuf_t *pdsb)
 {
   size_t i;
   if (!pdsb) return;
@@ -668,7 +657,7 @@ static void wasm_datas(dsegbuf_t *pdsb, icbuf_t *prelb)
     wasm_byte(ps->dsm);
     switch (ps->dsm) {
       case DS_ACTIVE_MI: wasm_unsigned(ps->idx); /* fall thru */
-      case DS_ACTIVE: wasm_expr(&ps->code, prelb); /* fall thru */
+      case DS_ACTIVE: wasm_expr(&ps->code); /* fall thru */
       case DS_PASSIVE: wasm_unsigned(chblen(&ps->data)), wasm_data(&ps->data); break;
       default: assert(false);
     }  
@@ -690,7 +679,6 @@ wasm_module_t* wasm_module_init(wasm_module_t* pm)
   entbinit(&pm->globdefs);
   esegbinit(&pm->elemdefs);
   dsegbinit(&pm->datadefs);
-  icbinit(&pm->reloctab);
   return pm;
 }
 
@@ -703,7 +691,6 @@ void wasm_module_fini(wasm_module_t* pm)
   entbfini(&pm->globdefs);
   esegbfini(&pm->elemdefs);
   dsegbfini(&pm->datadefs);
-  icbfini(&pm->reloctab);
 }
 
 
@@ -718,13 +705,13 @@ void write_wasm_module(wasm_module_t* pm, FILE *pf)
   wasm_funcs(&pm->funcdefs);
   wasm_tables(&pm->tabdefs);
   wasm_mems(&pm->memdefs);
-  wasm_globals(&pm->globdefs, &pm->reloctab);
+  wasm_globals(&pm->globdefs);
   wasm_exports(&pm->funcdefs, &pm->tabdefs, &pm->memdefs, &pm->globdefs);
   wasm_start(&pm->funcdefs);
-  wasm_elems(&pm->elemdefs, &pm->reloctab);
+  wasm_elems(&pm->elemdefs);
   wasm_datacount(&pm->datadefs);
-  wasm_codes(&pm->funcdefs, &pm->reloctab);
-  wasm_datas(&pm->datadefs, &pm->reloctab);
+  wasm_codes(&pm->funcdefs);
+  wasm_datas(&pm->datadefs);
   g_wasmout = NULL;
 }
 
@@ -1123,11 +1110,11 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
   chbclear(pcb);
   if (pic->in == IN_REGDECL) {
     const char *ts = valtype_name((valtype_t)pic->arg.u);
-    if (!pic->relkey) chbputf(pcb, "register %s", ts); 
-    else chbputf(pcb, "register %s $%s", ts, symname(pic->relkey)); 
+    if (!pic->id) chbputf(pcb, "register %s", ts); 
+    else chbputf(pcb, "register %s $%s", ts, symname(pic->id)); 
     return chbdata(pcb);
   } else if (pic->in == IN_END) { /* has a label for display purposes */
-    if (pic->relkey) chbputf(pcb, "end $%s", symname(pic->relkey));
+    if (pic->id) chbputf(pcb, "end $%s", symname(pic->id));
     else chbputs("end", pcb);
     return chbdata(pcb);
   }
@@ -1137,29 +1124,34 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       break;
     case INSIG_BT: {
       valtype_t vt = pic->arg.u;
-      if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
+      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
       if (vt != BT_VOID) chbputf(pcb, " (result %s)", valtype_name(vt)); 
     } break;
-    case INSIG_L:   
-    case INSIG_X:    case INSIG_T:
+    case INSIG_X:
+      if (pic->id && pic->arg2.mod) 
+        chbputf(pcb, " $%s:%s", symname(pic->arg2.mod), symname(pic->id)); 
+      else if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
+      else chbputf(pcb, " %lld", pic->arg.i); 
+      break;
+    case INSIG_L: case INSIG_T:
     case INSIG_I32:  case INSIG_I64:
-      if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
+      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
       else chbputf(pcb, " %lld", pic->arg.i); 
       break;
     case INSIG_X_Y:
-      if (pic->relkey) chbputf(pcb, " $%s %u", symname(pic->relkey), pic->argu2); 
-      else chbputf(pcb, " %lld %u", pic->arg.i, pic->argu2); 
+      if (pic->id) chbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
+      else chbputf(pcb, " %lld %u", pic->arg.i, pic->arg2.u); 
       break;
     case INSIG_MEMARG:
-      if (pic->relkey) chbputf(pcb, " $%s %u", symname(pic->relkey), pic->argu2); 
-      else chbputf(pcb, " offset=%llu align=%u", pic->arg.u, 1<<pic->argu2); 
+      if (pic->id) chbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
+      else chbputf(pcb, " offset=%llu align=%u", pic->arg.u, 1<<pic->arg2.u); 
       break;
     case INSIG_F32:
-      if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
+      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
       else chbputf(pcb, " %g", (double)pic->arg.f); 
       break;
     case INSIG_F64:
-      if (pic->relkey) chbputf(pcb, " $%s", symname(pic->relkey)); 
+      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
       else chbputf(pcb, " %g", pic->arg.d); 
       break;
     case INSIG_LS_L:
@@ -1271,7 +1263,7 @@ static void wat_imports(watibuf_t *pib)
     chbsetf(g_watbuf, "(import \"%s\" \"%s\" ", symname(pi->mod), symname(pi->name));
     switch (pi->ek) {
       case EK_FUNC: {
-        chbputf(g_watbuf, "(func $%s", symname(pi->name));
+        chbputf(g_watbuf, "(func $%s:%s", symname(pi->mod), symname(pi->name));
         for (j = 0; j < vtblen(&pi->fs.argtypes); ++j) {
           valtype_t *pvt = vtbref(&pi->fs.argtypes, j);
           chbputf(g_watbuf, " (param %s)", valtype_name(*pvt));
@@ -1303,25 +1295,27 @@ static void wat_funcs(watfbuf_t *pfb)
   size_t i, j, k;
   for (i = 0; i < watfblen(pfb); ++i) {
     watf_t *pf = watfbref(pfb, i);
-    chbsetf(g_watbuf, "(func $%s", symname(pf->name));
+    chbsetf(g_watbuf, "(func $%s:%s", symname(pf->mod), symname(pf->id));
+    if (pf->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pf->id));
+    wat_line(chbdata(g_watbuf)); chbclear(g_watbuf);
+    g_watindent += 2;
     for (j = 0; j < vtblen(&pf->fs.argtypes); ++j) {
       valtype_t *pvt = vtbref(&pf->fs.argtypes, j);
       inscode_t *pic = icbref(&pf->code, j);
       assert(pic->in == IN_REGDECL);
       assert(*pvt == (valtype_t)pic->arg.u);
-      if (!pic->relkey) chbputf(g_watbuf, " (param %s)", valtype_name(pic->arg.u));
-      else chbputf(g_watbuf, " (param $%s %s)", symname(pic->relkey), valtype_name(pic->arg.u));
+      if (!pic->id) chbputf(g_watbuf, "(param %s) ", valtype_name(pic->arg.u));
+      else chbputf(g_watbuf, "(param $%s %s) ", symname(pic->id), valtype_name(pic->arg.u));
     }
     for (k = 0; k < vtblen(&pf->fs.rettypes); ++k) {
       valtype_t *pvt = vtbref(&pf->fs.rettypes, k);
-      chbputf(g_watbuf, " (result %s)", valtype_name(*pvt));
+      chbputf(g_watbuf, "(result %s) ", valtype_name(*pvt));
     }
     wat_line(chbdata(g_watbuf)); chbclear(g_watbuf);
-    g_watindent += 2;
     for (/* use current j */; j < icblen(&pf->code); ++j) {
       inscode_t *pic = icbref(&pf->code, j);
       if (pic->in != IN_REGDECL) break;
-      chbputf(g_watbuf, "(local $%s %s) ", symname(pic->relkey), valtype_name(pic->arg.u));
+      chbputf(g_watbuf, "(local $%s %s) ", symname(pic->id), valtype_name(pic->arg.u));
     }
     if (chblen(g_watbuf) > 0) wat_line(chbdata(g_watbuf));
     /* code */
@@ -1333,8 +1327,8 @@ static void wat_funcs(watfbuf_t *pfb)
         chbsetf(g_watbuf, "br_table"); 
         for (k = j+1; k < j+1+n; ++k) {
           assert(k < icblen(&pf->code));
-          pic = icbref(&pf->code, k); assert(pic->in == IN_BR && pic->relkey);
-          chbputf(g_watbuf, " %s", symname(pic->relkey));
+          pic = icbref(&pf->code, k); assert(pic->in == IN_BR && pic->id);
+          chbputf(g_watbuf, " %s", symname(pic->id));
         }
         wat_line(chbdata(g_watbuf));
         j += n; /* account for n aditional inscodes */
