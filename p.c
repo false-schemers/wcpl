@@ -48,7 +48,7 @@ pws_t *pws_from_modname(sym_t mod, buf_t *pbases)
       pws = newpws(chbsetf(&cb, "%s%s.wh", symname(*pb), symname(mod)));
       if (pws) break;
     }
-    if (pws) fprintf(stderr, "# found module %s in %s (pws #%d)\n", symname(mod), chbdata(&cb), pws->id);
+    if (pws) logef("# found module %s in %s (pws #%d)\n", symname(mod), chbdata(&cb), pws->id);
     chbfini(&cb);
   }
   return pws;
@@ -390,7 +390,7 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
     for (i = 0; i < ndlen(ptn1); ++i) {
       node_t *pn1 = ndref(ptn1, i), *pn2 = ndref(ptn2, i);
       if ((ptn1->ts == TS_STRUCT || ptn1->ts == TS_UNION) &&
-          (pn1->nt != NT_VARDECL || pn2->nt == NT_VARDECL || 
+          (pn1->nt != NT_VARDECL || pn2->nt != NT_VARDECL || 
            pn1->name != pn2->name)) return false;
       if (pn1->nt == NT_VARDECL && ndlen(pn1) == 1) pn1 = ndref(pn1, 0); 
       if (pn2->nt == NT_VARDECL && ndlen(pn2) == 1) pn2 = ndref(pn2, 0); 

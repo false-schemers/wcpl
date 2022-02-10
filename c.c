@@ -16,17 +16,18 @@
 
 /* globals */
 static buf_t g_bases;
-static chbuf_t g_dseg;
 static buf_t g_dsmap; /* of dsmelt_t, sorted by cb */
-static node_t g_dsty; /* NT_TYPE TS_STRUCT */
+static sym_t g_curmod; /* currently processed module */
+static sym_t g_lm_mod; /* module for linear memory */
+static sym_t g_lm_id;  /* id for linear memory */
 static sym_t g_sp_mod; /* module for stack pointer global */
 static sym_t g_sp_id;  /* id for stack pointer global */
+static sym_t g_wasi_mod; /* module for wasi */
 
 /* g_dsmap element */
 typedef struct dsmelt_tag {
-  chbuf_t cb;
-  size_t addr;
-  size_t id;
+  chbuf_t cb; /* data segment data */
+  size_t ind; /* unique index within this map */
 } dsmelt_t;
 
 /* initialization */
@@ -38,14 +39,15 @@ void init_compiler(dsbuf_t *plibv)
     dstr_t *pds = dsbref(plibv, i);
     *(sym_t*)bufnewbk(&g_bases) = intern(*pds);
   } 
-  chbinit(&g_dseg);
-  ndinit(&g_dsty); ndset(&g_dsty, NT_TYPE, -1, -1); g_dsty.ts = TS_STRUCT; 
   bufinit(&g_dsmap, sizeof(dsmelt_t));
   init_workspaces();
   init_nodepool();
   init_regpool();
   init_symbols();
-  g_sp_mod = intern("env");
+  g_curmod = 0;
+  g_wasi_mod = intern("wasi_snapshot_preview1");
+  g_lm_mod = g_sp_mod = intern("env");
+  g_lm_id = intern("__linear_memory");
   g_sp_id = intern("__stack_pointer");
 }
 
@@ -53,48 +55,36 @@ void fini_compiler(void)
 {
   dsmelt_t *pde; size_t i;
   buffini(&g_bases);
-  chbfini(&g_dseg);
-  ndfini(&g_dsty);
   for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) chbfini(&pde[i].cb);
   buffini(&g_dsmap);
   fini_workspaces();
   fini_nodepool();
   fini_regpool();
   fini_symbols();
-  g_sp_mod = g_sp_id = 0;
+  g_curmod = 0;
+  g_wasi_mod = g_lm_mod = g_sp_mod = 0;
+  g_lm_id = g_sp_id = 0;
 }
 
 
 /* data segment operations */
 
-/* intern the string literal, convert node to &($dp)->$foo */
-node_t *convert_strlit_to_dsegref(node_t *pn)
+/* intern the string literal, return dseg id */
+intern_strlit(node_t *pn)
 {
-  dsmelt_t *pe; node_t *psn; sym_t fs;
+  dsmelt_t *pe; sym_t dsid;
   assert(pn->nt == NT_LITERAL && (pn->ts == TS_STRING || pn->ts == TS_LSTRING));
   pe = bufbsearch(&g_dsmap, &pn->data, chbuf_cmp);
-  if (!pe) {
-    /* add data to g_dseg */
-    size_t align = pn->ts == TS_STRING ? 1 : 4;
-    size_t addr = chblen(&g_dseg), n = addr % align;
-    if (n > 0) bufresize(&g_dseg, (addr = addr+(align-n)));
-    chbcat(&g_dseg, &pn->data);
+  if (!pe) { /* add data to the map */
     pe = bufnewbk(&g_dsmap); 
-    chbicpy(&pe->cb, &pn->data); pe->addr = addr; 
-    pe->id = buflen(&g_dsmap);
-    fs = internf("$%s%d", pn->ts == TS_STRING ? "str " : "lstr", (int)pe->id);
+    chbicpy(&pe->cb, &pn->data);
+    pe->ind = buflen(&g_dsmap);
+    dsid = internf("ds%d$", pe->ind);
     bufqsort(&g_dsmap, chbuf_cmp);
-    /* ann new field to g_dsty */
-    psn = ndinsbk(&g_dsty, NT_VARDECL); psn->name = fs;
-    psn = ndinsbk(psn, NT_TYPE); psn->ts = (pn->ts == TS_STRING) ? TS_CHAR : TS_INT;
-    psn = ndinsbk(psn, NT_LITERAL); psn->ts = TS_UINT; psn->val.u = addr; 
   } else {
-    fs = internf("$%s%d", pn->ts == TS_STRING ? "str " : "lstr", (int)pe->id);
+    dsid = internf("ds%d$", pe->ind);
   }
-  ndset(pn, NT_PREFIX, pn->pwsid, pn->startpos); pn->op = TT_AND;
-  psn = ndinsbk(pn, NT_POSTFIX); psn->op = TT_ARROW; psn->name = fs;
-  psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = intern("$dp");
-  return pn;
+  return dsid;
 }
 
 
@@ -541,9 +531,11 @@ bool static_eval(node_t *pn, node_t *prn)
 {
   bool ok; bool __static_eval(node_t *pn, node_t *prn);
   ok = __static_eval(pn, prn);
-  fprintf(stderr, "** eval\n"); dump_node(pn, stderr);
-  if (ok) { fprintf(stderr, "=>\n"); dump_node(prn, stderr); }
-  else fprintf(stderr, "=> failed!\n");
+  if (getverbosity() > 1) {
+    fprintf(stderr, "** eval\n"); dump_node(pn, stderr);
+    if (ok) { fprintf(stderr, "=>\n"); dump_node(prn, stderr); }
+    else fprintf(stderr, "=> failed!\n");
+  }
   return ok;
 }
 #define static_eval(pn, prn) __static_eval(pn, prn)
@@ -708,10 +700,10 @@ static void post_vardecl(sym_t mod, node_t *pn, bool final, bool hide)
    * set its sc to final?(hide?AUTO:REGISTER):NONE
    * NONE is to be changed to EXTERN when actually referenced from module */
   pin = post_symbol(mod, pn, final, hide);
-#ifdef _DEBUG
-  fprintf(stderr, "%s final=%d, hide=%d =>\n", symname(pn->name), final, hide);
-  dump_node(pin, stderr);
-#endif
+  if (getverbosity() > 0) {
+    fprintf(stderr, "%s final=%d, hide=%d =>\n", symname(pn->name), final, hide);
+    dump_node(pin, stderr);
+  }
 }
 
 /* check if this expression will produce valid const code */
@@ -734,10 +726,10 @@ static void check_constnd(sym_t mmod, node_t *pn, node_t *pvn)
 static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
 {
   bool final, hide;
-#ifdef _DEBUG
-  dump_node(pdn, stderr);
-  if (pin) dump_node(pin, stderr);
-#endif
+  if (getverbosity() > 0) {
+    dump_node(pdn, stderr);
+    if (pin) dump_node(pin, stderr);
+  }
   /* if initializer is present, check it for constness */  
   if (pin) { 
     assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
@@ -2458,10 +2450,20 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
 
     /* expressions */
     case NT_LITERAL: {
-      assert(ts_numerical(pn->ts));
       if (ret && getwlevel() < 1) nwprintf(pn, "warning: literal value is not used");
-      pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), pn->ts);
-      asm_numerical_constant(pn->ts, &pn->val, &pcn->data);
+      switch (pn->ts) {
+        case TS_STRING: case TS_LSTRING: {
+          ts_t ts; sym_t id; assert(pn->data.esz == 1);
+          id = intern_strlit(pn); ts = (pn->ts == TS_STRING ? TS_CHAR : TS_INT);
+          pcn = npnewcode(pn); wrap_type_pointer(ndsettype(ndnewbk(pcn), ts));
+          acode_pushin_id_mod(pcn, IN_REF_DATA, id, g_curmod);
+        } break;
+        default: {
+          assert(ts_numerical(pn->ts));
+          pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), pn->ts);
+          asm_numerical_constant(pn->ts, &pn->val, &pcn->data);
+        } break;
+      }
     } break; 
     case NT_IDENTIFIER: {
       sym_t mod = 0; const node_t *ptn = lookup_var_type(pn->name, prib, &mod);
@@ -2849,10 +2851,12 @@ static void tn2vt(node_t *ptn, vtbuf_t *pvtb)
   assert(ptn->nt == NT_TYPE);
   switch (ptn->ts) {
     case TS_VOID: /* put nothing */ break;
-    case TS_INT: case TS_UINT:  
+    case TS_CHAR:  case TS_UCHAR:
+    case TS_SHORT: case TS_USHORT:
+    case TS_INT:   case TS_UINT:  
       *vtbnewbk(pvtb) = VT_I32; break;  
-    case TS_LONG: case TS_ULONG:  
-    case TS_PTR: case TS_ARRAY:
+    case TS_LONG:  case TS_ULONG:  
+    case TS_PTR: 
       /* fixme: should depend on wasm32/wasm64 model */
       *vtbnewbk(pvtb) = VT_I32; break;  
     case TS_LLONG: case TS_ULLONG:  
@@ -2901,10 +2905,10 @@ static void process_fundef(sym_t mmod, node_t *pn, wat_module_t *pm)
   assert(pn->nt == NT_FUNDEF && pn->name && ndlen(pn) == 2);
   ptn = ndref(pn, 0); assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
   clear_regpool(); /* reset reg name generator */
-#ifdef _DEBUG
-  fprintf(stderr, "process_fundef:\n");
-  dump_node(pn, stderr);
-#endif  
+  if (getverbosity() > 0) {
+    fprintf(stderr, "process_fundef:\n");
+    dump_node(pn, stderr);
+  }
   fundef_check_type(ndref(pn, 0));
   if (pn->name == intern("main")) {
     if (ndlen(ptn) == 1 && ndref(ptn, 0)->ts == TS_INT) {
@@ -2933,35 +2937,33 @@ static void process_fundef(sym_t mmod, node_t *pn, wat_module_t *pm)
   }
   /* hoist local variables */
   fundef_hoist_locals(pn);
-#ifdef _DEBUG
-  fprintf(stderr, "fundef_hoist_locals ==>\n");
-  dump_node(pn, stderr);
-#endif  
+  if (getverbosity() > 0) {
+    fprintf(stderr, "fundef_hoist_locals ==>\n");
+    dump_node(pn, stderr);
+  }  
   /* convert entry to wasm conventions, normalize a bit */
   fundef_wasmify(pn);
-#ifdef _DEBUG
-  fprintf(stderr, "fundef_wasmify ==>\n");
-  dump_node(pn, stderr);
-#endif  
-#if 1
+  if (getverbosity() > 0) {
+    fprintf(stderr, "fundef_wasmify ==>\n");
+    dump_node(pn, stderr);
+  }  
   /* compile to asm tree */
   pcn = fundef_compile(pn);
-#ifdef _DEBUG
-  fprintf(stderr, "fundef_compile ==>\n");
-  dump_node(pcn, stderr);
-#endif
+  if (getverbosity() > 0) {
+    fprintf(stderr, "fundef_compile ==>\n");
+    dump_node(pcn, stderr);
+  }
   /* flatten asm tree */
   pcn = fundef_flatten(pcn);
-#ifdef _DEBUG
-  fprintf(stderr, "fundef_flatten ==>\n");
-  dump_node(pcn, stderr);
-#endif
+  if (getverbosity() > 0) {
+    fprintf(stderr, "fundef_flatten ==>\n");
+    dump_node(pcn, stderr);
+  }
   fundef_peephole(pcn);
-#ifdef _DEBUG
-  fprintf(stderr, "fundef_peephole ==>\n");
-  dump_node(pcn, stderr);
-#endif
-#endif
+  if (getverbosity() > 0) {
+    fprintf(stderr, "fundef_peephole ==>\n");
+    dump_node(pcn, stderr);
+  }
   /* add to watf module */
   pf = watfbnewbk(&pm->funcs);
   pf->id = pn->name; pf->mod = mmod;
@@ -2976,9 +2978,9 @@ static void process_fundef(sym_t mmod, node_t *pn, wat_module_t *pm)
 /* process top-level intrinsic call */
 static void process_top_intrcall(node_t *pn)
 {
-#ifdef _DEBUG
-  dump_node(pn, stderr);
-#endif
+  if (getverbosity() > 0) {
+    dump_node(pn, stderr);
+  }
   if (pn->intr == INTR_SASSERT) check_static_assert(pn);
   else neprintf(pn, "unexpected top-level form");
 }
@@ -2990,12 +2992,12 @@ static void process_top_node(sym_t mmod, node_t *pn, wat_module_t *pm)
   if (pn->nt == NT_BLOCK && ndlen(pn) == 0) return;
   /* ignore typedefs (they are already processed) */  
   if (pn->nt == NT_TYPEDEF) {
-#ifdef _DEBUG
-    size_t size = 0, align = 0;
-    dump_node(pn, stderr); assert(ndlen(pn) == 1);
-    measure_type(ndref(pn, 0), pn, &size, &align, 0);
-    fprintf(stderr, "size: %d, align: %d\n", (int)size, (int)align);
-#endif  
+    if (getverbosity() > 0) {
+      size_t size = 0, align = 0;
+      dump_node(pn, stderr); assert(ndlen(pn) == 1);
+      measure_type(ndref(pn, 0), pn, &size, &align, 0);
+      fprintf(stderr, "size: %d, align: %d\n", (int)size, (int)align);
+    }
     return;
   }
   /* remaining decls/defs are processed differently */
@@ -3023,6 +3025,7 @@ static void process_top_node(sym_t mmod, node_t *pn, wat_module_t *pm)
   } else {
     /* in module mmod: produce code */
     size_t i;
+    g_curmod = mmod;
     if (pn->nt == NT_FUNDEF) process_fundef(mmod, pn, pm);
     else if (pn->nt == NT_INTRCALL) process_top_intrcall(pn); 
     else if (pn->nt != NT_BLOCK) neprintf(pn, "unexpected top-level declaration");
@@ -3105,12 +3108,49 @@ void compile_module(const char *ifname, const char *ofname)
   switch (wm.main) {
     case MAIN_ABSENT: {
       /* fixme: add standard imports */
+      wati_t *pi;
+      /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
+      pi = watibnewfr(&wm.imports, EK_GLOBAL); 
+      pi->mod = g_sp_mod; pi->name = g_sp_id; 
+      pi->mut = MT_VAR; pi->vt = VT_I32;
+      /* (import "env" "__linear_memory" (memory $env:__linear_memory 0)) */
+      pi = watibnewfr(&wm.imports, EK_MEM); 
+      pi->mod = g_lm_mod; pi->name = g_lm_id; 
+      pi->lt = LT_MIN; pi->n = 0;
     } break;
     case MAIN_ARGC_ARGV: {
       /* fixme: add standard startup code and exports */
+      exprintf("NYI: can't set up environment for main(argc, argv)");
     } break;
     case MAIN_VOID: {
       /* fixme: add standard startup code and exports */
+      wati_t *pi; watf_t *pf; inscode_t *pic; sym_t r;
+      /* (global $env:__stack_pointer (mut i32) (i32.const N)) */
+      pi = watibnewfr(&wm.defs, EK_GLOBAL); /* fixme!: needs to be in separate env module! */
+      pi->mod = g_sp_mod; pi->name = g_sp_id; pi->exported = true; 
+      pi->mut = MT_VAR; pi->vt = VT_I32;
+      pi->ic.in = IN_I32_CONST; pi->ic.arg.u = 42424; /* fixme */
+      /* (memory $env:__linear_memory (export "__linear_memory") 2) */
+      pi = watibnewfr(&wm.defs, EK_MEM); /* fixme!: needs to be in separate env module! */
+      pi->mod = g_lm_mod; pi->name = g_lm_id; pi->exported = true; 
+      pi->n = 2; /* fixme: pre-allocate 2 64Kib pages */
+      /* (import "wasi_snapshot_preview1" "proc_exit" (func $... (param i32))) */
+      pi = watibnewfr(&wm.imports, EK_FUNC); 
+      pi->mod = g_wasi_mod; pi->name = intern("proc_exit");
+      *vtbnewbk(&pi->fs.argtypes) = VT_I32;
+      /* (func $_start ...) */
+      pf = watfbnewbk(&wm.funcs); 
+      pf->mod = mod; pf->id = intern("_start"); /* fs is void->void */
+      pf->exported = pf->start = true;
+      pic = icbnewbk(&pf->code); pic->in = IN_REGDECL; pic->id = (r = intern("res")); pic->arg.u = VT_I32;
+      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("main"); pic->arg2.mod = mod; 
+      pic = icbnewbk(&pf->code); pic->in = IN_LOCAL_TEE; pic->id = r;
+      pic = icbnewbk(&pf->code); pic->in = IN_IF; pic->arg.u = BT_VOID;
+      pic = icbnewbk(&pf->code); pic->in = IN_LOCAL_GET; pic->id = r;
+      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("proc_exit"); pic->arg2.mod = g_wasi_mod;
+      pic = icbnewbk(&pf->code); pic->in = IN_ELSE;
+      pic = icbnewbk(&pf->code); pic->in = IN_UNREACHABLE;
+      pic = icbnewbk(&pf->code); pic->in = IN_END;
     } break;
     default: assert(false);
   }
@@ -3130,24 +3170,33 @@ void compile_module(const char *ifname, const char *ofname)
           /* mod=pn->name id=id ctype=ndref(pn, 0) */
           /* this mod:id needs to be imported as function */
           wati_t *pi;
-#ifdef _DEBUG
-          fprintf(stderr, "imported function %s:%s =>\n", symname(pn->name), symname(id));
-          dump_node(ptn, stderr);
-#endif
+          if (getverbosity() > 0) {
+            fprintf(stderr, "imported function %s:%s =>\n", symname(pn->name), symname(id));
+            dump_node(ptn, stderr);
+          }
           pi = watibnewbk(&wm.imports, EK_FUNC);
           pi->mod = pn->name, pi->name = id;
           ftn2fsig(ptn, &pi->fs);
         } else {
-#ifdef _DEBUG
-          fprintf(stderr, "imported global %s:%s =>\n", symname(pn->name), symname(id));
-          dump_node(ptn, stderr);
-#endif
+          if (getverbosity() > 0) {
+            fprintf(stderr, "imported global %s:%s =>\n", symname(pn->name), symname(id));
+            dump_node(ptn, stderr);
+          }
         } 
       }
     }
   }
 
-#if 0  
+#if 1
+  if (buflen(&g_dsmap) > 0) {
+    dsmelt_t *pde; size_t i;
+    for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) {
+      watd_t *pd = watdbnewbk(&wm.dsegs);
+      pd->mod = mod; pd->id = internf("ds%d$", pde->ind);
+      bufswap(&pd->data, &pde[i].cb);
+    }
+  }
+#else  
   /* use contents of g_dseg as passive data segment */
   /* fixme: global var $dp should be inited to the base address of dseg, and dsoff be taken from it! */
   if (chblen(&g_dseg) > 0) { 

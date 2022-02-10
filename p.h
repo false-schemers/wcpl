@@ -193,7 +193,7 @@ extern node_t *npnew(nt_t nt, int pwsid, int startpos);
 extern node_t *npnewcode(const node_t *psn);
 extern node_t *npdup(const node_t *pr);
 
-/* unique register name pool */
+/* unique register name pool (per-function) */
 extern void init_regpool(void);
 extern void fini_regpool(void);
 extern void clear_regpool(void);

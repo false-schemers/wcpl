@@ -165,6 +165,7 @@ extern void chbputd(int v, chbuf_t* pb);
 extern void chbputld(long v, chbuf_t* pb);
 extern void chbputt(ptrdiff_t v, chbuf_t* pb);
 extern void chbputu(unsigned v, chbuf_t* pb);
+extern void chbputx(unsigned v, chbuf_t* pb);
 extern void chbputlu(unsigned long v, chbuf_t* pb);
 extern void chbputllu(unsigned long long v, chbuf_t* pb);
 extern void chbputll(long long v, chbuf_t* pb);

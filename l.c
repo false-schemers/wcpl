@@ -737,6 +737,18 @@ void chbputu(unsigned val, chbuf_t* pb)
   chbput(p, e-p, pb);
 }
 
+void chbputx(unsigned val, chbuf_t* pb)
+{
+  char buf[33]; /* enough up to 128 bits */
+  char *e = buf + sizeof(buf), *p = e;
+  if (val) {
+    unsigned m = val, d; 
+    do *--p = (int)(d = (m%16), d < 10 ? d + '0' : d-10 + 'a');
+      while ((m /= 16) > 0);
+  } else *--p = '0';
+  chbput(p, e-p, pb);
+}
+
 void chbputlu(unsigned long val, chbuf_t* pb)
 {
   char buf[39]; /* enough up to 128 bits */
@@ -818,6 +830,9 @@ void chbputvf(chbuf_t* pb, const char *fmt, va_list ap)
     } else if (fmt[0] == 'd') {
       int d = va_arg(ap, int);
       chbputd(d, pb); fmt += 1;
+    } else if (fmt[0] == 'x') {
+      unsigned d = va_arg(ap, unsigned);
+      chbputx(d, pb); fmt += 1;
     } else if (fmt[0] == 'l' && fmt[1] == 'd') {
       long ld = va_arg(ap, long);
       chbputld(ld, pb); fmt += 2;

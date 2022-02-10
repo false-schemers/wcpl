@@ -1113,6 +1113,9 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
     if (!pic->id) chbputf(pcb, "register %s", ts); 
     else chbputf(pcb, "register %s $%s", ts, symname(pic->id)); 
     return chbdata(pcb);
+  } else if (pic->in == IN_REF_DATA) {
+    chbputf(pcb, "ref.data $%s:%s", symname(pic->arg2.mod), symname(pic->id));
+    return chbdata(pcb); 
   } else if (pic->in == IN_END) { /* has a label for display purposes */
     if (pic->id) chbputf(pcb, "end $%s", symname(pic->id));
     else chbputs("end", pcb);
@@ -1188,6 +1191,27 @@ void watibfini(watibuf_t* pb)
   buffini(pb);
 }
 
+watd_t* watdinit(watd_t* pd)
+{
+  memset(pd, 0, sizeof(watd_t));
+  bufinit(&pd->data, sizeof(char));
+  return pd;
+}
+
+void watdfini(watd_t* pd)
+{
+  buffini(&pd->data);
+}
+
+void watdbfini(watdbuf_t* pb)
+{
+  watd_t *pd; size_t i;
+  assert(pb); assert(pb->esz = sizeof(watd_t));
+  pd = (watd_t*)(pb->buf);
+  for (i = 0; i < pb->fill; ++i) watdfini(pd+i);
+  buffini(pb);
+}
+
 watf_t* watfinit(watf_t* pf)
 {
   memset(pf, 0, sizeof(watf_t));
@@ -1215,6 +1239,8 @@ wat_module_t* wat_module_init(wat_module_t* pm)
 {
   memset(pm, 0, sizeof(wat_module_t));
   watibinit(&pm->imports);
+  watibinit(&pm->defs);
+  watdbinit(&pm->dsegs);
   watfbinit(&pm->funcs);
   return pm;
 }
@@ -1222,6 +1248,8 @@ wat_module_t* wat_module_init(wat_module_t* pm)
 void wat_module_fini(wat_module_t* pm)
 {
   watibfini(&pm->imports);
+  watibfini(&pm->defs);
+  watdbfini(&pm->dsegs);
   watfbfini(&pm->funcs);
 }
 
@@ -1260,10 +1288,11 @@ static void wat_imports(watibuf_t *pib)
   size_t i, j;
   for (i = 0; i < watiblen(pib); ++i) {
     wati_t *pi = watibref(pib, i);
-    chbsetf(g_watbuf, "(import \"%s\" \"%s\" ", symname(pi->mod), symname(pi->name));
+    const char *smod = symname(pi->mod), *sname = symname(pi->name);
+    chbsetf(g_watbuf, "(import \"%s\" \"%s\" ", smod, sname);
     switch (pi->ek) {
       case EK_FUNC: {
-        chbputf(g_watbuf, "(func $%s:%s", symname(pi->mod), symname(pi->name));
+        chbputf(g_watbuf, "(func $%s:%s", smod, sname);
         for (j = 0; j < vtblen(&pi->fs.argtypes); ++j) {
           valtype_t *pvt = vtbref(&pi->fs.argtypes, j);
           chbputf(g_watbuf, " (param %s)", valtype_name(*pvt));
@@ -1281,11 +1310,84 @@ static void wat_imports(watibuf_t *pib)
         else chbputf(g_watbuf, "(memory %u %u)", pi->n, pi->m);
       } break;
       case EK_GLOBAL: {
-        if (pi->mut == MT_CONST) chbputf(g_watbuf, "(global %s)", valtype_name(pi->vt));
-        else chbputf(g_watbuf, "(global (mut %s))", valtype_name(pi->vt));
+        if (pi->mut == MT_CONST) {
+          chbputf(g_watbuf, "(global $%s:%s %s", smod, sname, valtype_name(pi->vt));
+        } else {
+          chbputf(g_watbuf, "(global $%s:%s (mut %s)", smod, sname, valtype_name(pi->vt));
+        }
       } break;
     }
     chbputc(')', g_watbuf); 
+    wat_line(chbdata(g_watbuf));
+  }
+}
+
+static void wat_defs(watibuf_t *pib)
+{
+  size_t i, j;
+  for (i = 0; i < watiblen(pib); ++i) {
+    wati_t *pi = watibref(pib, i);
+    const char *smod = symname(pi->mod), *sname = symname(pi->name);
+    chbclear(g_watbuf);
+    switch (pi->ek) {
+      case EK_FUNC: {
+        chbputf(g_watbuf, "(func $%s:%s", smod, sname);
+        for (j = 0; j < vtblen(&pi->fs.argtypes); ++j) {
+          valtype_t *pvt = vtbref(&pi->fs.argtypes, j);
+          chbputf(g_watbuf, " (param %s)", valtype_name(*pvt));
+        }
+        for (j = 0; j < vtblen(&pi->fs.rettypes); ++j) {
+          valtype_t *pvt = vtbref(&pi->fs.rettypes, j);
+          chbputf(g_watbuf, " (result %s)", valtype_name(*pvt));
+        }
+        chbputc(')', g_watbuf); 
+      } break;
+      case EK_TABLE: {
+      } break;
+      case EK_MEM: {
+        chbputf(g_watbuf, "(memory $%s:%s", smod, sname);
+        if (pi->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pi->name));
+        if (pi->lt == LT_MIN) chbputf(g_watbuf, " %u", pi->n);
+        else chbputf(g_watbuf, " %u %u", pi->n, pi->m);
+        chbputc(')', g_watbuf); 
+      } break;
+      case EK_GLOBAL: {
+        chbputf(g_watbuf, "(global $%s:%s", smod, sname);
+        if (pi->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pi->name));
+        if (pi->mut == MT_CONST) chbputf(g_watbuf, " %s", valtype_name(pi->vt));
+        else chbputf(g_watbuf, " (mut %s)", valtype_name(pi->vt));
+        if (pi->ic.in != 0) {
+          chbuf_t cb = mkchb();
+          chbputf(g_watbuf, " (%s)", format_inscode(&pi->ic, &cb));
+          chbfini(&cb);
+        }
+        chbputc(')', g_watbuf); 
+      } break;
+    }
+    wat_line(chbdata(g_watbuf));
+  }
+}
+
+static void wat_dsegs(watdbuf_t *pdb)
+{
+  size_t i;
+  for (i = 0; i < watdblen(pdb); ++i) {
+    watd_t *pd = watdbref(pdb, i); 
+    const char *smod = symname(pd->mod), *sname = symname(pd->id);
+    unsigned char *pc = pd->data.buf; size_t i, n = pd->data.fill;
+    chbclear(g_watbuf);
+    chbsetf(g_watbuf, "(data $%s:%s \"", smod, sname);
+    for (i = 0; i < n; ++i) {
+      unsigned c = pc[i]; char *s = NULL;
+      switch (c) {
+        case 0x09: s = "t";   case 0x0A: s = "n";   case 0x0D: s = "r";
+        case 0x22: s = "\"";  case 0x27: s = "\'";  case 0x5C: s = "\\";
+      }
+      if (s) chbputf(g_watbuf, "\\%s", s);
+      else if (' ' <= c && c <= 127) chbputc(c, g_watbuf); 
+      else chbputf(g_watbuf, "\\%x%x", (c>>4)&0xF, c&0xF);
+    }
+    chbputs("\")", g_watbuf); 
     wat_line(chbdata(g_watbuf));
   }
 }
@@ -1311,7 +1413,7 @@ static void wat_funcs(watfbuf_t *pfb)
       valtype_t *pvt = vtbref(&pf->fs.rettypes, k);
       chbputf(g_watbuf, "(result %s) ", valtype_name(*pvt));
     }
-    wat_line(chbdata(g_watbuf)); chbclear(g_watbuf);
+    if (chblen(g_watbuf) > 0) { wat_line(chbdata(g_watbuf)); chbclear(g_watbuf); }
     for (/* use current j */; j < icblen(&pf->code); ++j) {
       inscode_t *pic = icbref(&pf->code, j);
       if (pic->in != IN_REGDECL) break;
@@ -1349,6 +1451,8 @@ void write_wat_module(wat_module_t* pm, FILE *pf)
   wat_linef("(module $%s", symname(pm->name));
   g_watindent += 2;
   wat_imports(&pm->imports);
+  wat_defs(&pm->defs);
+  wat_dsegs(&pm->dsegs);
   wat_funcs(&pm->funcs);
   wat_writeln(")");
   g_watout = NULL;

@@ -294,6 +294,7 @@ typedef enum instr {
   /* ... */
   IN_PLACEHOLDER = -1, /* for internal use */
   IN_REGDECL = -2, /* for internal use */
+  IN_REF_DATA = -3 /* for internal use */
 } instr_t;
 
 typedef enum insig {
@@ -446,14 +447,16 @@ extern const char *format_inscode(inscode_t *pic, chbuf_t *pcb);
 
 /* wat text representations */
 
-/* wat import */
+/* wat symbol info */
 typedef struct wati {
   entkind_t ek;
   sym_t mod;
   sym_t name;
+  bool exported;
   funcsig_t fs;   /* FUNC: funcsig index */
   valtype_t vt;   /* GLOBAL/TABLE: value type (scalar) */
   muttype_t mut;  /* GLOBAL: var/const */
+  inscode_t ic;   /* GLOBAL: def init code */
   limtype_t lt;   /* TABLE/MEM (imported) */
   unsigned n;     /* TABLE/MEM (imported) */
   unsigned m;     /* TABLE/MEM (imported) */
@@ -469,11 +472,29 @@ extern void watibfini(watibuf_t* pb);
 #define watibnewfr(pb, ek) watiinit(bufnewfr(pb), ek)
 #define watibnewbk(pb, ek) watiinit(bufnewbk(pb), ek)
 
+/* wat data segment */
+typedef struct watd {
+  sym_t id;
+  sym_t mod;
+  buf_t data; /* actual bytes */
+} watd_t;
+
+extern watd_t* watdinit(watd_t* ps);
+extern void watdfini(watd_t* ps);
+typedef buf_t watdbuf_t; 
+#define watdbinit(mem) bufinit(mem, sizeof(watd_t))
+extern void watdbfini(watdbuf_t* pb);
+#define watdblen(pb) buflen(pb)
+#define watdbref(pb, i) ((watd_t*)bufref(pb, i))
+#define watdbnewfr(pb) watdinit(bufnewfr(pb))
+#define watdbnewbk(pb) watdinit(bufnewbk(pb))
+
 /* wat function */
 typedef struct watf {
   sym_t id;
   sym_t mod;
   bool exported;
+  bool start;
   funcsig_t fs;
   buf_t code; /* of inscode_t; register pseudo-instrs for args&locals */
 } watf_t;
@@ -485,6 +506,7 @@ typedef buf_t watfbuf_t;
 extern void watfbfini(watfbuf_t* pb);
 #define watfblen(pb) buflen(pb)
 #define watfbref(pb, i) ((watf_t*)bufref(pb, i))
+#define watfbnewfr(pb) watfinit(bufnewfr(pb))
 #define watfbnewbk(pb) watfinit(bufnewbk(pb))
 
 typedef enum main {
@@ -497,6 +519,8 @@ typedef enum main {
 typedef struct wat_module {
   sym_t name; 
   watibuf_t imports;
+  watibuf_t defs;
+  watdbuf_t dsegs;
   watfbuf_t funcs;
   main_t main;
 } wat_module_t;
