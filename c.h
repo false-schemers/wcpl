@@ -9,8 +9,8 @@
 extern void init_compiler(dsbuf_t *plibv);
 extern void fini_compiler(void);
 
-/* compile module file to .wo output file (if not NULL) */
-extern void compile_module(dsbuf_t *plibv, const char *ifname, const char *ofname);
+/* compile source file to in-memory wat output module */
+extern void compile_module_to_wat(dsbuf_t *plibv, const char *ifname, wat_module_t *pwm);
 
 /* calc size/align for ptn; prn is NULL or reference node for errors, use 0 for lvl */
 extern void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl);

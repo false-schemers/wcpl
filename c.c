@@ -3095,28 +3095,28 @@ static sym_t process_module(const char *fname, wat_module_t *pm)
   return mod;
 }
 
-/* compile module file to wat output file (if not NULL) */
-void compile_module(dsbuf_t *plibv, const char *ifname, const char *ofname)
+/* compile source file to in-memory wat output module */
+void compile_module_to_wat(dsbuf_t *plibv, const char *ifname, wat_module_t *pwm)
 {
-  wat_module_t wm; size_t i; sym_t mod;
+  size_t i; sym_t mod;
 
   init_compiler(plibv);
-  wat_module_init(&wm);
+  wat_module_clear(pwm);
   
-  mod = process_module(ifname, &wm); assert(mod);
-  wm.name = mod;
+  mod = process_module(ifname, pwm); assert(mod);
+  pwm->name = mod;
 
   /* add standard imports/exports */
-  switch (wm.main) {
+  switch (pwm->main) {
     case MAIN_ABSENT: {
       /* fixme: add standard imports */
       wati_t *pi;
       /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
-      pi = watibnewfr(&wm.imports); pi->ek = EK_GLOBAL; 
+      pi = watibnewfr(&pwm->imports); pi->ek = EK_GLOBAL; 
       pi->mod = g_sp_mod; pi->name = g_sp_id; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
       /* (import "env" "__linear_memory" (memory $env:__linear_memory 0)) */
-      pi = watibnewfr(&wm.imports); pi->ek = EK_MEM; 
+      pi = watibnewfr(&pwm->imports); pi->ek = EK_MEM; 
       pi->mod = g_lm_mod; pi->name = g_lm_id; 
       pi->lt = LT_MIN; pi->n = 0;
     } break;
@@ -3128,20 +3128,20 @@ void compile_module(dsbuf_t *plibv, const char *ifname, const char *ofname)
       /* fixme: add standard startup code and exports */
       wati_t *pi; watf_t *pf; inscode_t *pic; sym_t r;
       /* (global $env:__stack_pointer (mut i32) (i32.const N)) */
-      pi = watibnewfr(&wm.defs); pi->ek = EK_GLOBAL; /* fixme!: needs to be in separate env module! */
+      pi = watibnewfr(&pwm->defs); pi->ek = EK_GLOBAL; /* fixme!: needs to be in separate env module! */
       pi->mod = g_sp_mod; pi->name = g_sp_id; pi->exported = true; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
       pi->ic.in = IN_I32_CONST; pi->ic.arg.u = 42424; /* fixme */
       /* (memory $env:__linear_memory (export "__linear_memory") 2) */
-      pi = watibnewfr(&wm.defs); pi->ek = EK_MEM; /* fixme!: needs to be in separate env module! */
+      pi = watibnewfr(&pwm->defs); pi->ek = EK_MEM; /* fixme!: needs to be in separate env module! */
       pi->mod = g_lm_mod; pi->name = g_lm_id; pi->exported = true; 
       pi->n = 2; /* fixme: pre-allocate 2 64Kib pages */
       /* (import "wasi_snapshot_preview1" "proc_exit" (func $... (param i32))) */
-      pi = watibnewfr(&wm.imports); pi->ek = EK_FUNC; 
+      pi = watibnewfr(&pwm->imports); pi->ek = EK_FUNC; 
       pi->mod = g_wasi_mod; pi->name = intern("proc_exit");
       *vtbnewbk(&pi->fs.partypes) = VT_I32;
       /* (func $_start ...) */
-      pf = watfbnewbk(&wm.funcs); 
+      pf = watfbnewbk(&pwm->funcs); 
       pf->mod = mod; pf->id = intern("_start"); /* fs is void->void */
       pf->exported = pf->start = true;
       pic = icbnewbk(&pf->code); pic->in = IN_REGDECL; pic->id = (r = intern("res")); pic->arg.u = VT_I32;
@@ -3176,7 +3176,7 @@ void compile_module(dsbuf_t *plibv, const char *ifname, const char *ofname)
             fprintf(stderr, "imported function %s:%s =>\n", symname(pn->name), symname(id));
             dump_node(ptn, stderr);
           }
-          pi = watibnewbk(&wm.imports); pi->ek = EK_FUNC;
+          pi = watibnewbk(&pwm->imports); pi->ek = EK_FUNC;
           pi->mod = pn->name, pi->name = id;
           ftn2fsig(ptn, &pi->fs);
         } else {
@@ -3192,24 +3192,13 @@ void compile_module(dsbuf_t *plibv, const char *ifname, const char *ofname)
   if (buflen(&g_dsmap) > 0) {
     dsmelt_t *pde; size_t i;
     for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) {
-      watd_t *pd = watdbnewbk(&wm.dsegs);
+      watd_t *pd = watdbnewbk(&pwm->dsegs);
       pd->mod = mod; pd->id = internf("ds%d$", pde->ind);
       bufswap(&pd->data, &pde[i].cb);
     }
   }
 
-  /* emit our variation of wat */
-  if (ofname) {
-    FILE *pf = fopen(ofname, "w");
-    if (!pf) exprintf("cannot open output file %s:", ofname);
-    write_wat_module(&wm, pf);
-    fclose(pf);
-  } else {
-    write_wat_module(&wm, stdout);
-  }
-
   /* done */
-  wat_module_fini(&wm); 
   fini_compiler();
 }
 
@@ -3219,6 +3208,7 @@ int main(int argc, char **argv)
   int opt;
   const char *ifile_arg = "-";
   const char *ofile_arg = NULL;
+  bool c_opt = false;
   const char *lpath;
   dsbuf_t libv; 
   
@@ -3228,40 +3218,67 @@ int main(int argc, char **argv)
 
   setprogname(argv[0]);
   setusage
-    ("[OPTIONS] [infile]\n"
+    ("[OPTIONS] [infile] ...\n"
      "options are:\n"
      "  -w        Suppress warnings\n"
      "  -v        Increase verbosity\n"
      "  -q        Suppress logging ('quiet')\n"
-     "  -i ifile  Input file; defaults to - (stdout)\n"
-     "  -o ofile  Output file; defaults to a.wasm\n"
+     "  -c        Compile single input file\n"
+     "  -o ofile  Output file\n"
      "  -L path   Add library path\n"
      "  -h        This help");
-  while ((opt = egetopt(argc, argv, "wvqi:o:L:h")) != EOF) {
+  while ((opt = egetopt(argc, argv, "wvqco:L:h")) != EOF) {
     switch (opt) {
       case 'w':  setwlevel(3); break;
       case 'v':  incverbosity(); break;
       case 'q':  incquietness(); break;
-      case 'i':  ifile_arg = eoptarg; break;
+      case 'c':  c_opt = true; break;
       case 'o':  ofile_arg = eoptarg; break;
       case 'L':  dsbpushbk(&libv, &eoptarg); break;
       case 'h':  eusage("WCPL 0.01 built on "__DATE__);
     }
   }
 
-  /* get optional script file and argument list */
-  if (eoptind < argc) ifile_arg = argv[eoptind++];
-  if (eoptind < argc) eusage("too many input files");
-
-  if (streql(ifile_arg, "-") || strsuf(ifile_arg, ".wat")) {
+  if (c_opt) {
+    /* compile single source file */
     wat_module_t wm; wat_module_init(&wm);
-    read_wat_module(ifile_arg, &wm);
+    if (eoptind < argc) ifile_arg = argv[eoptind++];
+    if (eoptind < argc) eusage("too many input files for -c mode");
+    /* todo: autogenerate output file name (stdout for now) */
+    compile_module_to_wat(&libv, ifile_arg, &wm);
+    if (ofile_arg) {
+      FILE *pf = fopen(ofile_arg, "w");
+      if (!pf) exprintf("cannot open output file %s:", ofile_arg);
+      write_wat_module(&wm, pf);
+      fclose(pf);
+    } else {
+      write_wat_module(&wm, stdout);
+    }
+    wat_module_fini(&wm);   
+  } else {
+    /* load/compile input files, fetch libraries, link */
+    wat_module_t wm; wat_module_buf_t wmb;
+    if (eoptind == argc) eusage("one or more input file expected");
+    wat_module_init(&wm); wat_module_buf_init(&wmb);
+    while (eoptind < argc) {
+      wat_module_t *pwm = wat_module_buf_newbk(&wmb);
+      ifile_arg = argv[eoptind++];
+      if (strsuf(ifile_arg, ".o") || strsuf(ifile_arg, ".wo") || strsuf(ifile_arg, ".wat")) {
+        logef("# loading object module from %s\n", ifile_arg);
+        read_wat_module(ifile_arg, pwm);
+        logef("# object module %s loaded\n", symname(pwm->name));
+      } else {
+        logef("# compiling source file %s\n", ifile_arg);
+        compile_module_to_wat(&libv, ifile_arg, pwm);
+        logef("# object module %s created\n", symname(pwm->name));
+      }
+    }
+    link_wat_modules(&wmb, &wm);
     write_wat_module(&wm, stdout);
     wat_module_fini(&wm);
-  } else {
-    compile_module(&libv, ifile_arg, ofile_arg);
+    wat_module_buf_fini(&wmb); 
   }
-  
+
   dsbfini(&libv);
   return EXIT_SUCCESS;
 }

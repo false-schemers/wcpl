@@ -48,7 +48,7 @@ pws_t *pws_from_modname(sym_t mod, buf_t *pbases)
       pws = newpws(chbsetf(&cb, "%s%s.wh", symname(*pb), symname(mod)));
       if (pws) break;
     }
-    if (pws) logef("# found module %s in %s (pws #%d)\n", symname(mod), chbdata(&cb), pwsid(pws));
+    if (pws) logef("# found %s module interface in %s (pws #%d)\n", symname(mod), chbdata(&cb), pwsid(pws));
     chbfini(&cb);
   }
   return pws;
@@ -495,7 +495,6 @@ void fini_symbols(void)
 {
   buffini(&g_syminfo);
   ndbfini(&g_nodes);
-  clearsyms();
 }
 
 static tt_t lookup_symbol(const char *name, int *pinfo)

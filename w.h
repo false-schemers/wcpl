@@ -526,11 +526,21 @@ typedef struct wat_module {
 } wat_module_t;
 
 extern wat_module_t* wat_module_init(wat_module_t* pm);
+extern void wat_module_clear(wat_module_t* pm);
 extern void wat_module_fini(wat_module_t* pm);
 
-/* write 'object' wat text module */
-extern void write_wat_module(wat_module_t* pm, FILE *pf);
-extern void read_wat_module(const char *fname, wat_module_t* pm);
+typedef buf_t wat_module_buf_t; 
+#define wat_module_buf_init(mem) bufinit(mem, sizeof(wat_module_t))
+extern void wat_module_buf_fini(wat_module_buf_t* pb);
+#define wat_module_buf_len(pb) buflen(pb)
+#define wat_module_buf_ref(pb, i) ((wat_module_t*)bufref(pb, i))
+#define wat_module_buf_newbk(pb) wat_module_init(bufnewbk(pb))
 
+/* read/write 'object' wat text module */
+extern void read_wat_module(const char *fname, wat_module_t* pm);
+extern void write_wat_module(wat_module_t* pm, FILE *pf);
+
+/* linker */
+extern void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm); 
 
 #endif /* ndef _W_H_INCLUDED */

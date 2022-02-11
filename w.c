@@ -1258,10 +1258,19 @@ void wat_module_fini(wat_module_t* pm)
   watfbfini(&pm->funcs);
 }
 
-static void wat_module_clear(wat_module_t* pm)
+void wat_module_clear(wat_module_t* pm)
 {
   wat_module_fini(pm);
   wat_module_init(pm);
+}
+
+void wat_module_buf_fini(wat_module_buf_t* pb)
+{
+  wat_module_t *pm; size_t i;
+  assert(pb); assert(pb->esz = sizeof(wat_module_t));
+  pm = (wat_module_t*)(pb->buf);
+  for (i = 0; i < pb->fill; ++i) wat_module_fini(pm+i);
+  buffini(pb);
 }
 
 
@@ -1322,9 +1331,9 @@ static void wat_imports(watibuf_t *pib)
       } break;
       case EK_GLOBAL: {
         if (pi->mut == MT_CONST) {
-          chbputf(g_watbuf, "(global $%s:%s %s", smod, sname, valtype_name(pi->vt));
+          chbputf(g_watbuf, "(global $%s:%s %s)", smod, sname, valtype_name(pi->vt));
         } else {
-          chbputf(g_watbuf, "(global $%s:%s (mut %s)", smod, sname, valtype_name(pi->vt));
+          chbputf(g_watbuf, "(global $%s:%s (mut %s))", smod, sname, valtype_name(pi->vt));
         }
       } break;
     }
@@ -1463,7 +1472,8 @@ void write_wat_module(wat_module_t* pm, FILE *pf)
   chbuf_t cb;
   g_watout = pf;
   g_watbuf = chbinit(&cb);
-  wat_linef("(module $%s", symname(pm->name));
+  if (!pm->name) wat_linef("(module");
+  else wat_linef("(module $%s", symname(pm->name));
   g_watindent += 2;
   wat_imports(&pm->imports);
   wat_defs(&pm->defs);
@@ -2485,6 +2495,18 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
   }
 }
 
+static void parse_import_name(sws_t *pw, wati_t *pi)
+{
+  if (peekt(pw) == WT_ID) {
+    sym_t mod, id;
+    parse_mod_id(pw, &mod, &id);
+    if (pi->mod != mod || pi->name != id)
+      seprintf(pw, "unconventional name $%s:%s ($%s:%s expected)", 
+        symname(mod), symname(id), symname(pi->mod), symname(pi->name));
+    dropt(pw);
+  }
+}
+
 static void parse_import_des(sws_t *pw, wati_t *pi)
 {
   chbuf_t cb = mkchb();
@@ -2492,6 +2514,7 @@ static void parse_import_des(sws_t *pw, wati_t *pi)
   if (ahead(pw, "global")) {
     dropt(pw);
     pi->ek = EK_GLOBAL;
+    parse_import_name(pw, pi);
     if (ahead(pw, "(")) {
       expect(pw, "(");
       expect(pw, "mut");
@@ -2628,6 +2651,17 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
       } else seprintf(pw, "unexpected function header field %s", pw->tokstr);
       expect(pw, ")");
     }
+    if (streql(symname(pf->id), "main")) {
+      if (vtblen(&pf->fs.restypes) != 1 || *vtbref(&pf->fs.restypes, 0) != VT_I32)
+        seprintf(pw, "invalid main() function return value");
+      if (vtblen(&pf->fs.partypes) == 0) 
+        pm->main = MAIN_VOID;
+      else if (vtblen(&pf->fs.partypes) == 2 && *vtbref(&pf->fs.restypes, 0) == VT_I32
+               && *vtbref(&pf->fs.restypes, 1) == VT_I32)
+        pm->main = MAIN_ARGC_ARGV;
+      else
+        seprintf(pw, "invalid main() function argument types");
+    }
     while (!ahead(pw, ")")) {
       inscode_t *pic = icbnewbk(&pf->code);
       parse_ins(pw, pic, &pf->code);
@@ -2653,9 +2687,71 @@ void read_wat_module(const char *fname, wat_module_t* pm)
   sws_t *pw = newsws(fname);
   if (pw) {
     wat_module_clear(pm);
+    pm->main = MAIN_ABSENT;
     parse_module(pw, pm);
     freesws(pw);
   } else {
     exprintf("cannot read object file: %s", fname);
   }
+}
+
+
+/* linker */
+
+void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
+{
+  size_t i, j, maini = SIZE_MAX, mainj = SIZE_MAX;
+  sym_t mainid = intern("main"), mainmod = 0; main_t mt;
+  buf_t curmodnames = mkbuf(sizeof(sym_t)); /* in pwb */
+  buf_t extmodnames = mkbuf(sizeof(sym_t)); /* not in pwb */
+
+  /* find main() function, collect dependencies */
+  for (i = 0; i < wat_module_buf_len(pwb); ++i) {
+    wat_module_t* pmi = wat_module_buf_ref(pwb, i);
+    /* check for main */
+    if (pmi->main != MAIN_ABSENT) {
+      if (mainmod) 
+        exprintf("duplicate main() in %s and %s modules", 
+          symname(mainmod), symname(pmi->name));
+      mainmod = pmi->name; maini = i; mt = pmi->main;
+      assert(mainj == SIZE_MAX);
+      for (j = 0; j < watfblen(&pmi->funcs); ++j) {
+        watf_t *pf = watfbref(&pmi->funcs, j);
+        if (pf->id == mainid) {
+          assert(pf->mod == mainmod);
+          if (mainj != SIZE_MAX)
+            exprintf("duplicate main() in %s module", 
+              symname(mainmod));
+          mainj = j;
+        } 
+      }
+    }
+    /* trace dependencies */
+    for (j = 0; j < watiblen(&pmi->imports); ++j) {
+      wati_t *pi = watibref(&pmi->imports, j);
+      if (bufsearch(&extmodnames, &pi->mod, sym_cmp) == NULL)
+        *(sym_t*)bufnewbk(&extmodnames) = pi->mod;
+    }
+    if (bufsearch(&curmodnames, &pmi->name, sym_cmp) != NULL)
+      exprintf("duplicate module: %s", symname(pmi->name));
+    else *(sym_t*)bufnewbk(&curmodnames) = pmi->name;
+  }
+  if (maini == SIZE_MAX ||mainj == SIZE_MAX)
+    logef("error: main() function not found\n"); /* fixme: should be exprintf */
+  else logef("# main() found in %s module\n", symname(mainmod));
+
+  /* add missing library modules */
+  for (i = 0; i < buflen(&extmodnames); ++i) {
+    sym_t *pmn = bufref(&extmodnames, i);
+    if (bufsearch(&curmodnames, pmn, sym_cmp) == NULL) {
+      logef("# found library dependence: %s module\n", symname(*pmn));
+      /* todo: locate it and load it!! */
+    }
+  }
+  
+  //for (i = 0; i < wat_module_buf_len(pwb); ++i) {
+  //  wat_module_t* pmi = wat_module_buf_ref(pwb, i);  
+  //}  
+
+  buffini(&curmodnames);
 }
