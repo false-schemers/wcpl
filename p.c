@@ -48,7 +48,7 @@ pws_t *pws_from_modname(sym_t mod, buf_t *pbases)
       pws = newpws(chbsetf(&cb, "%s%s.wh", symname(*pb), symname(mod)));
       if (pws) break;
     }
-    if (pws) logef("# found module %s in %s (pws #%d)\n", symname(mod), chbdata(&cb), pws->id);
+    if (pws) logef("# found module %s in %s (pws #%d)\n", symname(mod), chbdata(&cb), pwsid(pws));
     chbfini(&cb);
   }
   return pws;
@@ -56,6 +56,33 @@ pws_t *pws_from_modname(sym_t mod, buf_t *pbases)
 
 
 /* parser workspaces */
+struct pws {
+  int id;             /* sequential id of this pws or -1 */
+  dstr_t infile;      /* current input file name or "-" */
+  sym_t curmod;       /* current module name or 0 */
+  FILE *input;        /* current input stream */
+  bool inateof;       /* current input is exausted */  
+  chbuf_t inchb;      /* input buffer for parser */  
+  buf_t lsposs;       /* line start positions */  
+  size_t discarded;   /* count of discarded chars */  
+  chbuf_t chars;      /* line buffer of chars */
+  int curi;           /* current input position in buf */
+  bool gottk;         /* lookahead token is available */
+  tt_t ctk;           /* lookahead token type */
+  chbuf_t token;      /* lookahead token char data */
+  char *tokstr;       /* lookahead token string */
+  int pos;            /* absolute pos of la token start */
+}; /* pws_t */
+
+int pwsid(pws_t *pw)
+{
+  return pw->id;
+}
+
+sym_t pwscurmod(pws_t *pw)
+{
+  return pw->curmod;
+}
 
 static buf_t g_pwsbuf;
 
@@ -532,7 +559,7 @@ const node_t *lookup_eus_type(ts_t ts, sym_t name)
 /* tokenizer */
 
 /* split input into tokens */
-tt_t lex(pws_t *pw, chbuf_t *pcb)
+static tt_t lex(pws_t *pw, chbuf_t *pcb)
 {
   char *tbase = chbdata(&pw->chars);
   int *pcuri = &pw->curi;
@@ -818,7 +845,6 @@ state_10:
     chbputc(c, pcb);
     goto state_44;
   } else if (is8chead(c)) { 
-    /* esl: this whole branch is added manually! */
     int u = c & 0xFF;
     if (u < 0xE0) { chbputc(c, pcb); goto state_10d; }
     if (u < 0xF0) { chbputc(c, pcb); goto state_10dd; }
@@ -834,7 +860,6 @@ state_10:
     unreadchar();
     goto err;
   }
-/* esl: all 'd' states were added manually */
 state_10ddddd:
   readchar();
   if (c == EOF) {

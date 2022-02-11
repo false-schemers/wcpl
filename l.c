@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <wchar.h>
+#include <math.h>
 #include "l.h"
 
 /* globals */
@@ -804,7 +805,10 @@ void chbputll(long long val, chbuf_t* pb)
 void chbputg(double v, chbuf_t* pb)
 {
   char buf[100];
-  sprintf(buf, "%.17g", v); /* see WCSSKAFPA paper */
+  if (v != v) strcpy(buf, "+nan"); 
+  else if (v <= -HUGE_VAL) strcpy(buf, "-inf");
+  else if (v >= HUGE_VAL)  strcpy(buf, "+inf");
+  else sprintf(buf, "%.17g", v); /* see WCSSKAFPA paper */
   chbputs(buf, pb);
 }
 

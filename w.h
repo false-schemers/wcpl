@@ -530,6 +530,7 @@ extern void wat_module_fini(wat_module_t* pm);
 
 /* write 'object' wat text module */
 extern void write_wat_module(wat_module_t* pm, FILE *pf);
+extern void read_wat_module(const char *fname, wat_module_t* pm);
 
 
 #endif /* ndef _W_H_INCLUDED */

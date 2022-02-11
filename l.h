@@ -12,15 +12,6 @@
 #if !defined(true) && !defined(__cplusplus) && !defined(inline) /* cutil hack */ 
 typedef enum { false = 0, true = 1 } bool;
 #endif
-#if !defined(NELEMS) /* cutil hack */
-#define NELEMS(a) (sizeof(a) / sizeof(a[0]))
-#endif
-#if !defined(MIN) /* cutil hack */
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
-#endif
-#if !defined(MAX) /* cutil hack */
-#define MAX(x, y) ((x) > (y) ? (x) : (y))
-#endif
 
 /* argument parsing and usage */
 extern  void  setprogname(const char *s);
@@ -88,7 +79,7 @@ extern void dssets(dstr_t* pds, const char *s);
 extern int dstr_cmp(const void *pds1, const void *pds2);
 
 /* simple dynamic memory buffers */
-typedef struct buf_tag {
+typedef struct buf {
   size_t esz; /* element size in bytes */
   void*  buf; /* data (never NULL) */
   size_t fill; /* # of elements used */

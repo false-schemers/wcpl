@@ -6,10 +6,10 @@
 /* module names and files */
 extern sym_t base_from_path(const char *path);
 extern sym_t modname_from_path(const char *fname);
-extern struct pws_tag *pws_from_modname(sym_t mod, buf_t *pbases);
+extern struct pws *pws_from_modname(sym_t mod, buf_t *pbases);
 
 /* lexical token types */
-typedef enum tt_tag {
+typedef enum tt {
   TT_WHITESPACE,  TT_IDENTIFIER,  TT_INT,         TT_UINT,
   TT_LONG,        TT_ULONG,       TT_LLONG,       TT_ULLONG,
   TT_FLOAT,       TT_DOUBLE,      /* no LDOUBLE / VEC128 */
@@ -39,23 +39,7 @@ typedef enum tt_tag {
 } tt_t;
 
 /* parser workspaces */
-typedef struct pws_tag {
-  int id;             /* sequential id of this pws or -1 */
-  dstr_t infile;      /* current input file name or "-" */
-  sym_t curmod;       /* current module name or 0 */
-  FILE *input;        /* current input stream */
-  bool inateof;       /* current input is exausted */  
-  chbuf_t inchb;      /* input buffer for parser */  
-  buf_t lsposs;       /* line start positions */  
-  size_t discarded;   /* count of discarded chars */  
-  chbuf_t chars;      /* line buffer of chars */
-  int curi;           /* current input position in buf */
-  bool gottk;         /* lookahead token is available */
-  tt_t ctk;           /* lookahead token type */
-  chbuf_t token;      /* lookahead token char data */
-  char *tokstr;       /* lookahead token string */
-  int pos;            /* absolute pos of la token start */
-} pws_t;
+typedef struct pws pws_t;
 
 extern void init_workspaces(void);
 extern void fini_workspaces(void);
@@ -64,6 +48,9 @@ extern void fini_workspaces(void);
 extern pws_t *newpws(const char *infile);
 /* close existing workspace, leaving only data used for error reporting */
 extern void closepws(pws_t *pw);
+/* access to pws public fields */
+extern int pwsid(pws_t *pw);
+extern sym_t pwscurmod(pws_t *pw);
 
 /* buffers of grammar nodes */
 #define ndbuf_t buf_t
@@ -74,19 +61,17 @@ extern ndbuf_t g_nodes; /* nodes referred to by some syminfos */
 extern void init_symbols(void);
 extern void fini_symbols(void);
 
-/* split input into tokens */
-extern tt_t lex(pws_t *pw, chbuf_t *pcb);
 /* report parsing error, possibly printing location information, and exit */
 extern void reprintf(pws_t *pw, int startpos, const char *fmt, ...);
 
 /* storage class specifier */
-typedef enum sc_tag {
+typedef enum sc {
   SC_NONE,   SC_EXTERN,  SC_STATIC,
   SC_AUTO,   SC_REGISTER
 } sc_t;
 
 /* base type specifier */
-typedef enum ts_tag {
+typedef enum ts {
   /* pseudo-types: */        TS_VOID,     TS_ETC, 
   TS_CHAR,     TS_UCHAR,     TS_SHORT,    TS_USHORT,
   TS_INT,      TS_UINT,      TS_LONG,     TS_ULONG,
@@ -96,14 +81,14 @@ typedef enum ts_tag {
 } ts_t;
 
 /* intrinsics and special forms */
-typedef enum intr_tag {
+typedef enum intr {
   INTR_NONE,   INTR_ALLOCA,  INTR_FREEA,
   INTR_SIZEOF, INTR_ALIGNOF, INTR_OFFSETOF,
   INTR_VAETC,  INTR_VAARG,   INTR_SASSERT
 } intr_t;
 
 /* grammar node data type */
-typedef enum nt_tag {
+typedef enum nt {
   NT_NULL = 0,    /* NOP */
   NT_LITERAL,     /* numerical/char/string literals */
   NT_IDENTIFIER,  /* variable reference */
@@ -140,7 +125,7 @@ typedef enum nt_tag {
   NT_IMPORT,      /* m t (symbol table only) */
 } nt_t;
 
-typedef struct node_tag {
+typedef struct node {
   nt_t nt;        /* node type */
   int pwsid;      /* id of origin pws */
   int startpos;   /* start position in origin pws */

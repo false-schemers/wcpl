@@ -9,6 +9,8 @@
 #include <errno.h>
 #include <assert.h>
 #include <wchar.h>
+#include <ctype.h>
+#include <math.h>
 #include "l.h"
 #include "w.h"
 
@@ -1151,14 +1153,14 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       break;
     case INSIG_F32:
       if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
-      else chbputf(pcb, " %g", (double)pic->arg.f); 
+      else { chbputc(' ', pcb); chbputg((double)pic->arg.f, pcb); }
       break;
     case INSIG_F64:
       if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
-      else chbputf(pcb, " %g", pic->arg.d); 
+      else { chbputc(' ', pcb); chbputg(pic->arg.d, pcb); } 
       break;
     case INSIG_LS_L:
-      chbputf(pcb, " (see next %llu+1 branches)", pic->arg.u);
+      chbputf(pcb, " (; see next %llu+1 branches ;)", pic->arg.u);
       break; /* takes multiple inscodes, should be taken care of by caller */
     default:
       assert(false);     
@@ -1251,6 +1253,12 @@ void wat_module_fini(wat_module_t* pm)
   watibfini(&pm->defs);
   watdbfini(&pm->dsegs);
   watfbfini(&pm->funcs);
+}
+
+static void wat_module_clear(wat_module_t* pm)
+{
+  wat_module_fini(pm);
+  wat_module_init(pm);
 }
 
 
@@ -1378,12 +1386,16 @@ static void wat_dsegs(watdbuf_t *pdb)
     chbclear(g_watbuf);
     chbsetf(g_watbuf, "(data $%s:%s \"", smod, sname);
     for (i = 0; i < n; ++i) {
-      unsigned c = pc[i]; char *s = NULL;
+      unsigned c = pc[i]; char ec = 0;
       switch (c) {
-        case 0x09: s = "t";   case 0x0A: s = "n";   case 0x0D: s = "r";
-        case 0x22: s = "\"";  case 0x27: s = "\'";  case 0x5C: s = "\\";
+        case 0x09: ec = 't';  break; 
+        case 0x0A: ec = 'n';  break;
+        case 0x0D: ec = 'r';  break;
+        case 0x22: ec = '\"'; break;
+        case 0x27: ec = '\''; break;
+        case 0x5C: ec = '\\'; break;
       }
-      if (s) chbputf(g_watbuf, "\\%s", s);
+      if (ec) chbputf(g_watbuf, "\\%c", ec);
       else if (' ' <= c && c <= 127) chbputc(c, g_watbuf); 
       else chbputf(g_watbuf, "\\%x%x", (c>>4)&0xF, c&0xF);
     }
@@ -1458,4 +1470,904 @@ void write_wat_module(wat_module_t* pm, FILE *pf)
   g_watout = NULL;
   chbfini(&cb);
   g_watbuf = NULL;
+}
+
+
+/* read object wat text module */
+
+/* wasm token types */
+typedef enum wt_tag {
+  WT_WHITESPACE, WT_LC, WT_BC,
+  WT_BCSTART, WT_IDCHARS, /* internal */
+  WT_KEYWORD, WT_ID, WT_RESERVED,
+  WT_INT, WT_FLOAT, WT_STRING,
+  WT_LPAR, WT_RPAR, WT_EOF = -1
+} wt_t;
+
+/* scanner workspace */
+typedef struct sws {
+  dstr_t infile;      /* current input file name or "-" */
+  FILE *input;        /* current input stream */
+  int lno;            /* current line no. (0-based) */
+  bool inateof;       /* current input is exausted */  
+  chbuf_t chars;      /* line buffer of chars */
+  int curi;           /* current input position in line */
+  bool gottk;         /* lookahead token is available */
+  wt_t ctk;           /* lookahead token type */
+  chbuf_t token;      /* lookahead token char data */
+  char *tokstr;       /* lookahead token string */
+  int posl;           /* lno of la token start */
+  int posi;           /* posi of la token start */
+} sws_t;
+
+/* alloc scanner workspace for infile */
+sws_t *newsws(const char *infile)
+{
+  FILE *fp;
+  fp = streql(infile, "-") ? stdin : fopen(infile, "r");
+  if (fp) {
+    sws_t *pw = exmalloc(sizeof(sws_t));
+    pw->infile = exstrdup(infile);
+    pw->input = fp;
+    pw->lno = 0;
+    pw->inateof = false;
+    bufinit(&pw->chars, sizeof(char));
+    fget8bom(pw->input);
+    pw->curi = 0; 
+    pw->gottk = false;
+    pw->ctk = WT_EOF;
+    chbinit(&pw->token);
+    pw->tokstr = NULL;
+    pw->posl = 0;
+    pw->posi = 0;
+    return pw;
+  }
+  return NULL;
+}
+
+static void freesws(sws_t *pw)
+{
+  if (pw) {
+    free(pw->infile);
+    if (pw->input && pw->input != stdin) fclose(pw->input);
+    chbfini(&pw->chars);
+    chbfini(&pw->token);
+    free(pw);
+  }
+}
+
+/* try to get new line of input so parsing can continue */
+static int fetchline(sws_t *pw, char **ptbase, int *pendi)
+{
+  chbuf_t *pp = &pw->chars; int c = EOF;
+  chbclear(pp);
+  if (!pw->inateof) {
+    char *line = fgetlb(pp, pw->input);
+    if (!line) {
+      pw->inateof = true;
+    } else {
+      chbputc('\n', pp);
+      c = '\n';
+      pw->lno += 1;
+      pw->curi = 0;
+      *ptbase = chbdata(pp);
+      *pendi = (int)chblen(pp);
+    }
+  }
+  return c;  
+}
+
+/* lexer: splits input into lexemes delivered via char queue */
+static wt_t lex(sws_t *pw, chbuf_t *pcb)
+{
+  char *tbase = chbdata(&pw->chars);
+  int *pcuri = &pw->curi;
+  int endi = (int)chblen(&pw->chars);
+  int c;
+#define readchar() c = *pcuri < endi ? tbase[(*pcuri)++] : fetchline(pw, &tbase, &endi)
+#define unreadchar() (*pcuri)--
+  chbclear(pcb);
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (c == '\"') {
+    chbputc(c, pcb);
+    goto state_9;
+  } else if (c == '0') {
+    chbputc(c, pcb);
+    goto state_8;
+  } else if ((c >= '1' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_7;
+  } else if (c == '+' || c == '-') {
+    chbputc(c, pcb);
+    goto state_6;
+  } else if (c == '!' || (c >= '#' && c <= '\'') || c == '*' || (c >= '.' && c <= '/') || c == ':' || (c >= '<' && c <= 'Z') || c == '\\' || (c >= '^' && c <= 'z') || c == '|' || c == '~') {
+    chbputc(c, pcb);
+    goto state_5;
+  } else if (c == ')') {
+    chbputc(c, pcb);
+    goto state_4;
+  } else if (c == '(') {
+    chbputc(c, pcb);
+    goto state_3;
+  } else if (c == ';') {
+    chbputc(c, pcb);
+    goto state_2;
+  } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
+    chbputc(c, pcb);
+    goto state_1;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_1:
+  readchar();
+  if (c == EOF) {
+    return WT_WHITESPACE;
+  } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
+    chbputc(c, pcb);
+    goto state_1;
+  } else {
+    unreadchar();
+    return WT_WHITESPACE;
+  }
+state_2:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (c == ';') {
+    chbputc(c, pcb);
+    goto state_34;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_3:
+  readchar();
+  if (c == EOF) {
+    return WT_LPAR;
+  } else if (c == ';') {
+    chbputc(c, pcb);
+    goto state_33;
+  } else {
+    unreadchar();
+    return WT_LPAR;
+  }
+state_4:
+  return WT_RPAR;
+state_5:
+  readchar();
+  if (c == EOF) {
+    return WT_IDCHARS;
+  } else if (c == '!' || (c >= '#' && c <= '\'') || (c >= '*' && c <= ':') || (c >= '<' && c <= 'Z') || c == '\\' || (c >= '^' && c <= 'z') || c == '|' || c == '~') {
+    chbputc(c, pcb);
+    goto state_5;
+  } else {
+    unreadchar();
+    return WT_IDCHARS;
+  }
+state_6:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (c == '0') {
+    chbputc(c, pcb);
+    goto state_31;
+  } else if ((c >= '1' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_30;
+  } else if (c == 'i') {
+    chbputc(c, pcb);
+    readchar();
+    if (c == 'n') {
+      chbputc(c, pcb);
+      readchar();
+      if (c == 'f') {
+        chbputc(c, pcb);
+        return WT_FLOAT;
+      }
+    }
+    goto err;
+  } else if (c == 'n') {
+    chbputc(c, pcb);
+    readchar();
+    if (c == 'a') {
+      chbputc(c, pcb);
+      readchar();
+      if (c == 'n') {
+        chbputc(c, pcb);
+        return WT_FLOAT;
+      }
+    }
+    goto err;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_7:
+  readchar();
+  if (c == EOF) {
+    return WT_INT;
+  } else if (c == '.') {
+    chbputc(c, pcb);
+    goto state_22;
+  } else if (c == 'E' || c == 'e') {
+    chbputc(c, pcb);
+    goto state_21;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_7;
+  } else {
+    unreadchar();
+    return WT_INT;
+  }
+state_8:
+  readchar();
+  if (c == EOF) {
+    return WT_INT;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_23;
+  } else if (c == '.') {
+    chbputc(c, pcb);
+    goto state_22;
+  } else if (c == 'E' || c == 'e') {
+    chbputc(c, pcb);
+    goto state_21;
+  } else if (c == 'x') {
+    chbputc(c, pcb);
+    goto state_20;
+  } else {
+    unreadchar();
+    return WT_INT;
+  }
+state_9:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (c == '\"') {
+    chbputc(c, pcb);
+    goto state_13;
+  } else if (c == '\\') {
+    chbputc(c, pcb);
+    goto state_12;
+  } else if (is8chead(c)) { 
+    int u = c & 0xFF;
+    if (u < 0xE0) { chbputc(c, pcb); goto state_10d; }
+    if (u < 0xF0) { chbputc(c, pcb); goto state_10dd; }
+    if (u < 0xF8) { chbputc(c, pcb); goto state_10ddd; }
+    if (u < 0xFC) { chbputc(c, pcb); goto state_10dddd; }
+    if (u < 0xFE) { chbputc(c, pcb); goto state_10ddddd; }
+    unreadchar();
+    goto err;
+  } else if (!(c == '\n' || c == '\"' || c == '\\')) {
+    chbputc(c, pcb);
+    goto state_9;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_10ddddd:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (is8ctail(c)) {
+    chbputc(c, pcb);
+    goto state_10dddd;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_10dddd:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (is8ctail(c)) {
+    chbputc(c, pcb);
+    goto state_10ddd;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_10ddd:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (is8ctail(c)) {
+    chbputc(c, pcb);
+    goto state_10dd;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_10dd:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (is8ctail(c)) {
+    chbputc(c, pcb);
+    goto state_10d;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_10d:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (is8ctail(c)) {
+    chbputc(c, pcb);
+    goto state_9;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_12:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (c == 'u') {
+    chbputc(c, pcb);
+    goto state_16;
+  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+    unreadchar();
+    goto state_15;
+  } else if ((c >= '\t' && c <= '\n') || c == '\r' || c == ' ') {
+    chbputc(c, pcb);
+    goto state_14;
+  } else if (c == '\"' || c == '\'' || c == '\\' || c == 'n' || c == 'r' || c == 't') {
+    chbputc(c, pcb);
+    goto state_9;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_13:
+  return WT_STRING;
+state_14:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '\t' && c <= '\n') || c == '\r' || c == ' ') {
+    chbputc(c, pcb);
+    goto state_14;
+  } else if (c == '\\') {
+    chbputc(c, pcb);
+    goto state_9;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_15:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+    chbputc(c, pcb);
+    goto state_19;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_16:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (c == '{') {
+    chbputc(c, pcb);
+    goto state_17;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_17:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+    chbputc(c, pcb);
+    goto state_18;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_18:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+    chbputc(c, pcb);
+    goto state_18;
+  } else if (c == '}') {
+    chbputc(c, pcb);
+    goto state_9;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_19:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+    chbputc(c, pcb);
+    goto state_9;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_20:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+    chbputc(c, pcb);
+    goto state_29;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_21:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_28;
+  } else if (c == '+' || c == '-') {
+    chbputc(c, pcb);
+    goto state_27;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_22:
+  readchar();
+  if (c == EOF) {
+    return WT_FLOAT;
+  } else if (c == 'E' || c == 'e') {
+    chbputc(c, pcb);
+    goto state_24;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_22;
+  } else {
+    unreadchar();
+    return WT_FLOAT;
+  }
+state_23:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_23;
+  } else if (c == '.') {
+    chbputc(c, pcb);
+    goto state_22;
+  } else if (c == 'E' || c == 'e') {
+    chbputc(c, pcb);
+    goto state_21;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_24:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_26;
+  } else if (c == '+' || c == '-') {
+    chbputc(c, pcb);
+    goto state_25;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_25:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_26;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_26:
+  readchar();
+  if (c == EOF) {
+    return WT_FLOAT;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_26;
+  } else {
+    unreadchar();
+    return WT_FLOAT;
+  }
+state_27:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_28;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_28:
+  readchar();
+  if (c == EOF) {
+    return WT_FLOAT;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_28;
+  } else {
+    unreadchar();
+    return WT_FLOAT;
+  }
+state_29:
+  readchar();
+  if (c == EOF) {
+    return WT_INT;
+  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+    chbputc(c, pcb);
+    goto state_29;
+  } else {
+    unreadchar();
+    return WT_INT;
+  }
+state_30:
+  readchar();
+  if (c == EOF) {
+    return WT_INT;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_30;
+  } else if (c == '.') {
+    chbputc(c, pcb);
+    goto state_22;
+  } else {
+    unreadchar();
+    return WT_INT;
+  }
+state_31:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_32;
+  } else if (c == '.') {
+    chbputc(c, pcb);
+    goto state_22;
+  } else if (c == 'x') {
+    chbputc(c, pcb);
+    goto state_20;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_32:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_32;
+  } else if (c == '.') {
+    chbputc(c, pcb);
+    goto state_22;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_33:
+  return WT_BCSTART;
+state_34:
+  readchar();
+  if (c == EOF) {
+    goto eoferr;
+  } else if (!(c == '\n')) {
+    chbputc(c, pcb);
+    goto state_35;
+  } else {
+    chbputc(c, pcb);
+    goto state_36;
+  }
+state_35:
+  readchar();
+  if (c == EOF) {
+    goto eoferr;
+  } else if (!(c == '\n')) {
+    chbputc(c, pcb);
+    goto state_35;
+  } else {
+    chbputc(c, pcb);
+    goto state_36;
+  }
+state_36:
+  return WT_LC;
+
+  err:
+  eoferr:
+    return WT_EOF;
+#undef readchar
+#undef unreadchar
+}
+
+/* report error, possibly printing location information */
+static void vseprintf(sws_t *pw, const char *fmt, va_list args)
+{
+  chbuf_t cb = mkchb(); const char *s;
+  int ln = 0, off = 0; assert(fmt);
+  if (pw && pw->infile) chbputf(&cb, "%s:", pw->infile);
+  if (pw) {
+    ln = pw->posl, off = pw->posi;
+    if (ln > 0) chbputf(&cb, "%d:%d:", ln, off+1);
+  }
+  fflush(stdout); 
+  if (chblen(&cb) > 0) {
+    chbputc(' ', &cb);
+    fputs(chbdata(&cb), stderr);
+  }
+  vfprintf(stderr, fmt, args); 
+  fputc('\n', stderr);
+  if (pw && ln > 0 && (s = chbdata(&pw->chars)) != NULL) {
+    fputs(s, stderr); fputc('\n', stderr);
+    while (off-- > 0) fputc(' ', stderr);
+    fputs("^\n", stderr);
+  }
+  fflush(stderr); 
+  chbfini(&cb);
+}
+
+/* report error, possibly printing location information, and exit */
+void seprintf(sws_t *pw, const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt); 
+  vseprintf(pw, fmt, args); 
+  va_end(args); 
+  exit(1);
+}
+
+static bool lexbc(sws_t *pw, chbuf_t *pcb) 
+{
+  char *tbase = chbdata(&pw->chars);
+  int *pcuri = &pw->curi;
+  int endi = (int)chblen(&pw->chars);
+  int c;
+#define readchar() c = *pcuri < endi ? tbase[(*pcuri)++] : fetchline(pw, &tbase, &endi)
+  while (true) {
+    readchar();
+    if (c == EOF) return false;
+    chbputc(c, pcb);
+    if (c == '(') {
+      readchar();
+      if (c == EOF) return false;
+      chbputc(c, pcb);
+      if (c == ';') {
+        if (!lexbc(pw, pcb)) return false;
+      }      
+    } else if (c == ';') {
+      readchar();
+      if (c == EOF) return false;
+      chbputc(c, pcb);
+      if (c == ')') return true;
+    }
+  }  
+#undef readchar
+}
+
+static wt_t peekt(sws_t *pw) 
+{ 
+  if (!pw->gottk) {
+    do { /* fetch next non-whitespace token */
+      pw->posl = pw->lno, pw->posi = pw->curi; 
+      pw->ctk = lex(pw, &pw->token);
+      if (pw->ctk == WT_EOF && !pw->inateof) {
+        assert(false);
+        seprintf(pw, "illegal token"); 
+      }
+      switch (pw->ctk) {
+        case WT_IDCHARS: {
+          char *s = chbdata(&pw->token);
+          if (*s == '$') pw->ctk = WT_ID;
+          else if ('a' <= *s && *s <= 'z') pw->ctk = WT_KEYWORD; 
+          else pw->ctk = WT_RESERVED;
+        } break;
+        case WT_BCSTART: {
+          pw->ctk = WT_EOF;
+          if (lexbc(pw, &pw->token)) pw->ctk = WT_BC;
+          else seprintf(pw, "invalid block comment");
+        }; 
+      }
+    } while (WT_WHITESPACE <= pw->ctk && pw->ctk <= WT_BC); 
+    pw->gottk = true; 
+    pw->tokstr = chbdata(&pw->token); 
+  } 
+  return pw->ctk; 
+}
+
+static int peekc(sws_t *pw)
+{
+  return chbdata(&pw->chars)[pw->curi];
+} 
+
+static void dropt(sws_t *pw) 
+{ 
+  pw->gottk = false; 
+} 
+
+void scan_integer(sws_t *pw, const char *s, numval_t *pv)
+{
+  char *e; errno = 0;
+  if (*s == '-') pv->i = strtoll(s, &e, 0); /* reads -0x... syntax too */
+  else pv->u = strtoull(s, &e, 0); /* reads hex 0x... syntax too */
+  if (errno || *e != 0) seprintf(pw, "invalid integer literal");
+}
+
+double scan_float(sws_t *pw, const char *s)
+{
+  double d; char *e; errno = 0; 
+  if (streql(s, "+nan")) return HUGE_VAL - HUGE_VAL;
+  if (streql(s, "+inf")) return HUGE_VAL;
+  if (streql(s, "-inf")) return -HUGE_VAL;
+  d = strtod(s, &e);
+  if (errno || *e != 0) seprintf(pw, "invalid floating-point literal");
+  return d;
+}
+
+/* size of buffer large enough to hold char escapes */
+#define SBSIZE 32
+/* convert a single WAT text escape sequence (-1 on error) */
+unsigned long strtowatec(const char *s, char** ep)
+{
+  char buf[SBSIZE+1]; int c; unsigned long l;
+  assert(s);
+  if (!*s) goto err;
+  c = *s++;
+  if (c == '\\') {
+    switch (c = *s++) {
+      case 't':  l = 0x09; break;
+      case 'n':  l = 0x0A; break;
+      case 'r':  l = 0x0D; break;
+      case '\\': l = 0x5C; break;
+      case '\'': l = 0x27; break;
+      case '\"': l = 0x22; break;
+      case 'x': {
+        int i = 0; 
+        if (*s++ != '{') goto err;
+        while (i < SBSIZE && (c = *s++) && isxdigit(c))
+          buf[i++] = c;
+        if (i == SBSIZE) goto err;
+        buf[i] = 0; 
+        l = strtoul(buf, NULL, 16);
+        if (c != '}') goto err;
+      } break;
+      default:
+        goto err;
+    }
+  } else {
+    l = c & 0xff;
+  }
+  if (ep) *ep = (char*)s; 
+  return l;
+err:
+  if (ep) *ep = (char*)s;
+  errno = EINVAL;
+  return (unsigned long)(-1);
+}
+
+void scan_string(sws_t *pw, const char *s, chbuf_t *pcb)
+{
+  int c = *s++; assert(c == '"');
+  chbclear(pcb);
+  while (*s != '"') {
+    c = *s; errno = 0;
+    if (is8ctail(c)) goto err;
+    if (is8chead(c)) { 
+      char *e; unsigned long ul = strtou8c(s, &e); 
+      if (errno || ul > 0x10FFFFUL) goto err;
+      chbput(s, e-s, pcb); /* as-is! */
+      s = e;
+    } else if (c == '\\' && isxdigit(s[1]) && isxdigit(s[2])) {
+      int b, h; 
+      c = tolower(s[1]); h = ('0' <= c && c <= '9') ? c-'0' : 10+c-'a'; b = h << 4;
+      c = tolower(s[2]); h = ('0' <= c && c <= '9') ? c-'0' : 10+c-'a'; b = b | h;
+      chbputc(b, pcb);
+      s += 3;
+    } else if (c == '\\') {
+      char *e; unsigned long ul = strtowatec(s, &e);
+      if (errno || ul > 0x10FFFFUL) goto err;
+      chbputlc(ul, pcb); /* in utf-8 */
+      s = e;
+    } else {
+      chbputc(c, pcb);
+      s += 1;
+    }
+  }
+  c = *++s; assert(c == 0);
+  return;
+err:
+  seprintf(pw, "invalid string literal");
+}
+
+
+static void parse_module(sws_t *pw, wat_module_t* pm)
+{
+  wt_t tk; chbuf_t cb = mkchb();
+  while ((tk = peekt(pw)) != WT_EOF) {
+    char *n = NULL;
+    switch (tk) {
+      case WT_WHITESPACE: n = "WT_WHITESPACE"; break;
+      case WT_LC: n = "WT_LC"; break;
+      case WT_BC: n = "WT_BC"; break;
+      case WT_BCSTART: n = "WT_BCSTART"; break;
+      case WT_IDCHARS: n = "WT_IDCHARS"; break;
+      case WT_KEYWORD: n = "WT_KEYWORD"; break; 
+      case WT_ID: n = "WT_ID"; break; 
+      case WT_RESERVED: n = "WT_RESERVED"; break;
+      case WT_INT: n = "WT_INT"; break;
+      case WT_FLOAT: n = "WT_FLOAT"; break;
+      case WT_STRING: n = "WT_STRING"; break;
+      case WT_LPAR: n = "WT_LPAR"; break;
+      case WT_RPAR: n = "WT_RPAR"; break;
+      default: assert(false);
+    } 
+    fprintf(stderr, "%s: [%s]", n, pw->tokstr);
+    if (tk == WT_INT) {
+      numval_t v; scan_integer(pw, pw->tokstr, &v);
+      chbclear(&cb); 
+      if (v.i < 0) chbputll(v.i, &cb); else chbputllu(v.u, &cb);
+      fprintf(stderr, " = [%s]", chbdata(&cb));
+    } else if (tk == WT_FLOAT) {
+      double d = scan_float(pw, pw->tokstr);
+      chbclear(&cb); chbputg(d, &cb);
+      fprintf(stderr, " = [%s]", chbdata(&cb));
+    } else if (tk == WT_STRING) {
+      chbuf_t scb = mkchb();
+      unsigned char *pc; size_t i, n;
+      scan_string(pw, pw->tokstr, &scb);
+      pc = scb.buf; n = scb.fill;
+      chbclear(&cb);
+      for (i = 0; i < n; ++i) {
+        unsigned c = pc[i]; char ec = 0;
+        switch (c) {
+          case 0x09: ec = 't';  break; 
+          case 0x0A: ec = 'n';  break;
+          case 0x0D: ec = 'r';  break;
+          case 0x22: ec = '\"'; break;
+          case 0x27: ec = '\''; break;
+          case 0x5C: ec = '\\'; break;
+        }
+        if (ec) chbputf(&cb, "\\%c", ec);
+        else if (' ' <= c && c <= 127) chbputc(c, &cb); 
+        else chbputf(&cb, "\\%x%x", (c>>4)&0xF, c&0xF);
+      }
+      fprintf(stderr, " = [\"%s\"]", chbdata(&cb));
+      chbfini(&scb);
+    }
+    fprintf(stderr, "\n");
+    dropt(pw);
+  }
+  chbfini(&cb);
+}
+
+void read_wat_module(const char *fname, wat_module_t* pm)
+{
+  sws_t *pw = newsws(fname);
+  if (pw) {
+    wat_module_clear(pm);
+    parse_module(pw, pm);
+    freesws(pw);
+  } else {
+    exprintf("cannot read object file: %s", fname);
+  }
 }

@@ -25,7 +25,7 @@ static sym_t g_sp_id;  /* id for stack pointer global */
 static sym_t g_wasi_mod; /* module for wasi */
 
 /* g_dsmap element */
-typedef struct dsmelt_tag {
+typedef struct dsmelt {
   chbuf_t cb; /* data segment data */
   size_t ind; /* unique index within this map */
 } dsmelt_t;
@@ -789,9 +789,9 @@ static void fundef_check_type(node_t *ptn)
 }
 
 /* hoist_locals environment data type */ 
-typedef struct henv_tag {
+typedef struct henv {
   buf_t idmap; /* pairs of symbols <old, new> */
-  struct henv_tag *up; 
+  struct henv *up; 
 } henv_t;
 
 /* return new name given oname; 0 if not found */
@@ -916,7 +916,7 @@ static void fundef_hoist_locals(node_t *pdn)
 }
 
 /* local variable info for wasmify */
-typedef struct vi_tag {
+typedef struct vi {
   sym_t name;  /* var name in source code (possibly after renaming) */
   sc_t sc;     /* SC_REGISTER or SC_AUTO only */
   sym_t reg;   /* REGISTER: actual register name; AUTO: pointer register name */
@@ -1321,7 +1321,7 @@ static void fundef_wasmify(node_t *pdn)
 }
 
 /* 'register' (wasm local var) info for typecheck */
-typedef struct ri_tag {
+typedef struct ri {
   sym_t name; /* register or global var name */
   const node_t *ptn; /* NT_TYPE (not owned) */
 } ri_t;
@@ -3053,7 +3053,7 @@ static void process_include(pws_t *pw, int startpos, sym_t name, wat_module_t *p
   pwi = pws_from_modname(name, &g_bases);
   if (pwi) {
     /* this should be workspace #1... */
-    assert(pwi->id > 0);
+    assert(pwsid(pwi) > 0);
     while (parse_top_form(pwi, &nd)) {
       if (nd.nt == NT_INCLUDE) {
         process_include(pwi, nd.startpos, nd.name, pm);
@@ -3077,16 +3077,16 @@ static sym_t process_module(const char *fname, wat_module_t *pm)
   pw = newpws(fname);
   if (pw) {
     /* this should be workspace #0 */
-    assert(pw->id == 0);
-    assert(pw->curmod);
+    assert(pwsid(pw) == 0);
+    assert(pwscurmod(pw));
     while (parse_top_form(pw, &nd)) {
       if (nd.nt == NT_INCLUDE) {
         process_include(pw, nd.startpos, nd.name, pm);
       } else {
-        process_top_node(pw->curmod, &nd, pm);
+        process_top_node(pwscurmod(pw), &nd, pm);
       }
     }
-    mod = pw->curmod;
+    mod = pwscurmod(pw);
     closepws(pw);
   } else {
     exprintf("cannot read module file: %s", fname);
@@ -3096,9 +3096,11 @@ static sym_t process_module(const char *fname, wat_module_t *pm)
 }
 
 /* compile module file to wat output file (if not NULL) */
-void compile_module(const char *ifname, const char *ofname)
+void compile_module(dsbuf_t *plibv, const char *ifname, const char *ofname)
 {
   wat_module_t wm; size_t i; sym_t mod;
+
+  init_compiler(plibv);
   wat_module_init(&wm);
   
   mod = process_module(ifname, &wm); assert(mod);
@@ -3187,7 +3189,6 @@ void compile_module(const char *ifname, const char *ofname)
     }
   }
 
-#if 1
   if (buflen(&g_dsmap) > 0) {
     dsmelt_t *pde; size_t i;
     for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) {
@@ -3196,38 +3197,8 @@ void compile_module(const char *ifname, const char *ofname)
       bufswap(&pd->data, &pde[i].cb);
     }
   }
-#else  
-  /* use contents of g_dseg as passive data segment */
-  /* fixme: global var $dp should be inited to the base address of dseg, and dsoff be taken from it! */
-  if (chblen(&g_dseg) > 0) { 
-    size_t dsoff = 16, dslen = chblen(&g_dseg) - 16;
-    dseg_t *pds = dsegbnewbk(&m.datadefs, DS_ACTIVE); /* #0 */
-    inscode_t *pic;
-    chbset(&pds->data, chbdata(&g_dseg)+dsoff, dslen);
-    pic = icbnewbk(&pds->code), pic->in = IN_I32_CONST, pic->arg.u = dsoff;
-    pic = icbnewbk(&pds->code), pic->in = IN_END; 
-  }
-  /* add reloc entries for functions defined in mainmod */
-  for (i = fino; i < entblen(&m.funcdefs); ++i) {
-    entry_t *pe = entbref(&m.funcdefs, i);
-    inscode_t *pri = icbnewbk(&m.reloctab);
-    pri->relkey = pe->name; assert(pe->name);
-    pri->in = IN_UNREACHABLE; 
-    pri->arg.u = i;
-  }
-  /* add reloc entries for globals defined in mainmod */
-  for (i = gino; i < entblen(&m.globdefs); ++i) {
-    entry_t *pe = entbref(&m.globdefs, i);
-    inscode_t *pri = icbnewbk(&m.reloctab);
-    pri->relkey = pe->name; assert(pe->name);
-    pri->in = IN_UNREACHABLE; 
-    pri->arg.u = i;
-  }
-  /* sort reloctab by symbol before emitting */
-  bufqsort(&m.reloctab, sym_cmp);
-#endif
 
-  /* emit wasm (use relocations) */
+  /* emit our variation of wat */
   if (ofname) {
     FILE *pf = fopen(ofname, "w");
     if (!pf) exprintf("cannot open output file %s:", ofname);
@@ -3239,6 +3210,7 @@ void compile_module(const char *ifname, const char *ofname)
 
   /* done */
   wat_module_fini(&wm); 
+  fini_compiler();
 }
 
 
@@ -3281,9 +3253,13 @@ int main(int argc, char **argv)
   if (eoptind < argc) ifile_arg = argv[eoptind++];
   if (eoptind < argc) eusage("too many input files");
 
-  init_compiler(&libv);
-  compile_module(ifile_arg, ofile_arg);
-  fini_compiler();
+  if (streql(ifile_arg, "-") || strsuf(ifile_arg, ".wat")) {
+    wat_module_t wm; wat_module_init(&wm);
+    read_wat_module(ifile_arg, &wm);
+    wat_module_fini(&wm);
+  } else {
+    compile_module(&libv, ifile_arg, ofile_arg);
+  }
   
   dsbfini(&libv);
   return EXIT_SUCCESS;
