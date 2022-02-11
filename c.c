@@ -2875,14 +2875,14 @@ static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
 {
   size_t i; node_t *ptni;
   assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
-  bufclear(&pfs->argtypes);
-  bufclear(&pfs->rettypes);
+  bufclear(&pfs->partypes);
+  bufclear(&pfs->restypes);
   ptni = ndref(ptn, 0); assert(ptn->nt == NT_TYPE);
   if (ts_bulk(ptni->ts)) { /* passed as pointer in 1st arg */
     /* fixme: should depend on wasm32/wasm64 model */
-    *vtbnewbk(&pfs->argtypes) = VT_I32; /* rettypes stays empty */  
+    *vtbnewbk(&pfs->partypes) = VT_I32; /* restypes stays empty */  
   } else {
-    tn2vt(ptni, &pfs->rettypes);
+    tn2vt(ptni, &pfs->restypes);
   }
   for (i = 1; i < ndlen(ptn); ++i) {
     ptni = ndref(ptn, i); 
@@ -2890,9 +2890,9 @@ static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
     assert(ptni->nt == NT_TYPE);
     if (i+1 == ndlen(ptn) && ptni->ts == TS_ETC) {
       /* fixme: should depend on wasm32/wasm64 model */
-      *vtbnewbk(&pfs->argtypes) = VT_I32; /* ... => ap$ */  
+      *vtbnewbk(&pfs->partypes) = VT_I32; /* ... => ap$ */  
     } else {
-      tn2vt(ptni, &pfs->argtypes);
+      tn2vt(ptni, &pfs->partypes);
     }
   }
   return pfs;
@@ -3112,11 +3112,11 @@ void compile_module(dsbuf_t *plibv, const char *ifname, const char *ofname)
       /* fixme: add standard imports */
       wati_t *pi;
       /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
-      pi = watibnewfr(&wm.imports, EK_GLOBAL); 
+      pi = watibnewfr(&wm.imports); pi->ek = EK_GLOBAL; 
       pi->mod = g_sp_mod; pi->name = g_sp_id; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
       /* (import "env" "__linear_memory" (memory $env:__linear_memory 0)) */
-      pi = watibnewfr(&wm.imports, EK_MEM); 
+      pi = watibnewfr(&wm.imports); pi->ek = EK_MEM; 
       pi->mod = g_lm_mod; pi->name = g_lm_id; 
       pi->lt = LT_MIN; pi->n = 0;
     } break;
@@ -3128,18 +3128,18 @@ void compile_module(dsbuf_t *plibv, const char *ifname, const char *ofname)
       /* fixme: add standard startup code and exports */
       wati_t *pi; watf_t *pf; inscode_t *pic; sym_t r;
       /* (global $env:__stack_pointer (mut i32) (i32.const N)) */
-      pi = watibnewfr(&wm.defs, EK_GLOBAL); /* fixme!: needs to be in separate env module! */
+      pi = watibnewfr(&wm.defs); pi->ek = EK_GLOBAL; /* fixme!: needs to be in separate env module! */
       pi->mod = g_sp_mod; pi->name = g_sp_id; pi->exported = true; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
       pi->ic.in = IN_I32_CONST; pi->ic.arg.u = 42424; /* fixme */
       /* (memory $env:__linear_memory (export "__linear_memory") 2) */
-      pi = watibnewfr(&wm.defs, EK_MEM); /* fixme!: needs to be in separate env module! */
+      pi = watibnewfr(&wm.defs); pi->ek = EK_MEM; /* fixme!: needs to be in separate env module! */
       pi->mod = g_lm_mod; pi->name = g_lm_id; pi->exported = true; 
       pi->n = 2; /* fixme: pre-allocate 2 64Kib pages */
       /* (import "wasi_snapshot_preview1" "proc_exit" (func $... (param i32))) */
-      pi = watibnewfr(&wm.imports, EK_FUNC); 
+      pi = watibnewfr(&wm.imports); pi->ek = EK_FUNC; 
       pi->mod = g_wasi_mod; pi->name = intern("proc_exit");
-      *vtbnewbk(&pi->fs.argtypes) = VT_I32;
+      *vtbnewbk(&pi->fs.partypes) = VT_I32;
       /* (func $_start ...) */
       pf = watfbnewbk(&wm.funcs); 
       pf->mod = mod; pf->id = intern("_start"); /* fs is void->void */
@@ -3176,7 +3176,7 @@ void compile_module(dsbuf_t *plibv, const char *ifname, const char *ofname)
             fprintf(stderr, "imported function %s:%s =>\n", symname(pn->name), symname(id));
             dump_node(ptn, stderr);
           }
-          pi = watibnewbk(&wm.imports, EK_FUNC);
+          pi = watibnewbk(&wm.imports); pi->ek = EK_FUNC;
           pi->mod = pn->name, pi->name = id;
           ftn2fsig(ptn, &pi->fs);
         } else {
@@ -3256,6 +3256,7 @@ int main(int argc, char **argv)
   if (streql(ifile_arg, "-") || strsuf(ifile_arg, ".wat")) {
     wat_module_t wm; wat_module_init(&wm);
     read_wat_module(ifile_arg, &wm);
+    write_wat_module(&wm, stdout);
     wat_module_fini(&wm);
   } else {
     compile_module(&libv, ifile_arg, ofile_arg);

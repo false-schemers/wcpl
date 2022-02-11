@@ -13,6 +13,10 @@
 typedef enum { false = 0, true = 1 } bool;
 #endif
 
+#define STR_az "abcdefghijklmnopqrstuvwxyz"
+#define STR_AZ "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+#define STR_09 "0123456789"
+
 /* argument parsing and usage */
 extern  void  setprogname(const char *s);
 extern  const char *progname(void);

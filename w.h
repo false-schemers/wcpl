@@ -300,7 +300,8 @@ typedef enum instr {
 typedef enum insig {
   INSIG_NONE = 0, 
   INSIG_BT, INSIG_L, INSIG_LS_L,
-  INSIG_X, INSIG_X_Y, INSIG_T,
+  INSIG_XL, INSIG_XG, INSIG_XT,
+  INSIG_X_Y, INSIG_T,
   INSIG_I32, INSIG_I64,
   INSIG_F32, INSIG_F64, 
   INSIG_MEMARG
@@ -311,9 +312,8 @@ typedef enum insig {
 
 typedef buf_t vtbuf_t; 
 typedef struct funcsig {
-  /* todo: add hash */ 
-  vtbuf_t argtypes;   /* of valtype_t */ 
-  vtbuf_t rettypes;   /* of valtype_t */
+  vtbuf_t partypes;   /* of valtype_t */ 
+  vtbuf_t restypes;   /* of valtype_t */
 } funcsig_t;
 
 extern funcsig_t* fsinit(funcsig_t* pf);
@@ -462,15 +462,15 @@ typedef struct wati {
   unsigned m;     /* TABLE/MEM (imported) */
 } wati_t;
 
-extern wati_t* watiinit(wati_t* pi, entkind_t ek);
+extern wati_t* watiinit(wati_t* pi);
 extern void watifini(wati_t* pi);
 typedef buf_t watibuf_t; 
 #define watibinit(mem) bufinit(mem, sizeof(wati_t))
 extern void watibfini(watibuf_t* pb);
 #define watiblen(pb) buflen(pb)
 #define watibref(pb, i) ((wati_t*)bufref(pb, i))
-#define watibnewfr(pb, ek) watiinit(bufnewfr(pb), ek)
-#define watibnewbk(pb, ek) watiinit(bufnewbk(pb), ek)
+#define watibnewfr(pb) watiinit(bufnewfr(pb))
+#define watibnewbk(pb) watiinit(bufnewbk(pb))
 
 /* wat data segment */
 typedef struct watd {

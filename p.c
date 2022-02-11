@@ -2545,8 +2545,9 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
       case INSIG_NONE:
         break;
       case INSIG_BT:   case INSIG_L:   
-      case INSIG_X:    case INSIG_T:
-      case INSIG_I32:  case INSIG_I64:
+      case INSIG_XL:   case INSIG_XG:   case INSIG_XT:
+      case INSIG_T:    case INSIG_I32:  case INSIG_I64:
+        /* fixme: more specific parsing needed */
         if (peekt(pw) == TT_IDENTIFIER) {
           if (peekc(pw) == ':') { /* mod:id */
             pic->arg2.mod = getid(pw);

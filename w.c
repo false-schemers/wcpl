@@ -190,15 +190,15 @@ static void wasm_in(instr_t in)
 funcsig_t* fsinit(funcsig_t* pf)
 {
   memset(pf, 0, sizeof(funcsig_t));
-  bufinit(&pf->argtypes, sizeof(valtype_t));
-  bufinit(&pf->rettypes, sizeof(valtype_t));
+  bufinit(&pf->partypes, sizeof(valtype_t));
+  bufinit(&pf->restypes, sizeof(valtype_t));
   return pf;
 }
 
 void fsfini(funcsig_t* pf)
 {
-  buffini(&pf->argtypes);
-  buffini(&pf->rettypes);
+  buffini(&pf->partypes);
+  buffini(&pf->restypes);
 }
 
 void fsbfini(fsbuf_t* pb)
@@ -213,12 +213,12 @@ void fsbfini(fsbuf_t* pb)
 static bool sameft(funcsig_t* pf1, funcsig_t* pf2)
 {
   size_t i; /* todo: add hash to speed up comparison */
-  if (vtblen(&pf1->argtypes) != vtblen(&pf2->argtypes)) return false;
-  if (vtblen(&pf1->rettypes) != vtblen(&pf2->rettypes)) return false;
-  for (i = 0; i < vtblen(&pf1->argtypes); ++i)
-    if (*vtbref(&pf1->argtypes, i) != *vtbref(&pf2->argtypes, i)) return false;
-  for (i = 0; i < vtblen(&pf1->rettypes); ++i)
-    if (*vtbref(&pf1->rettypes, i) != *vtbref(&pf2->rettypes, i)) return false;
+  if (vtblen(&pf1->partypes) != vtblen(&pf2->partypes)) return false;
+  if (vtblen(&pf1->restypes) != vtblen(&pf2->restypes)) return false;
+  for (i = 0; i < vtblen(&pf1->partypes); ++i)
+    if (*vtbref(&pf1->partypes, i) != *vtbref(&pf2->partypes, i)) return false;
+  for (i = 0; i < vtblen(&pf1->restypes); ++i)
+    if (*vtbref(&pf1->restypes, i) != *vtbref(&pf2->restypes, i)) return false;
   return true;
 }
 
@@ -235,8 +235,8 @@ unsigned funcsig(fsbuf_t* pb, size_t argc, size_t retc, ...)
   size_t i; va_list args; funcsig_t ft;
   fsinit(&ft);
   va_start(args, retc);
-  for (i = 0; i < argc; ++i) *vtbnewbk(&ft.argtypes) = va_arg(args, valtype_t);
-  for (i = 0; i < retc; ++i) *vtbnewbk(&ft.rettypes) = va_arg(args, valtype_t);
+  for (i = 0; i < argc; ++i) *vtbnewbk(&ft.partypes) = va_arg(args, valtype_t);
+  for (i = 0; i < retc; ++i) *vtbnewbk(&ft.restypes) = va_arg(args, valtype_t);
   va_end(args);
   for (i = 0; i < fsblen(pb); ++i) if (sameft(fsbref(pb, i), &ft)) break;
   if (i == fsblen(pb)) memswap(&ft, fsbnewbk(pb), sizeof(funcsig_t));
@@ -332,12 +332,13 @@ static void wasm_expr(icbuf_t *pcb)
     switch (instr_sig(pic->in)) {
       case INSIG_NONE:
         break;
-      case INSIG_BT:   case INSIG_L:   
-      case INSIG_X:    case INSIG_T:
-      case INSIG_I32:  case INSIG_I64:
+      case INSIG_BT:  case INSIG_L:   
+      case INSIG_XL:  case INSIG_XG:
+      case INSIG_XT:  case INSIG_T:
+      case INSIG_I32: case INSIG_I64:
         wasm_unsigned(pic->arg.u); 
         break;
-      case INSIG_X_Y:  case INSIG_MEMARG:
+      case INSIG_X_Y: case INSIG_MEMARG:
         wasm_unsigned(pic->arg.u); wasm_unsigned(pic->arg2.u); 
         break;
       case INSIG_F32:
@@ -363,13 +364,13 @@ static void wasm_types(fsbuf_t *pftb)
   for (i = 0; i < fsblen(pftb); ++i) {
     funcsig_t *pft = fsbref(pftb, i);
     wasm_byte(FT_FUNCTYPE);
-    wasm_unsigned(vtblen(&pft->argtypes));
-    for (k = 0; k < vtblen(&pft->argtypes); ++k) {
-      wasm_byte(*vtbref(&pft->argtypes, k));
+    wasm_unsigned(vtblen(&pft->partypes));
+    for (k = 0; k < vtblen(&pft->partypes); ++k) {
+      wasm_byte(*vtbref(&pft->partypes, k));
     }    
-    wasm_unsigned(vtblen(&pft->rettypes));
-    for (k = 0; k < vtblen(&pft->rettypes); ++k) {
-      wasm_byte(*vtbref(&pft->rettypes, k));
+    wasm_unsigned(vtblen(&pft->restypes));
+    for (k = 0; k < vtblen(&pft->restypes); ++k) {
+      wasm_byte(*vtbref(&pft->restypes, k));
     }
     wasm_section_bumpc();
   }
@@ -1073,14 +1074,17 @@ insig_t instr_sig(instr_t in)
     case IN_BR_TABLE:
       return INSIG_LS_L;
     case IN_CALL:          case IN_RETURN_CALL:
-      return INSIG_X;
+      return INSIG_XG;
     case IN_CALL_INDIRECT: case IN_RETURN_CALL_INDIRECT:
       return INSIG_X_Y;
     case IN_SELECT_T:
       return INSIG_T;  
     case IN_LOCAL_GET:     case IN_LOCAL_SET:    case IN_LOCAL_TEE: 
-    case IN_GLOBAL_GET:    case IN_GLOBAL_SET:   case IN_TABLE_GET:    case IN_TABLE_SET:
-      return INSIG_X;
+      return INSIG_XL;
+    case IN_GLOBAL_GET:    case IN_GLOBAL_SET:   
+      return INSIG_XG;
+    case IN_TABLE_GET:    case IN_TABLE_SET:
+      return INSIG_XT;
     case IN_I32_LOAD:      case IN_I64_LOAD:     case IN_F32_LOAD:     case IN_F64_LOAD:
     case IN_I32_LOAD8_S:   case IN_I32_LOAD8_U:  case IN_I32_LOAD16_S: case IN_I32_LOAD16_U:
     case IN_I64_LOAD8_S:   case IN_I64_LOAD8_U:  case IN_I64_LOAD16_S: case IN_I64_LOAD16_U:
@@ -1100,7 +1104,7 @@ insig_t instr_sig(instr_t in)
       return INSIG_T;
     case IN_REF_FUNC:      case IN_MEMORY_INIT:  case IN_DATA_DROP:    case IN_ELEM_DROP:
     case IN_TABLE_GROW:    case IN_TABLE_SIZE:   case IN_TABLE_FILL:   
-      return INSIG_X;
+      return INSIG_XT;
     case IN_TABLE_INIT:    case IN_TABLE_COPY:
       return INSIG_X_Y;
   }
@@ -1132,7 +1136,7 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
       if (vt != BT_VOID) chbputf(pcb, " (result %s)", valtype_name(vt)); 
     } break;
-    case INSIG_X:
+    case INSIG_XL: case INSIG_XG: case INSIG_XT:
       if (pic->id && pic->arg2.mod) 
         chbputf(pcb, " $%s:%s", symname(pic->arg2.mod), symname(pic->id)); 
       else if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
@@ -1171,10 +1175,9 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
 
 /* wat text representations */
 
-wati_t* watiinit(wati_t* pi, entkind_t ek)
+wati_t* watiinit(wati_t* pi)
 {
   memset(pi, 0, sizeof(wati_t));
-  pi->ek = ek;
   fsinit(&pi->fs);
   return pi;
 }
@@ -1301,12 +1304,12 @@ static void wat_imports(watibuf_t *pib)
     switch (pi->ek) {
       case EK_FUNC: {
         chbputf(g_watbuf, "(func $%s:%s", smod, sname);
-        for (j = 0; j < vtblen(&pi->fs.argtypes); ++j) {
-          valtype_t *pvt = vtbref(&pi->fs.argtypes, j);
+        for (j = 0; j < vtblen(&pi->fs.partypes); ++j) {
+          valtype_t *pvt = vtbref(&pi->fs.partypes, j);
           chbputf(g_watbuf, " (param %s)", valtype_name(*pvt));
         }
-        for (j = 0; j < vtblen(&pi->fs.rettypes); ++j) {
-          valtype_t *pvt = vtbref(&pi->fs.rettypes, j);
+        for (j = 0; j < vtblen(&pi->fs.restypes); ++j) {
+          valtype_t *pvt = vtbref(&pi->fs.restypes, j);
           chbputf(g_watbuf, " (result %s)", valtype_name(*pvt));
         }
         chbputc(')', g_watbuf); 
@@ -1340,12 +1343,12 @@ static void wat_defs(watibuf_t *pib)
     switch (pi->ek) {
       case EK_FUNC: {
         chbputf(g_watbuf, "(func $%s:%s", smod, sname);
-        for (j = 0; j < vtblen(&pi->fs.argtypes); ++j) {
-          valtype_t *pvt = vtbref(&pi->fs.argtypes, j);
+        for (j = 0; j < vtblen(&pi->fs.partypes); ++j) {
+          valtype_t *pvt = vtbref(&pi->fs.partypes, j);
           chbputf(g_watbuf, " (param %s)", valtype_name(*pvt));
         }
-        for (j = 0; j < vtblen(&pi->fs.rettypes); ++j) {
-          valtype_t *pvt = vtbref(&pi->fs.rettypes, j);
+        for (j = 0; j < vtblen(&pi->fs.restypes); ++j) {
+          valtype_t *pvt = vtbref(&pi->fs.restypes, j);
           chbputf(g_watbuf, " (result %s)", valtype_name(*pvt));
         }
         chbputc(')', g_watbuf); 
@@ -1413,16 +1416,16 @@ static void wat_funcs(watfbuf_t *pfb)
     if (pf->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pf->id));
     wat_line(chbdata(g_watbuf)); chbclear(g_watbuf);
     g_watindent += 2;
-    for (j = 0; j < vtblen(&pf->fs.argtypes); ++j) {
-      valtype_t *pvt = vtbref(&pf->fs.argtypes, j);
+    for (j = 0; j < vtblen(&pf->fs.partypes); ++j) {
+      valtype_t *pvt = vtbref(&pf->fs.partypes, j);
       inscode_t *pic = icbref(&pf->code, j);
       assert(pic->in == IN_REGDECL);
       assert(*pvt == (valtype_t)pic->arg.u);
       if (!pic->id) chbputf(g_watbuf, "(param %s) ", valtype_name(pic->arg.u));
       else chbputf(g_watbuf, "(param $%s %s) ", symname(pic->id), valtype_name(pic->arg.u));
     }
-    for (k = 0; k < vtblen(&pf->fs.rettypes); ++k) {
-      valtype_t *pvt = vtbref(&pf->fs.rettypes, k);
+    for (k = 0; k < vtblen(&pf->fs.restypes); ++k) {
+      valtype_t *pvt = vtbref(&pf->fs.restypes, k);
       chbputf(g_watbuf, "(result %s) ", valtype_name(*pvt));
     }
     if (chblen(g_watbuf) > 0) { wat_line(chbdata(g_watbuf)); chbclear(g_watbuf); }
@@ -2195,17 +2198,25 @@ static wt_t peekt(sws_t *pw)
   return pw->ctk; 
 }
 
-static int peekc(sws_t *pw)
-{
-  return chbdata(&pw->chars)[pw->curi];
-} 
-
 static void dropt(sws_t *pw) 
 { 
   pw->gottk = false; 
 } 
 
-void scan_integer(sws_t *pw, const char *s, numval_t *pv)
+static bool ahead(sws_t *pw, const char *ts)
+{
+  if (peekt(pw) == WT_EOF) return false;
+  return streql(ts, pw->tokstr);
+} 
+
+static void expect(sws_t *pw, const char *ts)
+{
+  if (ahead(pw, ts)) dropt(pw);
+  else seprintf(pw, "expected: %s, got %s", ts, pw->tokstr);
+} 
+
+
+static void scan_integer(sws_t *pw, const char *s, numval_t *pv)
 {
   char *e; errno = 0;
   if (*s == '-') pv->i = strtoll(s, &e, 0); /* reads -0x... syntax too */
@@ -2213,7 +2224,7 @@ void scan_integer(sws_t *pw, const char *s, numval_t *pv)
   if (errno || *e != 0) seprintf(pw, "invalid integer literal");
 }
 
-double scan_float(sws_t *pw, const char *s)
+static double scan_float(sws_t *pw, const char *s)
 {
   double d; char *e; errno = 0; 
   if (streql(s, "+nan")) return HUGE_VAL - HUGE_VAL;
@@ -2227,7 +2238,7 @@ double scan_float(sws_t *pw, const char *s)
 /* size of buffer large enough to hold char escapes */
 #define SBSIZE 32
 /* convert a single WAT text escape sequence (-1 on error) */
-unsigned long strtowatec(const char *s, char** ep)
+static unsigned long strtowatec(const char *s, char** ep)
 {
   char buf[SBSIZE+1]; int c; unsigned long l;
   assert(s);
@@ -2265,7 +2276,7 @@ err:
   return (unsigned long)(-1);
 }
 
-void scan_string(sws_t *pw, const char *s, chbuf_t *pcb)
+static char *scan_string(sws_t *pw, const char *s, chbuf_t *pcb)
 {
   int c = *s++; assert(c == '"');
   chbclear(pcb);
@@ -2294,70 +2305,347 @@ void scan_string(sws_t *pw, const char *s, chbuf_t *pcb)
     }
   }
   c = *++s; assert(c == 0);
-  return;
+  return chbdata(pcb);
 err:
   seprintf(pw, "invalid string literal");
+  return NULL;
 }
 
+static void parse_mod_id(sws_t *pw, sym_t *pmid, sym_t *pid)
+{
+  char *s, *sep; 
+  if (peekt(pw) != WT_ID || (sep = strchr((s = pw->tokstr), ':')) == NULL) { 
+    seprintf(pw, "expected $mod:id, got %s", pw->tokstr);
+  } else {
+    chbuf_t cb = mkchb();
+    assert(*s == '$'); ++s;
+    *pmid = intern(chbset(&cb, s, sep-s));
+    *pid = intern(sep+1);
+    chbfini(&cb);
+    dropt(pw);
+  }
+} 
+
+static sym_t parse_id(sws_t *pw)
+{
+  char *s, *sep; 
+  if (peekt(pw) != WT_ID || (sep = strchr((s = pw->tokstr), ':')) != NULL) { 
+    seprintf(pw, "expected plain id $id, got %s", pw->tokstr);
+    return 0; /* never */
+  } else {
+    sym_t id;
+    assert(*s == '$');
+    id = intern(s+1);
+    dropt(pw);
+    return id;
+  }
+}
+
+static sym_t parse_id_string(sws_t *pw, chbuf_t *pcb, const char *chset)
+{
+  char *s; size_t n; bool ok = false;
+  ok = (peekt(pw) == WT_STRING);
+  if (ok) ok = (s = scan_string(pw, pw->tokstr, pcb)) != NULL;
+  if (ok) ok = (n = strlen(s)) == chblen(pcb); /* no \00s inside */
+  if (ok) ok = strspn(s, chset) == n;
+  if (ok) { dropt(pw); return intern(s); }
+  else seprintf(pw, "expected \"id\", got %s", pw->tokstr);
+  return 0; /* never */
+}
+
+static valtype_t parse_valtype(sws_t *pw)
+{
+  if (peekt(pw) == WT_KEYWORD) {
+    valtype_t vt = VT_UNKN;
+    if (streql(pw->tokstr, "f64")) vt = VT_F64;
+    else if (streql(pw->tokstr, "f32")) vt = VT_F32;
+    else if (streql(pw->tokstr, "i64")) vt = VT_I64;
+    else if (streql(pw->tokstr, "i32")) vt = VT_I32;
+    /* else if (streql(pw->tokstr, "funcref")) vt = RT_FUNCREF; */
+    /* else if (streql(pw->tokstr, "externref")) vt = RT_EXTERNREF; */
+    if (vt != VT_UNKN) { dropt(pw); return vt; }
+  } 
+  seprintf(pw, "unexpected value type");
+  return VT_UNKN; /* never */
+} 
+
+static valtype_t parse_blocktype(sws_t *pw)
+{
+  valtype_t vt = BT_VOID;
+  if (ahead(pw, "(")) {
+    dropt(pw);
+    expect(pw, "result");
+    vt = parse_valtype(pw);
+    expect(pw, ")");
+  }
+  return vt;
+} 
+
+static unsigned parse_uint(sws_t *pw)
+{
+  numval_t v;
+  if (peekt(pw) == WT_INT) {
+    scan_integer(pw, pw->tokstr, &v); dropt(pw);
+    if (((v.u << 32) >> 32) != v.u)
+      seprintf(pw, "u32 arg is out of range %s", pw->tokstr);
+  } else {
+    seprintf(pw, "invalid unsigned argument %s", pw->tokstr);
+  }
+  return (unsigned)v.u;
+}
+
+static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
+{
+  if (peekt(pw) == WT_KEYWORD) {
+    instr_t in = name_instr(pw->tokstr); insig_t is;
+    if (in != IN_PLACEHOLDER) dropt(pw);
+    else seprintf(pw, "unknown opcode %s", pw->tokstr);
+    pic->in = in;
+    switch (is = instr_sig(in)) {
+      case INSIG_NONE: { /* no code args */
+        if (in == IN_END && peekt(pw) == WT_ID) {
+          pic->id = parse_id(pw); /* optional label */
+        }
+      } break;
+      case INSIG_BT: { /* if/block/loop */
+        if (in == IN_IF) {
+          pic->arg.u = parse_blocktype(pw);
+        } else { 
+          pic->id = parse_id(pw);
+          pic->arg.u = BT_VOID;
+        }
+      } break;
+      case INSIG_L: case INSIG_XL: { /* br/brif, local.xxx */
+        pic->id = parse_id(pw);
+      } break;  
+      case INSIG_XG: { /* call/return_call, global.xxx */
+        sym_t mod, id; parse_mod_id(pw, &mod, &id);
+        pic->id = id; pic->arg2.mod = mod;
+      } break;
+      /* fixme: case INSIG_XT: table.xxx */
+      /* fixme: case INSIG_X_Y: call_indirect, return_call_indirect */
+      case INSIG_T: { /* select */
+        pic->arg.u = parse_valtype(pw);
+      } break;
+      case INSIG_I32: case INSIG_I64: {
+        numval_t v;
+        if (peekt(pw) == WT_INT) {
+          scan_integer(pw, pw->tokstr, &v); dropt(pw);
+          pic->arg = v; 
+          if (is == INSIG_I32 && ((v.i << 32) >> 32) != v.i)
+            seprintf(pw, "i32 literal is out of range %s", pw->tokstr);
+        } else {
+          seprintf(pw, "invalid integer literal %s", pw->tokstr);
+        }
+      } break;
+      case INSIG_MEMARG: {
+        char *s; unsigned long offset, align;
+        if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "offset=")) != NULL) {
+          char *e; errno = 0; offset = strtoul(s, &e, 10); 
+          if (errno || *e != 0 || offset > UINT_MAX) 
+            seprintf(pw, "invalid offset= argument");
+          else dropt(pw);
+        } else { /* we require it! */
+          seprintf(pw, "missing offset= argument"); 
+        }
+        if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "align=")) != NULL) {
+          char *e; errno = 0; align = strtoul(s, &e, 10); 
+          if (errno || *e != 0 || (align != 1 && align != 2 && align != 4 && align != 8 && align != 16)) 
+            seprintf(pw, "invalid align= argument");
+          else dropt(pw);
+        } else { /* we require it! */
+          seprintf(pw, "missing align= argument"); 
+        }
+        pic->arg.u = offset;
+        switch (align) { /* fixme: use ntz? */
+          case 1:  pic->arg2.u = 0; break;
+          case 2:  pic->arg2.u = 1; break;
+          case 4:  pic->arg2.u = 2; break;
+          case 8:  pic->arg2.u = 3; break;
+          case 16: pic->arg2.u = 4; break;
+          default: assert(false);
+        }
+      } break;
+      case INSIG_F32: case INSIG_F64: {
+        if (peekt(pw) == WT_FLOAT || peekt(pw) == WT_INT) {
+          double d = scan_float(pw, pw->tokstr);
+          if (is == INSIG_F32) pic->arg.f = (float)d;
+          else pic->arg.d = d;
+          dropt(pw);
+        } else {
+          seprintf(pw, "invalid floating-point literal %s", pw->tokstr);
+        } 
+      } break;
+      /* case INSIG_LS_L: fixme; use *pexb */
+      default:
+        assert(false);     
+    }        
+  } else {
+    seprintf(pw, "opcode expected");
+  }
+}
+
+static void parse_import_des(sws_t *pw, wati_t *pi)
+{
+  chbuf_t cb = mkchb();
+  expect(pw, "(");
+  if (ahead(pw, "global")) {
+    dropt(pw);
+    pi->ek = EK_GLOBAL;
+    if (ahead(pw, "(")) {
+      expect(pw, "(");
+      expect(pw, "mut");
+      pi->mut = MT_VAR;
+      pi->vt = parse_valtype(pw);
+      expect(pw, ")");
+    } else {
+      pi->mut = MT_CONST;
+      pi->vt = parse_valtype(pw);
+    }
+  } else if (ahead(pw, "memory")) {
+    dropt(pw);
+    pi->ek = EK_MEM;
+    /* fixme */
+    if (ahead(pw, "0")) dropt(pw);
+  } else if (ahead(pw, "func")) {
+    dropt(pw);
+    pi->ek = EK_FUNC;
+    parse_mod_id(pw, &pi->mod, &pi->name);
+    while (ahead(pw, "(")) {
+      dropt(pw);
+      if (ahead(pw, "param")) {
+        dropt(pw);
+        *vtbnewbk(&pi->fs.partypes) = parse_valtype(pw);
+      } else if (ahead(pw, "result")) {
+        dropt(pw);
+        *vtbnewbk(&pi->fs.restypes) = parse_valtype(pw);
+      } else seprintf(pw, "unexpected function header field %s", pw->tokstr);
+      expect(pw, ")");
+    }
+  } else {
+    seprintf(pw, "unexpected import descriptor %s", pw->tokstr);
+  }
+  expect(pw, ")");
+  chbfini(&cb);
+}
+
+static void parse_modulefield(sws_t *pw, wat_module_t* pm)
+{
+  chbuf_t cb = mkchb();
+  expect(pw, "(");
+  if (ahead(pw, "import")) {
+    wati_t *pi = watibnewbk(&pm->imports);
+    dropt(pw);
+    pi->mod = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_.");
+    pi->name = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
+    parse_import_des(pw, pi);
+  } else if (ahead(pw, "data")) {
+    watd_t *pd = watdbnewbk(&pm->dsegs);
+    dropt(pw);
+    parse_mod_id(pw, &pd->mod, &pd->id);
+    if (peekt(pw) == WT_STRING) scan_string(pw, pw->tokstr, &pd->data); 
+    else seprintf(pw, "missing data string");
+    dropt(pw);
+  } else if (ahead(pw, "memory")) {
+    wati_t *pi = watibnewbk(&pm->defs);
+    dropt(pw);
+    pi->ek = EK_MEM;
+    parse_mod_id(pw, &pi->mod, &pi->name);
+    while (ahead(pw, "(")) {
+      dropt(pw);
+      if (ahead(pw, "export")) {
+        sym_t id;
+        dropt(pw);
+        id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
+        if (id != pi->name) seprintf(pw, "unexpected export rename"); 
+        pi->exported = true;
+      } else seprintf(pw, "unexpected memory header field %s", pw->tokstr);
+      expect(pw, ")");
+    }
+    pi->n = parse_uint(pw);
+    pi->lt = LT_MIN;
+    if (!ahead(pw, ")")) {
+      pi->m = parse_uint(pw);
+      pi->lt = LT_MINMAX;
+    }
+  } else if (ahead(pw, "global")) {
+    wati_t *pi = watibnewbk(&pm->defs);
+    dropt(pw);
+    pi->ek = EK_GLOBAL;
+    parse_mod_id(pw, &pi->mod, &pi->name);
+    pi->mut = MT_CONST;
+    while (ahead(pw, "(")) {
+      dropt(pw);
+      if (ahead(pw, "export")) {
+        sym_t id;
+        dropt(pw);
+        id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
+        if (id != pi->name) seprintf(pw, "unexpected export rename"); 
+        pi->exported = true;
+      } else if (ahead(pw, "mut")) {
+        dropt(pw);
+        pi->mut = MT_VAR;
+        pi->vt = parse_valtype(pw);
+      } else {
+        parse_ins(pw, &pi->ic, NULL);
+      }
+      expect(pw, ")");
+    }
+    if (pi->mut == MT_CONST) {
+      pi->vt = parse_valtype(pw);
+    }
+    if (pi->ic.in == IN_PLACEHOLDER) {
+      expect(pw, "(");
+      parse_ins(pw, &pi->ic, NULL);
+      expect(pw, ")");
+    }
+  } else if (ahead(pw, "func")) {
+    watf_t *pf = watfbnewbk(&pm->funcs);
+    dropt(pw);
+    parse_mod_id(pw, &pf->mod, &pf->id);
+    while (ahead(pw, "(")) {
+      dropt(pw);
+      if (ahead(pw, "export")) {
+        sym_t id;
+        dropt(pw);
+        id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
+        if (id != pf->id) seprintf(pw, "unexpected export rename"); 
+        pf->exported = true;
+      } else if (ahead(pw, "param")) {
+        inscode_t *pic = icbnewbk(&pf->code); valtype_t vt; 
+        dropt(pw);
+        pic->in = IN_REGDECL; pic->id = parse_id(pw); 
+        vt = parse_valtype(pw); pic->arg.u = vt;
+        *vtbnewbk(&pf->fs.partypes) = vt;
+      } else if (ahead(pw, "result")) {
+        dropt(pw);
+        *vtbnewbk(&pf->fs.restypes) = parse_valtype(pw);
+      } else if (ahead(pw, "local")) {
+        inscode_t *pic = icbnewbk(&pf->code);
+        dropt(pw);
+        pic->in = IN_REGDECL; pic->id = parse_id(pw); 
+        pic->arg.u = parse_valtype(pw);
+      } else seprintf(pw, "unexpected function header field %s", pw->tokstr);
+      expect(pw, ")");
+    }
+    while (!ahead(pw, ")")) {
+      inscode_t *pic = icbnewbk(&pf->code);
+      parse_ins(pw, pic, &pf->code);
+    }
+  } else {
+    seprintf(pw, "unexpected module field type %s", pw->tokstr);
+  }
+  expect(pw, ")");
+  chbfini(&cb);
+}
 
 static void parse_module(sws_t *pw, wat_module_t* pm)
 {
-  wt_t tk; chbuf_t cb = mkchb();
-  while ((tk = peekt(pw)) != WT_EOF) {
-    char *n = NULL;
-    switch (tk) {
-      case WT_WHITESPACE: n = "WT_WHITESPACE"; break;
-      case WT_LC: n = "WT_LC"; break;
-      case WT_BC: n = "WT_BC"; break;
-      case WT_BCSTART: n = "WT_BCSTART"; break;
-      case WT_IDCHARS: n = "WT_IDCHARS"; break;
-      case WT_KEYWORD: n = "WT_KEYWORD"; break; 
-      case WT_ID: n = "WT_ID"; break; 
-      case WT_RESERVED: n = "WT_RESERVED"; break;
-      case WT_INT: n = "WT_INT"; break;
-      case WT_FLOAT: n = "WT_FLOAT"; break;
-      case WT_STRING: n = "WT_STRING"; break;
-      case WT_LPAR: n = "WT_LPAR"; break;
-      case WT_RPAR: n = "WT_RPAR"; break;
-      default: assert(false);
-    } 
-    fprintf(stderr, "%s: [%s]", n, pw->tokstr);
-    if (tk == WT_INT) {
-      numval_t v; scan_integer(pw, pw->tokstr, &v);
-      chbclear(&cb); 
-      if (v.i < 0) chbputll(v.i, &cb); else chbputllu(v.u, &cb);
-      fprintf(stderr, " = [%s]", chbdata(&cb));
-    } else if (tk == WT_FLOAT) {
-      double d = scan_float(pw, pw->tokstr);
-      chbclear(&cb); chbputg(d, &cb);
-      fprintf(stderr, " = [%s]", chbdata(&cb));
-    } else if (tk == WT_STRING) {
-      chbuf_t scb = mkchb();
-      unsigned char *pc; size_t i, n;
-      scan_string(pw, pw->tokstr, &scb);
-      pc = scb.buf; n = scb.fill;
-      chbclear(&cb);
-      for (i = 0; i < n; ++i) {
-        unsigned c = pc[i]; char ec = 0;
-        switch (c) {
-          case 0x09: ec = 't';  break; 
-          case 0x0A: ec = 'n';  break;
-          case 0x0D: ec = 'r';  break;
-          case 0x22: ec = '\"'; break;
-          case 0x27: ec = '\''; break;
-          case 0x5C: ec = '\\'; break;
-        }
-        if (ec) chbputf(&cb, "\\%c", ec);
-        else if (' ' <= c && c <= 127) chbputc(c, &cb); 
-        else chbputf(&cb, "\\%x%x", (c>>4)&0xF, c&0xF);
-      }
-      fprintf(stderr, " = [\"%s\"]", chbdata(&cb));
-      chbfini(&scb);
-    }
-    fprintf(stderr, "\n");
-    dropt(pw);
-  }
-  chbfini(&cb);
+  expect(pw, "(");
+  expect(pw, "module");
+  pm->name = parse_id(pw);
+  while (!ahead(pw, ")")) parse_modulefield(pw, pm);
+  expect(pw, ")");
 }
 
 void read_wat_module(const char *fname, wat_module_t* pm)
