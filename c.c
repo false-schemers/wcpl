@@ -2895,7 +2895,7 @@ static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
 /* process function definition in module body */
 static void process_fundef(sym_t mmod, node_t *pn, wat_module_t *pm)
 {
-  node_t *pcn, *ptn; watf_t *pf;
+  node_t *pcn, *ptn; watie_t *pf;
   assert(pn->nt == NT_FUNDEF && pn->name && ndlen(pn) == 2);
   ptn = ndref(pn, 0); assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
   clear_regpool(); /* reset reg name generator */
@@ -2959,7 +2959,7 @@ static void process_fundef(sym_t mmod, node_t *pn, wat_module_t *pm)
     dump_node(pcn, stderr);
   }
   /* add to watf module */
-  pf = watfbnewbk(&pm->funcs);
+  pf = watiebnewbk(&pm->funcs, IEK_FUNC);
   pf->id = pn->name; pf->mod = mmod;
   pf->exported = (pn->sc != SC_STATIC);
   ftn2fsig(acode_type(pcn), &pf->fs);
@@ -3104,13 +3104,13 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
   switch (pwm->main) {
     case MAIN_ABSENT: {
       /* fixme: add standard imports */
-      wati_t *pi;
+      watie_t *pi;
       /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
-      pi = watibnewfr(&pwm->imports); pi->ek = EK_GLOBAL; 
+      pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
       pi->mod = g_env_mod; pi->id = g_sp_id; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
       /* (import "env" "__linear_memory" (memory $env:__linear_memory 0)) */
-      pi = watibnewfr(&pwm->imports); pi->ek = EK_MEM; 
+      pi = watiebnewbk(&pwm->imports, IEK_MEM); 
       pi->mod = g_env_mod; pi->id = g_lm_id; 
       pi->lt = LT_MIN; pi->n = 0;
     } break;
@@ -3120,23 +3120,23 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
     } break;
     case MAIN_VOID: {
       /* fixme: add standard startup code and exports */
-      wati_t *pi; watf_t *pf; inscode_t *pic; sym_t r;
+      watie_t *pi, *pf; inscode_t *pic; sym_t r;
       /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
-      pi = watibnewfr(&pwm->imports); pi->ek = EK_GLOBAL; 
+      pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
       pi->mod = g_env_mod; pi->id = g_sp_id; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
       /* (import "env" "__linear_memory" (memory $env:__linear_memory 0)) */
-      pi = watibnewfr(&pwm->imports); pi->ek = EK_MEM; 
+      pi = watiebnewbk(&pwm->imports, IEK_MEM);
       pi->mod = g_env_mod; pi->id = g_lm_id; 
       pi->lt = LT_MIN; pi->n = 0;
       /* (import "wasi_snapshot_preview1" "proc_exit" (func $... (param i32))) */
-      pi = watibnewfr(&pwm->imports); pi->ek = EK_FUNC; 
+      pi = watiebnewbk(&pwm->imports, IEK_FUNC);
       pi->mod = g_wasi_mod; pi->id = intern("proc_exit");
       *vtbnewbk(&pi->fs.partypes) = VT_I32;
       /* (func $_start ...) */
-      pf = watfbnewbk(&pwm->funcs); 
+      pf = watiebnewbk(&pwm->funcs, IEK_FUNC); 
       pf->mod = mod; pf->id = intern("_start"); /* fs is void->void */
-      pf->exported = pf->start = true;
+      pf->exported = true;
       pic = icbnewbk(&pf->code); pic->in = IN_REGDECL; pic->id = (r = intern("res")); pic->arg.u = VT_I32;
       pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("main"); pic->arg2.mod = mod; 
       pic = icbnewbk(&pf->code); pic->in = IN_LOCAL_TEE; pic->id = r;
@@ -3164,12 +3164,12 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
         if (ptn->ts == TS_FUNCTION) {
           /* mod=pn->name id=id ctype=ndref(pn, 0) */
           /* this mod:id needs to be imported as function */
-          wati_t *pi;
+          watie_t *pi;
           if (getverbosity() > 0) {
             fprintf(stderr, "imported function %s:%s =>\n", symname(pn->name), symname(id));
             dump_node(ptn, stderr);
           }
-          pi = watibnewbk(&pwm->imports); pi->ek = EK_FUNC;
+          pi = watiebnewbk(&pwm->imports, IEK_FUNC);
           pi->mod = pn->name, pi->id = id;
           ftn2fsig(ptn, &pi->fs);
         } else {
@@ -3185,7 +3185,7 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
   if (buflen(&g_dsmap) > 0) {
     dsmelt_t *pde; size_t i;
     for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) {
-      watd_t *pd = watdbnewbk(&pwm->dsegs);
+      watie_t *pd = watiebnewbk(&pwm->dsegs, IEK_DATA);
       pd->mod = mod; pd->id = internf("ds%d$", pde->ind);
       bufswap(&pd->data, &pde[i].cb);
     }

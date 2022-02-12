@@ -448,54 +448,73 @@ extern const char *format_inscode(inscode_t *pic, chbuf_t *pcb);
 /* wat text representations */
 /* NB: all structures start with mod-id pair used for sorting/bsearch */
 
-/* wat symbol info */
-typedef struct wati {
+/* import/export field kind */
+typedef enum iekind {
+  IEK_UNKN,
+  IEK_MEM,
+  IEK_DATA,
+  IEK_GLOBAL,
+  IEK_FUNC
+} iekind_t;
+
+/* wat import/export */
+typedef struct watie {
   sym_t mod;
   sym_t id;
-  entkind_t ek;
+  iekind_t iek;
   bool exported;
-  funcsig_t fs;   /* FUNC: funcsig index */
-  valtype_t vt;   /* GLOBAL/TABLE: value type (scalar) */
+  funcsig_t fs;   /* FUNC: signature */
+  valtype_t vt;   /* GLOBAL: value type (scalar) */
   muttype_t mut;  /* GLOBAL: var/const */
   inscode_t ic;   /* GLOBAL: def init code */
-  limtype_t lt;   /* TABLE/MEM (imported) */
-  unsigned n;     /* TABLE/MEM (imported) */
-  unsigned m;     /* TABLE/MEM (imported) */
-} wati_t;
+  limtype_t lt;   /* MEM: limits type */
+  unsigned n;     /* MEM: min limit */
+  unsigned m;     /* MEM: max limit */
+  buf_t data;     /* DATA: bytes (export only) */
+  icbuf_t code;   /* FUNC: code (export only) */
+} watie_t;
 
-extern wati_t* watiinit(wati_t* pi);
-extern void watifini(wati_t* pi);
-typedef buf_t watibuf_t; 
-#define watibinit(mem) bufinit(mem, sizeof(wati_t))
-extern void watibfini(watibuf_t* pb);
-#define watiblen(pb) buflen(pb)
-#define watibref(pb, i) ((wati_t*)bufref(pb, i))
-#define watibnewfr(pb) watiinit(bufnewfr(pb))
-#define watibnewbk(pb) watiinit(bufnewbk(pb))
+extern watie_t* watieinit(watie_t* pie, iekind_t iek);
+extern void watiefini(watie_t* pie);
+typedef buf_t watiebuf_t; 
+#define watiebinit(mem) bufinit(mem, sizeof(watie_t))
+extern void watiebfini(watiebuf_t* pb);
+#define watieblen(pb) buflen(pb)
+#define watiebref(pb, i) ((watie_t*)bufref(pb, i))
+#define watiebnewbk(pb, iek) watieinit(bufnewbk(pb), iek)
 
-/* wat data segment */
-typedef struct watd {
+#if 0
+/* wat export */
+typedef struct wate {
   sym_t mod;
   sym_t id;
-  buf_t data; /* actual bytes */
-} watd_t;
+  iekind_t iek;
+  bool exported;
+  funcsig_t fs;   /* FUNC: signature */
+  valtype_t vt;   /* GLOBAL: value type (scalar) */
+  muttype_t mut;  /* GLOBAL: var/const */
+  inscode_t ic;   /* GLOBAL: def init code */
+  limtype_t lt;   /* MEM: limits type */
+  unsigned n;     /* MEM: min limit */
+  unsigned m;     /* MEM: max limit */
+  buf_t data;     /* DATA: bytes (export only) */
+  icbuf_t code;   /* FUNC: code (export only) */
+} wate_t;
 
-extern watd_t* watdinit(watd_t* ps);
-extern void watdfini(watd_t* ps);
-typedef buf_t watdbuf_t; 
-#define watdbinit(mem) bufinit(mem, sizeof(watd_t))
-extern void watdbfini(watdbuf_t* pb);
-#define watdblen(pb) buflen(pb)
-#define watdbref(pb, i) ((watd_t*)bufref(pb, i))
-#define watdbnewfr(pb) watdinit(bufnewfr(pb))
-#define watdbnewbk(pb) watdinit(bufnewbk(pb))
+extern wate_t* wateinit(wate_t* ps, iekind_t iek);
+extern void watefini(wate_t* ps);
+typedef buf_t watebuf_t; 
+#define watebinit(mem) bufinit(mem, sizeof(wate_t))
+extern void watebfini(watebuf_t* pb);
+#define wateblen(pb) buflen(pb)
+#define watebref(pb, i) ((wate_t*)bufref(pb, i))
+#define watebnewbk(pb, iek) wateinit(bufnewbk(pb), iek)
 
 /* wat function */
 typedef struct watf {
   sym_t mod;
   sym_t id;
   bool exported;
-  bool start;
   funcsig_t fs;
   buf_t code; /* of inscode_t; register pseudo-instrs for args&locals */
 } watf_t;
@@ -510,6 +529,8 @@ extern void watfbfini(watfbuf_t* pb);
 #define watfbnewfr(pb) watfinit(bufnewfr(pb))
 #define watfbnewbk(pb) watfinit(bufnewbk(pb))
 
+#endif
+
 typedef enum main {
   MAIN_ABSENT = 0, 
   MAIN_VOID,
@@ -519,10 +540,10 @@ typedef enum main {
 /* wat (text) module for object files */
 typedef struct wat_module {
   sym_t name; 
-  watibuf_t imports;
-  watibuf_t defs;
-  watdbuf_t dsegs;
-  watfbuf_t funcs;
+  watiebuf_t imports;
+  watiebuf_t exports;
+  watiebuf_t dsegs;
+  watiebuf_t funcs;
   main_t main;
 } wat_module_t;
 
