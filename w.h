@@ -450,19 +450,14 @@ extern const char *format_inscode(inscode_t *pic, chbuf_t *pcb);
 
 /* import/export field kind */
 typedef enum iekind {
-  IEK_UNKN,
-  IEK_MEM,
-  IEK_DATA,
-  IEK_GLOBAL,
-  IEK_FUNC
+  IEK_UNKN = 0, IEK_MEM, IEK_DATA, IEK_GLOBAL, IEK_FUNC
 } iekind_t;
 
-/* wat import/export */
+/* import/export field */
 typedef struct watie {
-  sym_t mod;
-  sym_t id;
-  iekind_t iek;
-  bool exported;
+  sym_t mod, id;  /* mod:id; used for sorting */
+  iekind_t iek;   /* selector */
+  bool exported;  /* 0 if private (export only) */
   funcsig_t fs;   /* FUNC: signature */
   valtype_t vt;   /* GLOBAL: value type (scalar) */
   muttype_t mut;  /* GLOBAL: var/const */
@@ -483,67 +478,15 @@ extern void watiebfini(watiebuf_t* pb);
 #define watiebref(pb, i) ((watie_t*)bufref(pb, i))
 #define watiebnewbk(pb, iek) watieinit(bufnewbk(pb), iek)
 
-#if 0
-/* wat export */
-typedef struct wate {
-  sym_t mod;
-  sym_t id;
-  iekind_t iek;
-  bool exported;
-  funcsig_t fs;   /* FUNC: signature */
-  valtype_t vt;   /* GLOBAL: value type (scalar) */
-  muttype_t mut;  /* GLOBAL: var/const */
-  inscode_t ic;   /* GLOBAL: def init code */
-  limtype_t lt;   /* MEM: limits type */
-  unsigned n;     /* MEM: min limit */
-  unsigned m;     /* MEM: max limit */
-  buf_t data;     /* DATA: bytes (export only) */
-  icbuf_t code;   /* FUNC: code (export only) */
-} wate_t;
-
-extern wate_t* wateinit(wate_t* ps, iekind_t iek);
-extern void watefini(wate_t* ps);
-typedef buf_t watebuf_t; 
-#define watebinit(mem) bufinit(mem, sizeof(wate_t))
-extern void watebfini(watebuf_t* pb);
-#define wateblen(pb) buflen(pb)
-#define watebref(pb, i) ((wate_t*)bufref(pb, i))
-#define watebnewbk(pb, iek) wateinit(bufnewbk(pb), iek)
-
-/* wat function */
-typedef struct watf {
-  sym_t mod;
-  sym_t id;
-  bool exported;
-  funcsig_t fs;
-  buf_t code; /* of inscode_t; register pseudo-instrs for args&locals */
-} watf_t;
-
-extern watf_t* watfinit(watf_t* ps);
-extern void watffini(watf_t* ps);
-typedef buf_t watfbuf_t; 
-#define watfbinit(mem) bufinit(mem, sizeof(watf_t))
-extern void watfbfini(watfbuf_t* pb);
-#define watfblen(pb) buflen(pb)
-#define watfbref(pb, i) ((watf_t*)bufref(pb, i))
-#define watfbnewfr(pb) watfinit(bufnewfr(pb))
-#define watfbnewbk(pb) watfinit(bufnewbk(pb))
-
-#endif
-
 typedef enum main {
-  MAIN_ABSENT = 0, 
-  MAIN_VOID,
-  MAIN_ARGC_ARGV
+  MAIN_ABSENT = 0, MAIN_VOID, MAIN_ARGC_ARGV
 } main_t;
 
 /* wat (text) module for object files */
 typedef struct wat_module {
-  sym_t name; 
+  sym_t name; /* used for sorting */
   watiebuf_t imports;
   watiebuf_t exports;
-  watiebuf_t dsegs;
-  watiebuf_t funcs;
   main_t main;
 } wat_module_t;
 

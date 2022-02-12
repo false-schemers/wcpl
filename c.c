@@ -2959,7 +2959,7 @@ static void process_fundef(sym_t mmod, node_t *pn, wat_module_t *pm)
     dump_node(pcn, stderr);
   }
   /* add to watf module */
-  pf = watiebnewbk(&pm->funcs, IEK_FUNC);
+  pf = watiebnewbk(&pm->exports, IEK_FUNC);
   pf->id = pn->name; pf->mod = mmod;
   pf->exported = (pn->sc != SC_STATIC);
   ftn2fsig(acode_type(pcn), &pf->fs);
@@ -3134,7 +3134,7 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
       pi->mod = g_wasi_mod; pi->id = intern("proc_exit");
       *vtbnewbk(&pi->fs.partypes) = VT_I32;
       /* (func $_start ...) */
-      pf = watiebnewbk(&pwm->funcs, IEK_FUNC); 
+      pf = watiebnewbk(&pwm->exports, IEK_FUNC); 
       pf->mod = mod; pf->id = intern("_start"); /* fs is void->void */
       pf->exported = true;
       pic = icbnewbk(&pf->code); pic->in = IN_REGDECL; pic->id = (r = intern("res")); pic->arg.u = VT_I32;
@@ -3185,7 +3185,7 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
   if (buflen(&g_dsmap) > 0) {
     dsmelt_t *pde; size_t i;
     for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) {
-      watie_t *pd = watiebnewbk(&pwm->dsegs, IEK_DATA);
+      watie_t *pd = watiebnewbk(&pwm->exports, IEK_DATA);
       pd->mod = mod; pd->id = internf("ds%d$", pde->ind);
       bufswap(&pd->data, &pde[i].cb);
     }

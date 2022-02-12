@@ -1177,29 +1177,6 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
 
 /* wat text representations */
 
-#if 0
-wati_t* watiinit(wati_t* pi)
-{
-  memset(pi, 0, sizeof(wati_t));
-  fsinit(&pi->fs);
-  return pi;
-}
-
-void watifini(wati_t* pi)
-{
-  fsfini(&pi->fs);
-}
-
-void watibfini(watibuf_t* pb)
-{
-  wati_t *pf; size_t i;
-  assert(pb); assert(pb->esz = sizeof(wati_t));
-  pf = (wati_t*)(pb->buf);
-  for (i = 0; i < pb->fill; ++i) watifini(pf+i);
-  buffini(pb);
-}
-#endif
-
 watie_t* watieinit(watie_t* pie, iekind_t iek)
 {
   memset(pie, 0, sizeof(watie_t));
@@ -1226,38 +1203,11 @@ void watiebfini(watiebuf_t* pb)
   buffini(pb);
 }
 
-#if 0
-watf_t* watfinit(watf_t* pf)
-{
-  memset(pf, 0, sizeof(watf_t));
-  fsinit(&pf->fs);
-  icbinit(&pf->code);
-  return pf;
-}
-
-void watffini(watf_t* pf)
-{
-  fsfini(&pf->fs);
-  icbfini(&pf->code);
-}
-
-void watfbfini(watfbuf_t* pb)
-{
-  watf_t *pf; size_t i;
-  assert(pb); assert(pb->esz = sizeof(watf_t));
-  pf = (watf_t*)(pb->buf);
-  for (i = 0; i < pb->fill; ++i) watffini(pf+i);
-  buffini(pb);
-}
-#endif
-
 wat_module_t* wat_module_init(wat_module_t* pm)
 {
   memset(pm, 0, sizeof(wat_module_t));
   watiebinit(&pm->imports);
   watiebinit(&pm->exports);
-  watiebinit(&pm->dsegs);
-  watiebinit(&pm->funcs);
   return pm;
 }
 
@@ -1265,8 +1215,6 @@ void wat_module_fini(wat_module_t* pm)
 {
   watiebfini(&pm->imports);
   watiebfini(&pm->exports);
-  watiebfini(&pm->dsegs);
-  watiebfini(&pm->funcs);
 }
 
 void wat_module_clear(wat_module_t* pm)
@@ -1363,8 +1311,7 @@ static void wat_export_mems(watiebuf_t *peb)
     watie_t *pe = watiebref(peb, i);
     if (pe->iek == IEK_MEM) {
       const char *smod = symname(pe->mod), *sname = symname(pe->id);
-      chbclear(g_watbuf);
-      chbputf(g_watbuf, "(memory $%s:%s", smod, sname);
+      chbsetf(g_watbuf, "(memory $%s:%s", smod, sname);
       if (pe->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pe->id));
       if (pe->lt == LT_MIN) chbputf(g_watbuf, " %u", pe->n);
       else chbputf(g_watbuf, " %u %u", pe->n, pe->m);
@@ -1381,8 +1328,7 @@ static void wat_export_globals(watiebuf_t *peb)
     watie_t *pe = watiebref(peb, i);
     if (pe->iek == IEK_GLOBAL) {
       const char *smod = symname(pe->mod), *sname = symname(pe->id);
-      wat_line(chbdata(g_watbuf));
-      chbputf(g_watbuf, "(global $%s:%s", smod, sname);
+      chbsetf(g_watbuf, "(global $%s:%s", smod, sname);
       if (pe->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pe->id));
       if (pe->mut == MT_CONST) chbputf(g_watbuf, " %s", valtype_name(pe->vt));
       else chbputf(g_watbuf, " (mut %s)", valtype_name(pe->vt));
@@ -1392,61 +1338,12 @@ static void wat_export_globals(watiebuf_t *peb)
         chbfini(&cb);
       }
       chbputc(')', g_watbuf); 
+      wat_line(chbdata(g_watbuf));
     }
   }
 }
 
-#if 0
-static void wat_exports(watiebuf_t *peb)
-{
-  size_t i, j;
-  for (i = 0; i < watieblen(peb); ++i) {
-    watie_t *pe = watiebref(peb, i);
-    const char *smod = symname(pe->mod), *sname = symname(pe->id);
-    chbclear(g_watbuf);
-    switch (pe->iek) {
-      case IEK_FUNC: {
-        chbputf(g_watbuf, "(func $%s:%s", smod, sname);
-        for (j = 0; j < vtblen(&pe->fs.partypes); ++j) {
-          valtype_t *pvt = vtbref(&pe->fs.partypes, j);
-          chbputf(g_watbuf, " (param %s)", valtype_name(*pvt));
-        }
-        for (j = 0; j < vtblen(&pe->fs.restypes); ++j) {
-          valtype_t *pvt = vtbref(&pe->fs.restypes, j);
-          chbputf(g_watbuf, " (result %s)", valtype_name(*pvt));
-        }
-        chbputc(')', g_watbuf); 
-      } break;
-      case IEK_DATA: {
-        assert(false); /* fixme */
-      } break;
-      case IEK_MEM: {
-        chbputf(g_watbuf, "(memory $%s:%s", smod, sname);
-        if (pe->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pe->id));
-        if (pe->lt == LT_MIN) chbputf(g_watbuf, " %u", pe->n);
-        else chbputf(g_watbuf, " %u %u", pe->n, pe->m);
-        chbputc(')', g_watbuf); 
-      } break;
-      case IEK_GLOBAL: {
-        chbputf(g_watbuf, "(global $%s:%s", smod, sname);
-        if (pe->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pe->id));
-        if (pe->mut == MT_CONST) chbputf(g_watbuf, " %s", valtype_name(pe->vt));
-        else chbputf(g_watbuf, " (mut %s)", valtype_name(pe->vt));
-        if (pe->ic.in != 0) {
-          chbuf_t cb = mkchb();
-          chbputf(g_watbuf, " (%s)", format_inscode(&pe->ic, &cb));
-          chbfini(&cb);
-        }
-        chbputc(')', g_watbuf); 
-      } break;
-      //default: assert(false);
-    }
-    wat_line(chbdata(g_watbuf));
-  }
-}
-#endif
-
-static void wat_export_data(watiebuf_t *pdb)
+static void wat_export_datas(watiebuf_t *pdb)
 {
   size_t i;
   for (i = 0; i < watieblen(pdb); ++i) {
@@ -1454,7 +1351,6 @@ static void wat_export_data(watiebuf_t *pdb)
     if (pd->iek == IEK_DATA) { 
       const char *smod = symname(pd->mod), *sname = symname(pd->id);
       unsigned char *pc = pd->data.buf; size_t i, n = pd->data.fill;
-      chbclear(g_watbuf);
       chbsetf(g_watbuf, "(data $%s:%s \"", smod, sname);
       for (i = 0; i < n; ++i) {
         unsigned c = pc[i]; char ec = 0;
@@ -1537,11 +1433,10 @@ void write_wat_module(wat_module_t* pm, FILE *pf)
   else wat_linef("(module $%s", symname(pm->name));
   g_watindent += 2;
   wat_imports(&pm->imports);
-  //wat_exports(&pm->exports);
-  wat_export_mems(&pm->dsegs);
-  wat_export_globals(&pm->dsegs);
-  wat_export_data(&pm->dsegs);
-  wat_export_funcs(&pm->funcs);
+  wat_export_mems(&pm->exports);
+  wat_export_globals(&pm->exports);
+  wat_export_datas(&pm->exports);
+  wat_export_funcs(&pm->exports);
   wat_writeln(")");
   g_watout = NULL;
   chbfini(&cb);
@@ -2626,7 +2521,7 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     pi->id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
     parse_import_des(pw, pi);
   } else if (ahead(pw, "data")) {
-    watie_t *pd = watiebnewbk(&pm->dsegs, IEK_DATA);
+    watie_t *pd = watiebnewbk(&pm->exports, IEK_DATA);
     dropt(pw);
     parse_mod_id(pw, &pd->mod, &pd->id);
     if (peekt(pw) == WT_STRING) scan_string(pw, pw->tokstr, &pd->data); 
@@ -2684,7 +2579,7 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
       expect(pw, ")");
     }
   } else if (ahead(pw, "func")) {
-    watie_t *pe = watiebnewbk(&pm->funcs, IEK_FUNC);
+    watie_t *pe = watiebnewbk(&pm->exports, IEK_FUNC);
     dropt(pw);
     parse_mod_id(pw, &pe->mod, &pe->id);
     while (ahead(pw, "(")) {
@@ -2832,10 +2727,10 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
       newpe->exported = false;
     } break;
     case IEK_DATA: { 
-      watie_t *pd = bufbsearch(&pmi->dsegs, pmii, modid_cmp), *newpd;
+      watie_t *pd = bufbsearch(&pmi->exports, pmii, modid_cmp), *newpd;
       if (!pd || pd->iek != IEK_DATA) 
         exprintf("cannot locate data '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
-      newpd = watiebnewbk(&pm->dsegs, IEK_DATA); newpd->mod = pd->mod; newpd->id = pd->id; 
+      newpd = watiebnewbk(&pm->exports, IEK_DATA); newpd->mod = pd->mod; newpd->id = pd->id; 
       memswap(pd, newpd, sizeof(watie_t)); /* mod/id still there so bsearch works */
     } break;
     case IEK_GLOBAL: {
@@ -2854,7 +2749,7 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
       newpe->exported = false;
     } break;
     case IEK_FUNC: {
-      watie_t *pf = bufbsearch(&pmi->funcs, pmii, modid_cmp), *newpf;
+      watie_t *pf = bufbsearch(&pmi->exports, pmii, modid_cmp), *newpf;
       modid_t mi; size_t i;
       if (!pf || pf->iek != IEK_FUNC) 
         exprintf("cannot locate func '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
@@ -2876,7 +2771,7 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
           } break;
         }
       }
-      newpf = watiebnewbk(&pm->funcs, IEK_FUNC); newpf->mod = pf->mod; newpf->id = pf->id; 
+      newpf = watiebnewbk(&pm->exports, IEK_FUNC); newpf->mod = pf->mod; newpf->id = pf->id; 
       memswap(pf, newpf, sizeof(watie_t)); /* mod/id still there so bsearch works */
       newpf->exported = false;
     } break;
@@ -2904,8 +2799,8 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
         exprintf("duplicate main() in %s and %s modules", 
           symname(mainmod), symname(pmi->name));
       mainmod = pmi->name; mt = pmi->main;
-      for (j = 0; j < watieblen(&pmi->funcs); ++j) {
-        watie_t *pe = watiebref(&pmi->funcs, j);
+      for (j = 0; j < watieblen(&pmi->exports); ++j) {
+        watie_t *pe = watiebref(&pmi->exports, j);
         if (pe->iek != IEK_FUNC) continue;
         if (pe->id == mainid) {
           assert(pe->mod == mainmod);
@@ -2957,17 +2852,15 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
     }
   }
   
-  /* fill global dependency list */
-  /* first, sort moduled by module name for bsearch */
+  /* first, sort modules by module name for bsearch */
   bufqsort(pwb, sym_cmp);
   /* now sort module's field lists by mod-name pair */
   for (i = 0; i < wat_module_buf_len(pwb); ++i) {
     wat_module_t* pmi = wat_module_buf_ref(pwb, i);
     bufqsort(&pmi->imports, modid_cmp);    
     bufqsort(&pmi->exports, modid_cmp);    
-    bufqsort(&pmi->dsegs, modid_cmp);    
-    bufqsort(&pmi->funcs, modid_cmp);    
   }
+
   /* now seed depglobals and use it to move globals to pm */
   pmodid = bufnewbk(&depglobals); 
   pmodid->mod = mainmod; pmodid->id = mainid; pmodid->iek = IEK_FUNC;
@@ -2977,6 +2870,8 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
     pmodid = bufnewbk(&depglobals); 
     pmodid->mod = g_env_mod; pmodid->id = g_lm_id; pmodid->iek = IEK_MEM;  
   }
+  
+  /* process depglobals until all deps moved to pm */
   for (i = 0; i < buflen(&depglobals); ++i) {
     /* precondition: this global is not moved yet */
     modid_t *pmii = bufref(&depglobals, i);
@@ -2984,8 +2879,8 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
   }
 
   /* pass over output module functions to check for _start */
-  for (i = 0; i < watieblen(&pm->funcs); ++i) {
-    watie_t *pe = watiebref(&pm->funcs, i);
+  for (i = 0; i < watieblen(&pm->exports); ++i) {
+    watie_t *pe = watiebref(&pm->exports, i);
     if (pe->iek != IEK_FUNC) continue;
     if (pe->id == startid) {
       if (startmod) 
