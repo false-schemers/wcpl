@@ -15,11 +15,12 @@
 #include "c.h"
 
 /* wcpl globals */
-buf_t *g_pbases; /* module search bases */
-sym_t g_env_mod; /* environment module */
+buf_t *g_pbases;  /* module search bases */
+sym_t g_env_mod;  /* environment module */
 sym_t g_wasi_mod; /* module for wasi */
-sym_t g_lm_id; /* id for linear memory */
-sym_t g_sp_id; /* id for stack pointer global */
+sym_t g_lm_id;    /* id for linear memory */
+sym_t g_sp_id;    /* id for stack pointer global */
+size_t g_sdbaddr; /* static data allocation start */
 
 /* initialization */
 void init_wcpl(dsbuf_t *plibv)
@@ -34,6 +35,7 @@ void init_wcpl(dsbuf_t *plibv)
   g_env_mod = intern("env");
   g_lm_id = intern("__linear_memory");
   g_sp_id = intern("__stack_pointer");
+  g_sdbaddr = 1024; /* address 0 reserved for NULL */
 } 
 
 void fini_wcpl(void)
@@ -44,18 +46,44 @@ void fini_wcpl(void)
 }
 
 /* compiler globals */
-static buf_t g_dsmap; /* of dsmelt_t, sorted by cb */
+static dsmebuf_t g_dsmap; /* of dsmelt_t, sorted by cb */
 static sym_t g_curmod; /* currently processed module */
 
 /* g_dsmap element */
-typedef struct dsmelt {
-  chbuf_t cb; /* data segment data */
-  size_t ind; /* unique index within this map */
-} dsmelt_t;
+dsme_t* dsmeinit(dsme_t* pe)
+{
+  memset(pe, 0, sizeof(dsme_t));
+  chbinit(&pe->data);
+  return pe;
+}
+
+void dsmefini(dsme_t* pe)
+{
+  chbfini(&pe->data);
+}
+
+void dsmebfini(dsmebuf_t* pb)
+{
+  dsme_t *pe; size_t i;
+  assert(pb); assert(pb->esz = sizeof(dsme_t));
+  pe = (dsme_t*)(pb->buf);
+  for (i = 0; i < pb->fill; ++i) dsmefini(pe+i);
+  buffini(pb);
+}
+
+int dsme_cmp(const void *p1, const void *p2)
+{
+  dsme_t *pe1 = (dsme_t*)p1, *pe2 = (dsme_t*)p2; 
+  int cmp = chbuf_cmp(&pe1->data, &pe2->data);
+  if (cmp) return cmp;
+  cmp = pe1->align - pe2->align;
+  if (cmp < 0) return -1; if (cmp > 0) return 1;
+  return 0;
+}
 
 void init_compiler(void)
 {
-  bufinit(&g_dsmap, sizeof(dsmelt_t));
+  dsmebinit(&g_dsmap);
   init_workspaces();
   init_nodepool();
   init_regpool();
@@ -65,9 +93,7 @@ void init_compiler(void)
 
 void fini_compiler(void)
 {
-  dsmelt_t *pde; size_t i;
-  for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) chbfini(&pde[i].cb);
-  buffini(&g_dsmap);
+  dsmebfini(&g_dsmap);
   fini_workspaces();
   fini_nodepool();
   fini_regpool();
@@ -81,18 +107,21 @@ void fini_compiler(void)
 /* intern the string literal, return dseg id */
 intern_strlit(node_t *pn)
 {
-  dsmelt_t *pe; sym_t dsid;
+  dsme_t e, *pe; sym_t dsid;
   assert(pn->nt == NT_LITERAL && (pn->ts == TS_STRING || pn->ts == TS_LSTRING));
-  pe = bufbsearch(&g_dsmap, &pn->data, chbuf_cmp);
+  dsmeinit(&e); chbcpy(&e.data, &pn->data); 
+  e.align = (pn->ts == TS_LSTRING) ? 4 /* wchar_t */ : 1 /* char */;
+  pe = bufbsearch(&g_dsmap, &e, dsme_cmp);
   if (!pe) { /* add data to the map */
-    pe = bufnewbk(&g_dsmap); 
-    chbicpy(&pe->cb, &pn->data);
+    pe = bufnewbk(&g_dsmap);
+    memswap(pe, &e, sizeof(dsme_t)); 
     pe->ind = buflen(&g_dsmap);
     dsid = internf("ds%d$", pe->ind);
-    bufqsort(&g_dsmap, chbuf_cmp);
+    bufqsort(&g_dsmap, dsme_cmp);
   } else {
     dsid = internf("ds%d$", pe->ind);
   }
+  dsmefini(&e);
   return dsid;
 }
 
@@ -3183,11 +3212,13 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
   }
 
   if (buflen(&g_dsmap) > 0) {
-    dsmelt_t *pde; size_t i;
-    for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) {
+    size_t i;
+    for (i = 0; i < dsmeblen(&g_dsmap); ++i) {
+      dsme_t *pe = dsmebref(&g_dsmap, i);
       watie_t *pd = watiebnewbk(&pwm->exports, IEK_DATA);
-      pd->mod = mod; pd->id = internf("ds%d$", pde[i].ind);
-      bufswap(&pd->data, &pde[i].cb);
+      pd->mod = mod; pd->id = internf("ds%d$", pe->ind);
+      bufswap(&pd->data, &pe->data);
+      pd->align = pe->align;
     }
   }
 

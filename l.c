@@ -917,6 +917,13 @@ char* chbdata(chbuf_t* pb)
   return pb->buf; 
 }
 
+void chbcpy(chbuf_t* pb, const chbuf_t* pcb)
+{
+  size_t n = chblen(pcb);
+  bufresize(pb, n);
+  memcpy((char*)pb->buf, (char*)pcb->buf, n);
+}
+
 void chbcat(chbuf_t* pb, const chbuf_t* pcb)
 {
   size_t i = chblen(pb), n = chblen(pcb);

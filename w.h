@@ -465,6 +465,7 @@ typedef struct watie {
   limtype_t lt;   /* MEM: limits type */
   unsigned n;     /* MEM: min limit */
   unsigned m;     /* MEM: max limit */
+  int align;      /* DATA: alignment in bytes: 1,2,4,8,16 */
   buf_t data;     /* DATA: bytes (export only) */
   icbuf_t code;   /* FUNC: code (export only) */
 } watie_t;

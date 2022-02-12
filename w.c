@@ -1145,9 +1145,12 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       else chbputf(pcb, " %lld", pic->arg.i); 
       break;
     case INSIG_L: case INSIG_T:
-    case INSIG_I32:  case INSIG_I64:
       if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
       else chbputf(pcb, " %lld", pic->arg.i); 
+      break;
+    case INSIG_I32:  case INSIG_I64:
+      chbputf(pcb, " %lld", pic->arg.i); 
+      if (pic->id) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
       break;
     case INSIG_X_Y:
       if (pic->id) chbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
@@ -1158,12 +1161,12 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       else chbputf(pcb, " offset=%llu align=%u", pic->arg.u, 1<<pic->arg2.u); 
       break;
     case INSIG_F32:
-      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
-      else { chbputc(' ', pcb); chbputg((double)pic->arg.f, pcb); }
+      chbputc(' ', pcb); chbputg((double)pic->arg.f, pcb);
+      if (pic->id) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
       break;
     case INSIG_F64:
-      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
-      else { chbputc(' ', pcb); chbputg(pic->arg.d, pcb); } 
+      chbputc(' ', pcb); chbputg(pic->arg.d, pcb);
+      if (pic->id) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
       break;
     case INSIG_LS_L:
       chbputf(pcb, " (; see next %llu+1 branches ;)", pic->arg.u);
@@ -1283,7 +1286,7 @@ static void wat_imports(watiebuf_t *pib)
         chbputc(')', g_watbuf); 
       } break;
       case IEK_DATA: {
-        assert(false); /* necer imported */
+        assert(false); /* never imported */
       } break;
       case IEK_MEM: {
         chbputf(g_watbuf, "(memory $%s:%s", smod, sname);
@@ -1351,7 +1354,16 @@ static void wat_export_datas(watiebuf_t *pdb)
     if (pd->iek == IEK_DATA) { 
       const char *smod = symname(pd->mod), *sname = symname(pd->id);
       unsigned char *pc = pd->data.buf; size_t i, n = pd->data.fill;
-      chbsetf(g_watbuf, "(data $%s:%s \"", smod, sname);
+      if (smod && sname) { /* symbolic segment (nonfinal) */
+        assert(pd->align); assert(pd->ic.id == 0);
+        chbsetf(g_watbuf, "(data $%s:%s align=%d \"", smod, sname, pd->align);
+      } else { /* positioned segment (final, WAT-compatible) */
+        chbuf_t cb = mkchb();
+        assert(!pd->align); assert(pd->ic.in == IN_I32_CONST);
+        chbsetf(g_watbuf, "(data (%s)", format_inscode(&pd->ic, &cb));
+        chbfini(&cb);
+      }  
+      chbputs(" \"", g_watbuf);
       for (i = 0; i < n; ++i) {
         unsigned c = pc[i]; char ec = 0;
         switch (c) {
@@ -2522,8 +2534,16 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     parse_import_des(pw, pi);
   } else if (ahead(pw, "data")) {
     watie_t *pd = watiebnewbk(&pm->exports, IEK_DATA);
+    char *s;
     dropt(pw);
     parse_mod_id(pw, &pd->mod, &pd->id);
+    if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "align=")) != NULL) {
+      char *e; unsigned long align; errno = 0; align = strtoul(s, &e, 10); 
+      if (errno || *e != 0 || (align != 1 && align != 2 && align != 4 && align != 8 && align != 16)) 
+        seprintf(pw, "invalid align= argument");
+      pd->align = (int)align;
+      dropt(pw);
+    }
     if (peekt(pw) == WT_STRING) scan_string(pw, pw->tokstr, &pd->data); 
     else seprintf(pw, "missing data string");
     dropt(pw);
@@ -2779,6 +2799,86 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
   }
 }
 
+/* data placement map */
+typedef struct dpmentry {
+  sym_t mod, id;  /* mod:id; used for sorting */
+  size_t address; /* absolute addr in data segment */  
+} dpme_t; 
+
+/* remove dependence on non-standard WAT features and instructions */
+void watify_wat_module(wat_module_t* pm)
+{
+  size_t curaddr = g_sdbaddr;
+  chbuf_t dseg = mkchb(); size_t i;
+  buf_t dpmap = mkbuf(sizeof(dpme_t));
+  dsmebuf_t dsmap; dsmebinit(&dsmap);
+  
+  /* concatenate dss into one big data chunk */
+  for (i = 0; i < watieblen(&pm->exports); /* del or bumpi */) {
+    watie_t *pd = watiebref(&pm->exports, i);
+    if (pd->iek == IEK_DATA) {
+      dsme_t e, *pe; dpme_t *pme; dsmeinit(&e); 
+      memswap(&e.data, &pd->data, sizeof(buf_t));
+      e.align = pd->align; assert(pd->align);
+      pe = bufbsearch(&dsmap, &e, dsme_cmp);
+      if (!pe) { /* new data elt */
+        size_t addr = curaddr, align, n;
+        pe = bufnewbk(&dsmap);
+        memswap(pe, &e, sizeof(dsme_t)); 
+        align = pd->align, n = addr % align, addr += n;
+        if (n > 0) bufresize(&dseg, buflen(&dseg) + n);
+        chbcat(&dseg, &pe->data);
+        bufqsort(&dsmap, dsme_cmp);
+        pe->ind = addr;
+        curaddr = addr + buflen(&pe->data);
+      }
+      pme = bufnewbk(&dpmap);
+      pme->mod = pd->mod; pme->id = pd->id;
+      pme->address = pe->ind;
+      watiefini(pd); bufrem(&pm->exports, i);
+      dsmefini(&e);
+    } else {
+      ++i;
+    }
+  }
+  
+  /* prepare dpmap for binary search */
+  bufqsort(&dpmap, modid_cmp);
+  
+  /* walk over functions and convert our IN_REF_DATA to IN_I32_CONST */
+  for (i = 0; i < watieblen(&pm->exports); ++i) {
+    watie_t *pf = watiebref(&pm->exports, i);
+    if (pf->iek == IEK_FUNC) {
+      size_t j;
+      for (j = 0; j < icblen(&pf->code); ++j) {
+        inscode_t *pic = icbref(&pf->code, j);
+        if (pic->in == IN_REF_DATA) {
+          modid_t mi; dpme_t *pdpme; 
+          mi.mod = pic->arg2.mod; mi.id = pic->id;
+          pdpme = bufbsearch(&dpmap, &mi, modid_cmp);
+          if (!pdpme) exprintf("internal error: cannot patch ref.data $%s:%s", 
+            symname(mi.mod), symname(mi.id));
+          pic->in = IN_I32_CONST;
+          pic->arg.u = pdpme->address;
+        }
+      }
+    }
+  }
+    
+  /* add combined data segment */
+  if (buflen(&dpmap) > 0) {
+    watie_t *pd = watiebnewbk(&pm->exports, IEK_DATA);
+    memswap(&pd->data, &dseg, sizeof(buf_t));
+    pd->align = 0; /* means ds is final */
+    pd->ic.in = IN_I32_CONST; /* wasm32 address */
+    pd->ic.arg.u = g_sdbaddr;
+  }
+  
+  chbfini(&dseg);
+  dsmebfini(&dsmap);
+  buffini(&dpmap);
+}
+
 void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
 {
   size_t i, j; main_t mt = MAIN_ABSENT;
@@ -2892,6 +2992,14 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
   }
   if (!startmod) exprintf("_start() function not found");
   else logef("# found _start() function in '%s' module\n", symname(startmod));
+
+  if (getverbosity() > 0) {
+    fprintf(stderr, "linked module before watify:\n");
+    write_wat_module(pm, stderr);
+  }
+  
+  /* remove dependence on non-standard WAT features and instructions */
+  watify_wat_module(pm);
 
   /* done */    
   buffini(&curmodnames);
