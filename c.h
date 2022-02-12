@@ -3,14 +3,12 @@
 #ifndef _C_H_INCLUDED
 #define _C_H_INCLUDED
 
-/* compiler */
-
-/* compiler initialization (including symbols and workstaces) */
-extern void init_compiler(dsbuf_t *plibv);
-extern void fini_compiler(void);
-
-/* compile source file to in-memory wat output module */
-extern void compile_module_to_wat(dsbuf_t *plibv, const char *ifname, wat_module_t *pwm);
+/* globals */
+extern buf_t *g_pbases; /* module search bases */
+extern sym_t g_env_mod; /* environment module */
+extern sym_t g_wasi_mod; /* module for wasi */
+extern sym_t g_lm_id; /* id for linear memory */
+extern sym_t g_sp_id; /* id for stack pointer global */
 
 /* calc size/align for ptn; prn is NULL or reference node for errors, use 0 for lvl */
 extern void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl);

@@ -34,13 +34,13 @@ sym_t modname_from_path(const char *path)
   return mod;
 }
 
-pws_t *pws_from_modname(sym_t mod, buf_t *pbases)
+pws_t *pws_from_modname(sym_t mod)
 {
   pws_t *pws = NULL;
   if (mod) {
-    size_t i; chbuf_t cb; chbinit(&cb);
-    for (i = 0; i < buflen(pbases); ++i) {
-      sym_t *pb = bufref(pbases, i);
+    size_t i; chbuf_t cb = mkchb();
+    for (i = 0; i < buflen(g_pbases); ++i) {
+      sym_t *pb = bufref(g_pbases, i);
       pws = newpws(chbsetf(&cb, "%s%s", symname(*pb), symname(mod)));
       if (pws) break;
       pws = newpws(chbsetf(&cb, "%s%s.h", symname(*pb), symname(mod)));
@@ -48,7 +48,7 @@ pws_t *pws_from_modname(sym_t mod, buf_t *pbases)
       pws = newpws(chbsetf(&cb, "%s%s.wh", symname(*pb), symname(mod)));
       if (pws) break;
     }
-    if (pws) logef("# found %s module interface in %s (pws #%d)\n", symname(mod), chbdata(&cb), pwsid(pws));
+    if (pws) logef("# found '%s' module interface in %s (pws #%d)\n", symname(mod), chbdata(&cb), pwsid(pws));
     chbfini(&cb);
   }
   return pws;

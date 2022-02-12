@@ -13,6 +13,8 @@
 #include <math.h>
 #include "l.h"
 #include "w.h"
+#include "p.h"
+#include "c.h"
 
 /* wasm binary encoding globals */
 static FILE *g_wasmout = NULL; /* current binary output stream */
@@ -2695,13 +2697,38 @@ void read_wat_module(const char *fname, wat_module_t* pm)
   }
 }
 
+void load_library_wat_module(sym_t mod, wat_module_t* pm)
+{
+  chbuf_t cb = mkchb(); size_t i;
+  sws_t *pws = NULL;
+  for (i = 0; i < buflen(g_pbases); ++i) {
+    sym_t *pb = bufref(g_pbases, i);
+    pws = newsws(chbsetf(&cb, "%s%s.o", symname(*pb), symname(mod)));
+    if (pws) break;
+    pws = newsws(chbsetf(&cb, "%s%s.wo", symname(*pb), symname(mod)));
+    if (pws) break;
+    pws = newsws(chbsetf(&cb, "%s%s.wat", symname(*pb), symname(mod)));
+    if (pws) break;
+  }
+  if (pws) {
+    logef("# found '%s' module object in %s\n", symname(mod), chbdata(&cb));
+    wat_module_clear(pm);
+    pm->main = MAIN_ABSENT;
+    parse_module(pws, pm);
+    logef("# '%s' module object loaded\n", symname(mod));
+  } else {
+    exprintf("cannot locate object module: '%s'", symname(mod));
+  }
+  chbfini(&cb); 
+}
 
 /* linker */
 
 void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
 {
   size_t i, j, maini = SIZE_MAX, mainj = SIZE_MAX;
-  sym_t mainid = intern("main"), mainmod = 0; main_t mt;
+  sym_t mainid = intern("main"), mainmod = 0; 
+  main_t mt = MAIN_ABSENT;
   buf_t curmodnames = mkbuf(sizeof(sym_t)); /* in pwb */
   buf_t extmodnames = mkbuf(sizeof(sym_t)); /* not in pwb */
 
@@ -2738,14 +2765,30 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
   }
   if (maini == SIZE_MAX ||mainj == SIZE_MAX)
     logef("error: main() function not found\n"); /* fixme: should be exprintf */
-  else logef("# main() found in %s module\n", symname(mainmod));
+  else logef("# main() found in '%s' module\n", symname(mainmod));
 
   /* add missing library modules */
   for (i = 0; i < buflen(&extmodnames); ++i) {
     sym_t *pmn = bufref(&extmodnames, i);
     if (bufsearch(&curmodnames, pmn, sym_cmp) == NULL) {
-      logef("# found library dependence: %s module\n", symname(*pmn));
-      /* todo: locate it and load it!! */
+      if (*pmn == g_wasi_mod) {
+        logef("# found WASI subsystem dependence: '%s' module\n", symname(g_wasi_mod));
+        /* nothing to load  */
+      } else {
+        sym_t rtn = *pmn; wat_module_t* pnewm;
+        if (rtn == g_env_mod) {
+          if (mt == MAIN_VOID) rtn = internf("%s.void", symname(rtn));
+          else if (mt == MAIN_ARGC_ARGV) rtn = internf("%s.argv", symname(rtn));
+        }
+        logef("# found library dependence: '%s' module\n", symname(*pmn));
+        load_library_wat_module(*pmn, (pnewm = wat_module_buf_newbk(pwb)));
+        /* trace sub-dependencies */
+        for (j = 0; j < watiblen(&pnewm->imports); ++j) {
+          wati_t *pi = watibref(&pnewm->imports, j);
+          if (bufsearch(&extmodnames, &pi->mod, sym_cmp) == NULL)
+            *(sym_t*)bufnewbk(&extmodnames) = pi->mod;
+        }
+      }
     }
   }
   

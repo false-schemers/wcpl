@@ -6,7 +6,7 @@
 /* module names and files */
 extern sym_t base_from_path(const char *path);
 extern sym_t modname_from_path(const char *fname);
-extern struct pws *pws_from_modname(sym_t mod, buf_t *pbases);
+extern struct pws *pws_from_modname(sym_t mod);
 
 /* lexical token types */
 typedef enum tt {

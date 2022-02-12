@@ -14,15 +14,38 @@
 #include "p.h"
 #include "c.h"
 
-/* globals */
-static buf_t g_bases;
+/* wcpl globals */
+buf_t *g_pbases; /* module search bases */
+sym_t g_env_mod; /* environment module */
+sym_t g_wasi_mod; /* module for wasi */
+sym_t g_lm_id; /* id for linear memory */
+sym_t g_sp_id; /* id for stack pointer global */
+
+/* initialization */
+void init_wcpl(dsbuf_t *plibv)
+{
+  size_t i;
+  g_pbases = newbuf(sizeof(sym_t));
+  for (i = 0; i < dsblen(plibv); ++i) {
+    dstr_t *pds = dsbref(plibv, i);
+    *(sym_t*)bufnewbk(g_pbases) = intern(*pds);
+  }
+  g_wasi_mod = intern("wasi_snapshot_preview1");
+  g_env_mod = intern("env");
+  g_lm_id = intern("__linear_memory");
+  g_sp_id = intern("__stack_pointer");
+} 
+
+void fini_wcpl(void)
+{
+  freebuf(g_pbases);
+  g_wasi_mod = g_env_mod = 0;
+  g_lm_id = g_sp_id = 0;
+}
+
+/* compiler globals */
 static buf_t g_dsmap; /* of dsmelt_t, sorted by cb */
 static sym_t g_curmod; /* currently processed module */
-static sym_t g_lm_mod; /* module for linear memory */
-static sym_t g_lm_id;  /* id for linear memory */
-static sym_t g_sp_mod; /* module for stack pointer global */
-static sym_t g_sp_id;  /* id for stack pointer global */
-static sym_t g_wasi_mod; /* module for wasi */
 
 /* g_dsmap element */
 typedef struct dsmelt {
@@ -30,31 +53,19 @@ typedef struct dsmelt {
   size_t ind; /* unique index within this map */
 } dsmelt_t;
 
-/* initialization */
-void init_compiler(dsbuf_t *plibv)
+void init_compiler(void)
 {
-  size_t i;
-  bufinit(&g_bases, sizeof(sym_t));
-  for (i = 0; i < dsblen(plibv); ++i) {
-    dstr_t *pds = dsbref(plibv, i);
-    *(sym_t*)bufnewbk(&g_bases) = intern(*pds);
-  } 
   bufinit(&g_dsmap, sizeof(dsmelt_t));
   init_workspaces();
   init_nodepool();
   init_regpool();
   init_symbols();
   g_curmod = 0;
-  g_wasi_mod = intern("wasi_snapshot_preview1");
-  g_lm_mod = g_sp_mod = intern("env");
-  g_lm_id = intern("__linear_memory");
-  g_sp_id = intern("__stack_pointer");
 }
 
 void fini_compiler(void)
 {
   dsmelt_t *pde; size_t i;
-  buffini(&g_bases);
   for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) chbfini(&pde[i].cb);
   buffini(&g_dsmap);
   fini_workspaces();
@@ -62,8 +73,6 @@ void fini_compiler(void)
   fini_regpool();
   fini_symbols();
   g_curmod = 0;
-  g_wasi_mod = g_lm_mod = g_sp_mod = 0;
-  g_lm_id = g_sp_id = 0;
 }
 
 
@@ -525,21 +534,6 @@ bool static_eval_to_int(node_t *pn, int *pri)
   ndfini(&nd);
   return ok;
 }
-
-#ifdef _DEBUG
-bool static_eval(node_t *pn, node_t *prn)
-{
-  bool ok; bool __static_eval(node_t *pn, node_t *prn);
-  ok = __static_eval(pn, prn);
-  if (getverbosity() > 1) {
-    fprintf(stderr, "** eval\n"); dump_node(pn, stderr);
-    if (ok) { fprintf(stderr, "=>\n"); dump_node(prn, stderr); }
-    else fprintf(stderr, "=> failed!\n");
-  }
-  return ok;
-}
-#define static_eval(pn, prn) __static_eval(pn, prn)
-#endif
 
 /* evaluate pn expression statically, putting result into prn (numbers only) */
 bool static_eval(node_t *pn, node_t *prn)
@@ -2263,11 +2257,11 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     size_t asz = 8, nargs = buflen(pab)-i, framesz = (nargs*asz + 15) & ~0xFLL, basei;
     inscode_t *pic = icbnewfr(&pcn->data); pic->in = IN_REGDECL;
     pic->id = pname; pic->arg.u = VT_I32; /* wasm32 pointer */
-    acode_pushin_id_mod(pcn, IN_GLOBAL_GET, g_sp_id, g_sp_mod);
+    acode_pushin_id_mod(pcn, IN_GLOBAL_GET, g_sp_id, g_env_mod);
     acode_pushin_id(pcn, IN_LOCAL_TEE, pname);
     acode_pushin_uarg(pcn, IN_I32_CONST, framesz);
     acode_pushin(pcn, IN_I32_SUB);
-    acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_sp_mod); 
+    acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_env_mod); 
     /* start of va_arg_t[nargs] array is now in pname, fill it */
     for (basei = i; i < buflen(pab); ++i) {
       node_t **ppani = bufref(pab, i), *pani = *ppani;
@@ -2284,7 +2278,7 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     /* put the call instruction followed by sp restore */
     asm_pushbk(&pcn->data, &cic);
     acode_pushin_id(pcn, IN_LOCAL_GET, pname);
-    acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_sp_mod); 
+    acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_env_mod); 
   } else {
     /* just put the call instruction */
     asm_pushbk(&pcn->data, &cic);
@@ -2490,11 +2484,11 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             if (ts == TS_INT) { /* sizeof?: calc frame size statically */
               pnv->i = (pnv->i + 15) & ~0xFLL;
               pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; 
-              pic->id = g_sp_id; pic->arg2.mod = g_sp_mod;
+              pic->id = g_sp_id; pic->arg2.mod = g_env_mod;
               pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; 
-              pic->id = g_sp_id; pic->arg2.mod = g_sp_mod;
+              pic->id = g_sp_id; pic->arg2.mod = g_env_mod;
               acode_pushin(pan, IN_I32_SUB); 
-              acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_sp_mod);
+              acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
             } else { /* calc frame size dynamically */
               sym_t sname = rpalloc(VT_I32), pname = rpalloc(VT_I32); /* wasm32 */
               pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->id = sname; pic->arg.u = VT_I32;
@@ -2506,12 +2500,12 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
               acode_pushin_uarg(pan, IN_I32_CONST, 0xFFFFFFF0);
               acode_pushin(pan, IN_I32_AND);   
               acode_pushin_id(pan, IN_LOCAL_SET, sname);
-              acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_sp_mod);
+              acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_env_mod);
               acode_pushin_id(pan, IN_LOCAL_TEE, pname);
               acode_pushin_id(pan, IN_LOCAL_GET, sname);
               pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->id = pname; pic->arg.u = VT_I32;
               acode_pushin(pan, IN_I32_SUB);
-              acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_sp_mod);
+              acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
               acode_pushin_id(pan, IN_LOCAL_GET, pname);
             }
             wrap_type_pointer(ndsettype(acode_type(pan), TS_VOID));
@@ -2526,7 +2520,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             node_t *ptni = acode_type(pan);
             if (ptni->ts != TS_PTR)
               neprintf(pn, "invalid freea() intrinsic's argument");
-            acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_sp_mod);
+            acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
             ndsettype(acode_type(pan), TS_VOID);
             pcn = pan;
           } else {
@@ -3050,7 +3044,7 @@ static void process_top_node(sym_t mmod, node_t *pn, wat_module_t *pm)
 static void process_include(pws_t *pw, int startpos, sym_t name, wat_module_t *pm)
 {
   pws_t *pwi; node_t nd = mknd();
-  pwi = pws_from_modname(name, &g_bases);
+  pwi = pws_from_modname(name); /* searches g_pbases */
   if (pwi) {
     /* this should be workspace #1... */
     assert(pwsid(pwi) > 0);
@@ -3096,11 +3090,11 @@ static sym_t process_module(const char *fname, wat_module_t *pm)
 }
 
 /* compile source file to in-memory wat output module */
-void compile_module_to_wat(dsbuf_t *plibv, const char *ifname, wat_module_t *pwm)
+void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
 {
   size_t i; sym_t mod;
 
-  init_compiler(plibv);
+  init_compiler();
   wat_module_clear(pwm);
   
   mod = process_module(ifname, pwm); assert(mod);
@@ -3113,11 +3107,11 @@ void compile_module_to_wat(dsbuf_t *plibv, const char *ifname, wat_module_t *pwm
       wati_t *pi;
       /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
       pi = watibnewfr(&pwm->imports); pi->ek = EK_GLOBAL; 
-      pi->mod = g_sp_mod; pi->name = g_sp_id; 
+      pi->mod = g_env_mod; pi->name = g_sp_id; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
       /* (import "env" "__linear_memory" (memory $env:__linear_memory 0)) */
       pi = watibnewfr(&pwm->imports); pi->ek = EK_MEM; 
-      pi->mod = g_lm_mod; pi->name = g_lm_id; 
+      pi->mod = g_env_mod; pi->name = g_lm_id; 
       pi->lt = LT_MIN; pi->n = 0;
     } break;
     case MAIN_ARGC_ARGV: {
@@ -3129,12 +3123,12 @@ void compile_module_to_wat(dsbuf_t *plibv, const char *ifname, wat_module_t *pwm
       wati_t *pi; watf_t *pf; inscode_t *pic; sym_t r;
       /* (global $env:__stack_pointer (mut i32) (i32.const N)) */
       pi = watibnewfr(&pwm->defs); pi->ek = EK_GLOBAL; /* fixme!: needs to be in separate env module! */
-      pi->mod = g_sp_mod; pi->name = g_sp_id; pi->exported = true; 
+      pi->mod = g_env_mod; pi->name = g_sp_id; pi->exported = true; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
       pi->ic.in = IN_I32_CONST; pi->ic.arg.u = 42424; /* fixme */
       /* (memory $env:__linear_memory (export "__linear_memory") 2) */
       pi = watibnewfr(&pwm->defs); pi->ek = EK_MEM; /* fixme!: needs to be in separate env module! */
-      pi->mod = g_lm_mod; pi->name = g_lm_id; pi->exported = true; 
+      pi->mod = g_env_mod; pi->name = g_lm_id; pi->exported = true; 
       pi->n = 2; /* fixme: pre-allocate 2 64Kib pages */
       /* (import "wasi_snapshot_preview1" "proc_exit" (func $... (param i32))) */
       pi = watibnewfr(&pwm->imports); pi->ek = EK_FUNC; 
@@ -3239,13 +3233,15 @@ int main(int argc, char **argv)
     }
   }
 
+  init_wcpl(&libv);
+
   if (c_opt) {
     /* compile single source file */
     wat_module_t wm; wat_module_init(&wm);
     if (eoptind < argc) ifile_arg = argv[eoptind++];
     if (eoptind < argc) eusage("too many input files for -c mode");
     /* todo: autogenerate output file name (stdout for now) */
-    compile_module_to_wat(&libv, ifile_arg, &wm);
+    compile_module_to_wat(ifile_arg, &wm);
     if (ofile_arg) {
       FILE *pf = fopen(ofile_arg, "w");
       if (!pf) exprintf("cannot open output file %s:", ofile_arg);
@@ -3266,11 +3262,11 @@ int main(int argc, char **argv)
       if (strsuf(ifile_arg, ".o") || strsuf(ifile_arg, ".wo") || strsuf(ifile_arg, ".wat")) {
         logef("# loading object module from %s\n", ifile_arg);
         read_wat_module(ifile_arg, pwm);
-        logef("# object module %s loaded\n", symname(pwm->name));
+        logef("# object module '%s' loaded\n", symname(pwm->name));
       } else {
         logef("# compiling source file %s\n", ifile_arg);
-        compile_module_to_wat(&libv, ifile_arg, pwm);
-        logef("# object module %s created\n", symname(pwm->name));
+        compile_module_to_wat(ifile_arg, pwm);
+        logef("# object module '%s' created\n", symname(pwm->name));
       }
     }
     link_wat_modules(&wmb, &wm);
@@ -3279,6 +3275,7 @@ int main(int argc, char **argv)
     wat_module_buf_fini(&wmb); 
   }
 
+  fini_wcpl();
   dsbfini(&libv);
   return EXIT_SUCCESS;
 }

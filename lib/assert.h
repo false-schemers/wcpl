@@ -2,7 +2,7 @@
 
 #pragma once
 
-/* this is a NDEBUG header */
+/* this is a regular header */
 
-#define NDEBUG 1
-#define assert(e) ((void)0)
+#define NDEBUG 0
+#define assert(e) ((e) ? (void)0 : (void)asm(unreachable))
