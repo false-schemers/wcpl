@@ -3186,7 +3186,7 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
     dsmelt_t *pde; size_t i;
     for (pde = (dsmelt_t*)(g_dsmap.buf), i = 0; i < g_dsmap.fill; ++i) {
       watie_t *pd = watiebnewbk(&pwm->exports, IEK_DATA);
-      pd->mod = mod; pd->id = internf("ds%d$", pde->ind);
+      pd->mod = mod; pd->id = internf("ds%d$", pde[i].ind);
       bufswap(&pd->data, &pde[i].cb);
     }
   }
