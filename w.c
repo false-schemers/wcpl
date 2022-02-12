@@ -1310,7 +1310,7 @@ static void wat_imports(watibuf_t *pib)
   size_t i, j;
   for (i = 0; i < watiblen(pib); ++i) {
     wati_t *pi = watibref(pib, i);
-    const char *smod = symname(pi->mod), *sname = symname(pi->name);
+    const char *smod = symname(pi->mod), *sname = symname(pi->id);
     chbsetf(g_watbuf, "(import \"%s\" \"%s\" ", smod, sname);
     switch (pi->ek) {
       case EK_FUNC: {
@@ -1328,14 +1328,16 @@ static void wat_imports(watibuf_t *pib)
       case EK_TABLE: {
       } break;
       case EK_MEM: {
-        if (pi->lt == LT_MIN) chbputf(g_watbuf, "(memory %u)", pi->n);
-        else chbputf(g_watbuf, "(memory %u %u)", pi->n, pi->m);
+        chbputf(g_watbuf, "(memory $%s:%s", smod, sname);
+        if (pi->lt == LT_MIN) chbputf(g_watbuf, " %u)", pi->n);
+        else chbputf(g_watbuf, " %u %u)", pi->n, pi->m);
       } break;
       case EK_GLOBAL: {
+        chbputf(g_watbuf, "(global $%s:%s", smod, sname);
         if (pi->mut == MT_CONST) {
-          chbputf(g_watbuf, "(global $%s:%s %s)", smod, sname, valtype_name(pi->vt));
+          chbputf(g_watbuf, " %s)", valtype_name(pi->vt));
         } else {
-          chbputf(g_watbuf, "(global $%s:%s (mut %s))", smod, sname, valtype_name(pi->vt));
+          chbputf(g_watbuf, " (mut %s))", valtype_name(pi->vt));
         }
       } break;
     }
@@ -1349,7 +1351,7 @@ static void wat_defs(watibuf_t *pib)
   size_t i, j;
   for (i = 0; i < watiblen(pib); ++i) {
     wati_t *pi = watibref(pib, i);
-    const char *smod = symname(pi->mod), *sname = symname(pi->name);
+    const char *smod = symname(pi->mod), *sname = symname(pi->id);
     chbclear(g_watbuf);
     switch (pi->ek) {
       case EK_FUNC: {
@@ -1368,14 +1370,14 @@ static void wat_defs(watibuf_t *pib)
       } break;
       case EK_MEM: {
         chbputf(g_watbuf, "(memory $%s:%s", smod, sname);
-        if (pi->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pi->name));
+        if (pi->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pi->id));
         if (pi->lt == LT_MIN) chbputf(g_watbuf, " %u", pi->n);
         else chbputf(g_watbuf, " %u %u", pi->n, pi->m);
         chbputc(')', g_watbuf); 
       } break;
       case EK_GLOBAL: {
         chbputf(g_watbuf, "(global $%s:%s", smod, sname);
-        if (pi->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pi->name));
+        if (pi->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pi->id));
         if (pi->mut == MT_CONST) chbputf(g_watbuf, " %s", valtype_name(pi->vt));
         else chbputf(g_watbuf, " (mut %s)", valtype_name(pi->vt));
         if (pi->ic.in != 0) {
@@ -2502,9 +2504,9 @@ static void parse_import_name(sws_t *pw, wati_t *pi)
   if (peekt(pw) == WT_ID) {
     sym_t mod, id;
     parse_mod_id(pw, &mod, &id);
-    if (pi->mod != mod || pi->name != id)
+    if (pi->mod != mod || pi->id != id)
       seprintf(pw, "unconventional name $%s:%s ($%s:%s expected)", 
-        symname(mod), symname(id), symname(pi->mod), symname(pi->name));
+        symname(mod), symname(id), symname(pi->mod), symname(pi->id));
     dropt(pw);
   }
 }
@@ -2535,7 +2537,7 @@ static void parse_import_des(sws_t *pw, wati_t *pi)
   } else if (ahead(pw, "func")) {
     dropt(pw);
     pi->ek = EK_FUNC;
-    parse_mod_id(pw, &pi->mod, &pi->name);
+    parse_mod_id(pw, &pi->mod, &pi->id);
     while (ahead(pw, "(")) {
       dropt(pw);
       if (ahead(pw, "param")) {
@@ -2562,7 +2564,7 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     wati_t *pi = watibnewbk(&pm->imports);
     dropt(pw);
     pi->mod = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_.");
-    pi->name = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
+    pi->id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
     parse_import_des(pw, pi);
   } else if (ahead(pw, "data")) {
     watd_t *pd = watdbnewbk(&pm->dsegs);
@@ -2575,14 +2577,14 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     wati_t *pi = watibnewbk(&pm->defs);
     dropt(pw);
     pi->ek = EK_MEM;
-    parse_mod_id(pw, &pi->mod, &pi->name);
+    parse_mod_id(pw, &pi->mod, &pi->id);
     while (ahead(pw, "(")) {
       dropt(pw);
       if (ahead(pw, "export")) {
         sym_t id;
         dropt(pw);
         id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
-        if (id != pi->name) seprintf(pw, "unexpected export rename"); 
+        if (id != pi->id) seprintf(pw, "unexpected export rename"); 
         pi->exported = true;
       } else seprintf(pw, "unexpected memory header field %s", pw->tokstr);
       expect(pw, ")");
@@ -2597,7 +2599,7 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     wati_t *pi = watibnewbk(&pm->defs);
     dropt(pw);
     pi->ek = EK_GLOBAL;
-    parse_mod_id(pw, &pi->mod, &pi->name);
+    parse_mod_id(pw, &pi->mod, &pi->id);
     pi->mut = MT_CONST;
     while (ahead(pw, "(")) {
       dropt(pw);
@@ -2605,7 +2607,7 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
         sym_t id;
         dropt(pw);
         id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
-        if (id != pi->name) seprintf(pw, "unexpected export rename"); 
+        if (id != pi->id) seprintf(pw, "unexpected export rename"); 
         pi->exported = true;
       } else if (ahead(pw, "mut")) {
         dropt(pw);
@@ -2722,26 +2724,124 @@ void load_library_wat_module(sym_t mod, wat_module_t* pm)
   chbfini(&cb); 
 }
 
+
 /* linker */
+
+/* global dependency list entry */
+typedef struct modid {
+  sym_t mod, id;
+  entkind_t ek;
+} modid_t;
+
+int modid_cmp(const void *pv1, const void *pv2)
+{
+  modid_t *pmi1 = (modid_t *)pv1, *pmi2 = (modid_t *)pv2;
+  int cmp = (int)pmi1->mod - (int)pmi2->mod;
+  if (cmp < 0) return -1; else if (cmp > 0) return 1;
+  cmp = (int)pmi1->id - (int)pmi2->id;
+  if (cmp < 0) return -1; else if (cmp > 0) return 1;
+  return 0;
+}
+
+/* if pmii is subsystem global, it is a leaf and should be moved over as import */
+static bool process_subsystem_depglobal(modid_t *pmii, wat_module_t* pmi, wat_module_t* pm)
+{
+  wati_t *pi;
+  /* as of now, we only have one subsystem, WASI */
+  if (pmii->mod != g_wasi_mod) return false;
+  pi = bufbsearch(&pmi->imports, pmii, modid_cmp);
+  if (!pi) exprintf("cannot locate import '%s:%s' in '%s' module", 
+    symname(pmii->mod), symname(pmii->id), symname(pmi->name));
+  if (!bufsearch(&pm->imports, pmii, modid_cmp)) { /* linear! */
+    wati_t *newpi = bufnewbk(&pm->imports); newpi->mod = pi->mod; newpi->id = pi->id;
+    memswap(pi, newpi, sizeof(wati_t)); /* mod/id still there so bsearch works */
+  }
+  return true; 
+}  
+
+/* find pmii definition, trace it for dependants amd move over to pm */
+static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, wat_module_t* pm)
+{
+  wat_module_t* pmi = bufbsearch(pwb, &pmii->mod, sym_cmp); 
+  if (!pmi) exprintf("cannot locate '%s' module (looking for %s)", symname(pmii->mod), symname(pmii->id));  
+  switch (pmii->ek) {
+    case EK_MEM: {
+      wati_t *pi = bufbsearch(&pmi->defs, pmii, modid_cmp), *newpi;
+      if (!pi) exprintf("cannot locate memory '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
+      newpi = watibnewbk(&pm->defs); newpi->mod = pi->mod; newpi->id = pi->id; 
+      memswap(pi, newpi, sizeof(wati_t)); /* mod/id still there so bsearch works */
+      newpi->exported = false;
+    } break;
+    case EK_TABLE: { /* used for data segs */
+      watd_t *pd = bufbsearch(&pmi->dsegs, pmii, modid_cmp), *newpd;
+      if (!pd) exprintf("cannot locate dseg '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
+      newpd = watdbnewbk(&pm->dsegs); newpd->mod = pd->mod; newpd->id = pd->id; 
+      memswap(pd, newpd, sizeof(watd_t)); /* mod/id still there so bsearch works */
+    } break;
+    case EK_GLOBAL: {
+      wati_t *pg = bufbsearch(&pmi->defs, pmii, modid_cmp), *newpg;
+      if (!pg) exprintf("cannot locate global '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
+      if (pg->ic.in == IN_GLOBAL_GET) {
+        inscode_t *pic = &pg->ic;
+        modid_t mi; mi.mod = pic->arg2.mod; mi.id = pic->id; mi.ek = EK_GLOBAL;
+        assert(mi.mod != 0 && mi.id != 0); /* must be relocatable! */
+        if (process_subsystem_depglobal(&mi, pmi, pm)) /* ok */ ;
+        else if (!bufsearch(pdg, &mi, modid_cmp)) *(modid_t*)bufnewbk(pdg) = mi;              
+      }
+      newpg = watibnewbk(&pm->defs); newpg->mod = pg->mod; newpg->id = pg->id; 
+      memswap(pg, newpg, sizeof(wati_t)); /* mod/id still there so bsearch works */
+      newpg->exported = false;
+    } break;
+    case EK_FUNC: {
+      watf_t *pf = bufbsearch(&pmi->funcs, pmii, modid_cmp), *newpf;
+      modid_t mi; size_t i;
+      if (!pf) exprintf("cannot locate func '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
+      for (i = 0; i < icblen(&pf->code); ++i) {
+        inscode_t *pic = icbref(&pf->code, i);
+        switch (pic->in) {
+          case IN_GLOBAL_GET: case IN_GLOBAL_SET:
+          case IN_CALL: case IN_RETURN_CALL: {
+            mi.mod = pic->arg2.mod; mi.id = pic->id;
+            mi.ek = (pic->in == IN_GLOBAL_GET || pic->in == IN_GLOBAL_SET) ? EK_GLOBAL : EK_FUNC;
+            assert(mi.mod != 0 && mi.id != 0); /* must be relocatable! */
+            if (process_subsystem_depglobal(&mi, pmi, pm)) /* ok */ ;
+            else if (!bufsearch(pdg, &mi, modid_cmp)) *(modid_t*)bufnewbk(pdg) = mi;              
+          } break;
+          case IN_REF_DATA: {
+            mi.mod = pic->arg2.mod; mi.id = pic->id;
+            mi.ek = EK_TABLE; /* used for data segs */
+            if (!bufsearch(pdg, &mi, modid_cmp)) *(modid_t*)bufnewbk(pdg) = mi;              
+          } break;
+        }
+      }
+      newpf = watfbnewbk(&pm->funcs); newpf->mod = pf->mod; newpf->id = pf->id; 
+      memswap(pf, newpf, sizeof(watf_t)); /* mod/id still there so bsearch works */
+      newpf->exported = false;
+    } break;
+    default: assert(false);
+  }
+}
 
 void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
 {
-  size_t i, j, maini = SIZE_MAX, mainj = SIZE_MAX;
-  sym_t mainid = intern("main"), mainmod = 0; 
-  main_t mt = MAIN_ABSENT;
+  size_t i, j; main_t mt = MAIN_ABSENT;
+  sym_t mainid = intern("main"), startid = intern("_start"); 
+  sym_t mainmod = 0, envmod = 0, startmod = 0; 
   buf_t curmodnames = mkbuf(sizeof(sym_t)); /* in pwb */
   buf_t extmodnames = mkbuf(sizeof(sym_t)); /* not in pwb */
-
+  buf_t depglobals = mkbuf(sizeof(modid_t));
+  modid_t *pmodid; 
+  
   /* find main() function, collect dependencies */
   for (i = 0; i < wat_module_buf_len(pwb); ++i) {
     wat_module_t* pmi = wat_module_buf_ref(pwb, i);
+    size_t mainj = SIZE_MAX;
     /* check for main */
     if (pmi->main != MAIN_ABSENT) {
       if (mainmod) 
         exprintf("duplicate main() in %s and %s modules", 
           symname(mainmod), symname(pmi->name));
-      mainmod = pmi->name; maini = i; mt = pmi->main;
-      assert(mainj == SIZE_MAX);
+      mainmod = pmi->name; mt = pmi->main;
       for (j = 0; j < watfblen(&pmi->funcs); ++j) {
         watf_t *pf = watfbref(&pmi->funcs, j);
         if (pf->id == mainid) {
@@ -2763,8 +2863,7 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
       exprintf("duplicate module: %s", symname(pmi->name));
     else *(sym_t*)bufnewbk(&curmodnames) = pmi->name;
   }
-  if (maini == SIZE_MAX ||mainj == SIZE_MAX)
-    logef("error: main() function not found\n"); /* fixme: should be exprintf */
+  if (!mainmod) logef("error: main() function not found\n"); /* fixme: should be exprintf */
   else logef("# main() found in '%s' module\n", symname(mainmod));
 
   /* add missing library modules */
@@ -2779,9 +2878,12 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
         if (rtn == g_env_mod) {
           if (mt == MAIN_VOID) rtn = internf("%s.void", symname(rtn));
           else if (mt == MAIN_ARGC_ARGV) rtn = internf("%s.argv", symname(rtn));
+          envmod = rtn;
         }
-        logef("# found library dependence: '%s' module\n", symname(*pmn));
-        load_library_wat_module(*pmn, (pnewm = wat_module_buf_newbk(pwb)));
+        logef("# found library dependence: '%s' module\n", symname(rtn));
+        load_library_wat_module(rtn, (pnewm = wat_module_buf_newbk(pwb)));
+        if (pnewm->main != MAIN_ABSENT)
+          exprintf("unexpected main() in library module '%s'", symname(rtn)); 
         /* trace sub-dependencies */
         for (j = 0; j < watiblen(&pnewm->imports); ++j) {
           wati_t *pi = watibref(&pnewm->imports, j);
@@ -2792,9 +2894,48 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
     }
   }
   
-  //for (i = 0; i < wat_module_buf_len(pwb); ++i) {
-  //  wat_module_t* pmi = wat_module_buf_ref(pwb, i);  
-  //}  
+  /* fill global dependency list */
+  /* first, sort moduled by module name for bsearch */
+  bufqsort(pwb, sym_cmp);
+  /* now sort module's field lists by mod-name pair */
+  for (i = 0; i < wat_module_buf_len(pwb); ++i) {
+    wat_module_t* pmi = wat_module_buf_ref(pwb, i);
+    bufqsort(&pmi->imports, modid_cmp);    
+    bufqsort(&pmi->defs, modid_cmp);    
+    bufqsort(&pmi->dsegs, modid_cmp);    
+    bufqsort(&pmi->funcs, modid_cmp);    
+  }
+  /* now seed depglobals and use it to move globals to pm */
+  pmodid = bufnewbk(&depglobals); 
+  pmodid->mod = mainmod; pmodid->id = mainid; pmodid->ek = EK_FUNC;
+  pmodid = bufnewbk(&depglobals); 
+  pmodid->mod = mainmod; pmodid->id = startid; pmodid->ek = EK_FUNC;
+  if (envmod) { /* need to ref linear memory explicitly */
+    pmodid = bufnewbk(&depglobals); 
+    pmodid->mod = g_env_mod; pmodid->id = g_lm_id; pmodid->ek = EK_MEM;  
+  }
+  for (i = 0; i < buflen(&depglobals); ++i) {
+    /* precondition: this global is not moved yet */
+    modid_t *pmii = bufref(&depglobals, i);
+    process_depglobal(pmii, pwb, &depglobals, pm);
+  }
 
+  /* pass over output module functions to check for _start */
+  for (i = 0; i < watfblen(&pm->funcs); ++i) {
+    watf_t *pf = watfbref(&pm->funcs, i);
+    if (pf->id == startid) {
+      if (startmod) 
+        exprintf("duplicate _start() function in module '%s' and '%s'",
+          symname(startmod), symname(pf->mod));
+      startmod = pf->mod;
+      pf->exported = true;
+    }
+  }
+  if (!startmod) exprintf("_start() function not found");
+  else logef("# found _start() function in '%s' module\n", symname(startmod));
+
+  /* done */    
   buffini(&curmodnames);
+  buffini(&extmodnames);
+  buffini(&depglobals);
 }

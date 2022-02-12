@@ -446,12 +446,13 @@ extern const char *format_inscode(inscode_t *pic, chbuf_t *pcb);
 
 
 /* wat text representations */
+/* NB: all structures start with mod-id pair used for sorting/bsearch */
 
 /* wat symbol info */
 typedef struct wati {
-  entkind_t ek;
   sym_t mod;
-  sym_t name;
+  sym_t id;
+  entkind_t ek;
   bool exported;
   funcsig_t fs;   /* FUNC: funcsig index */
   valtype_t vt;   /* GLOBAL/TABLE: value type (scalar) */
@@ -474,8 +475,8 @@ extern void watibfini(watibuf_t* pb);
 
 /* wat data segment */
 typedef struct watd {
-  sym_t id;
   sym_t mod;
+  sym_t id;
   buf_t data; /* actual bytes */
 } watd_t;
 
@@ -491,8 +492,8 @@ extern void watdbfini(watdbuf_t* pb);
 
 /* wat function */
 typedef struct watf {
-  sym_t id;
   sym_t mod;
+  sym_t id;
   bool exported;
   bool start;
   funcsig_t fs;
@@ -538,6 +539,7 @@ extern void wat_module_buf_fini(wat_module_buf_t* pb);
 
 /* read/write 'object' wat text module */
 extern void read_wat_module(const char *fname, wat_module_t* pm);
+extern void load_library_wat_module(sym_t mod, wat_module_t* pm);
 extern void write_wat_module(wat_module_t* pm, FILE *pf);
 
 /* linker */

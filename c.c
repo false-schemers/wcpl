@@ -3107,11 +3107,11 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
       wati_t *pi;
       /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
       pi = watibnewfr(&pwm->imports); pi->ek = EK_GLOBAL; 
-      pi->mod = g_env_mod; pi->name = g_sp_id; 
+      pi->mod = g_env_mod; pi->id = g_sp_id; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
       /* (import "env" "__linear_memory" (memory $env:__linear_memory 0)) */
       pi = watibnewfr(&pwm->imports); pi->ek = EK_MEM; 
-      pi->mod = g_env_mod; pi->name = g_lm_id; 
+      pi->mod = g_env_mod; pi->id = g_lm_id; 
       pi->lt = LT_MIN; pi->n = 0;
     } break;
     case MAIN_ARGC_ARGV: {
@@ -3121,18 +3121,17 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
     case MAIN_VOID: {
       /* fixme: add standard startup code and exports */
       wati_t *pi; watf_t *pf; inscode_t *pic; sym_t r;
-      /* (global $env:__stack_pointer (mut i32) (i32.const N)) */
-      pi = watibnewfr(&pwm->defs); pi->ek = EK_GLOBAL; /* fixme!: needs to be in separate env module! */
-      pi->mod = g_env_mod; pi->name = g_sp_id; pi->exported = true; 
+      /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
+      pi = watibnewfr(&pwm->imports); pi->ek = EK_GLOBAL; 
+      pi->mod = g_env_mod; pi->id = g_sp_id; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
-      pi->ic.in = IN_I32_CONST; pi->ic.arg.u = 42424; /* fixme */
-      /* (memory $env:__linear_memory (export "__linear_memory") 2) */
-      pi = watibnewfr(&pwm->defs); pi->ek = EK_MEM; /* fixme!: needs to be in separate env module! */
-      pi->mod = g_env_mod; pi->name = g_lm_id; pi->exported = true; 
-      pi->n = 2; /* fixme: pre-allocate 2 64Kib pages */
+      /* (import "env" "__linear_memory" (memory $env:__linear_memory 0)) */
+      pi = watibnewfr(&pwm->imports); pi->ek = EK_MEM; 
+      pi->mod = g_env_mod; pi->id = g_lm_id; 
+      pi->lt = LT_MIN; pi->n = 0;
       /* (import "wasi_snapshot_preview1" "proc_exit" (func $... (param i32))) */
       pi = watibnewfr(&pwm->imports); pi->ek = EK_FUNC; 
-      pi->mod = g_wasi_mod; pi->name = intern("proc_exit");
+      pi->mod = g_wasi_mod; pi->id = intern("proc_exit");
       *vtbnewbk(&pi->fs.partypes) = VT_I32;
       /* (func $_start ...) */
       pf = watfbnewbk(&pwm->funcs); 
@@ -3171,7 +3170,7 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
             dump_node(ptn, stderr);
           }
           pi = watibnewbk(&pwm->imports); pi->ek = EK_FUNC;
-          pi->mod = pn->name, pi->name = id;
+          pi->mod = pn->name, pi->id = id;
           ftn2fsig(ptn, &pi->fs);
         } else {
           if (getverbosity() > 0) {
