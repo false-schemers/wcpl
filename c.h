@@ -10,6 +10,7 @@ extern sym_t g_wasi_mod;  /* module for wasi */
 extern sym_t g_lm_id;     /* id for linear memory */
 extern sym_t g_sp_id;     /* id for stack pointer global */
 extern size_t g_sdbaddr;  /* static data allocation start */
+extern size_t g_stacksz;  /* stack size in bytes */
 
 /* g_dsmap element */
 typedef struct dsme {

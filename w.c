@@ -2806,7 +2806,7 @@ typedef struct dpmentry {
 } dpme_t; 
 
 /* remove dependence on non-standard WAT features and instructions */
-void watify_wat_module(wat_module_t* pm)
+size_t watify_wat_module(wat_module_t* pm)
 {
   size_t curaddr = g_sdbaddr;
   chbuf_t dseg = mkchb(); size_t i;
@@ -2825,8 +2825,9 @@ void watify_wat_module(wat_module_t* pm)
         size_t addr = curaddr, align, n;
         pe = bufnewbk(&dsmap);
         memswap(pe, &e, sizeof(dsme_t)); 
-        align = pd->align, n = addr % align, addr += n;
-        if (n > 0) bufresize(&dseg, buflen(&dseg) + n);
+        align = pd->align, n = addr % align;
+        if (n > 0) addr += align - n;
+        if (n > 0) bufresize(&dseg, buflen(&dseg) + (align-n));
         chbcat(&dseg, &pe->data);
         bufqsort(&dsmap, dsme_cmp);
         pe->ind = addr;
@@ -2862,12 +2863,7 @@ void watify_wat_module(wat_module_t* pm)
           pic->arg.u = pdpme->address;
         }
       }
-    } else if (pe->iek == IEK_MEM) {
-      /* it seems to be required that mem is exported as "memory" */
-      if (pe->mod == g_env_mod && pe->id == g_lm_id) {
-        pe->id = intern("memory"); pe->exported = true;
-      }
-    }
+    } 
   }
     
   /* add combined data segment */
@@ -2882,7 +2878,38 @@ void watify_wat_module(wat_module_t* pm)
   chbfini(&dseg);
   dsmebfini(&dsmap);
   buffini(&dpmap);
+  
+  /* return absolute address of dseg's end */
+  return curaddr;
 }
+
+/* patch initial stack pointer and memory size */
+static void finalize_wat_module(wat_module_t* pm, size_t dsegend)
+{
+  size_t i, n, align, spaddr, ememaddr, mempages;
+  spaddr = dsegend + g_stacksz; align = 16; 
+  n = spaddr % align; if (n > 0) spaddr += align - n;
+  ememaddr = spaddr; align = 64*1024; /* page = 64K */
+  n = ememaddr % align; if (n > 0) ememaddr += align - n;
+  mempages = ememaddr/align;
+  for (i = 0; i < watieblen(&pm->exports); ++i) {
+    watie_t *pe = watiebref(&pm->exports, i);
+    if (pe->iek == IEK_GLOBAL) {
+      if (pe->mod == g_env_mod && pe->id == g_sp_id) {
+        if (pe->ic.in == IN_I32_CONST) { /* wasm32 */
+          pe->ic.arg.u = spaddr;
+        }
+      }
+    } else if (pe->iek == IEK_MEM) {
+      if (pe->mod == g_env_mod && pe->id == g_lm_id) {
+        pe->n = mempages;
+        /* it seems to be required that mem is exported as "memory" */
+        pe->id = intern("memory"); pe->exported = true;
+      }
+    }
+  }  
+}
+
 
 void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
 {
@@ -2892,7 +2919,7 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
   buf_t curmodnames = mkbuf(sizeof(sym_t)); /* in pwb */
   buf_t extmodnames = mkbuf(sizeof(sym_t)); /* not in pwb */
   buf_t depglobals = mkbuf(sizeof(modid_t));
-  modid_t *pmodid; 
+  modid_t *pmodid; size_t dsegend;
   
   /* find main() function, collect dependencies */
   for (i = 0; i < wat_module_buf_len(pwb); ++i) {
@@ -3004,7 +3031,10 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
   }
   
   /* remove dependence on non-standard WAT features and instructions */
-  watify_wat_module(pm);
+  dsegend = watify_wat_module(pm);
+  
+  /* patch initial stack pointer and memory size */
+  finalize_wat_module(pm, dsegend);
 
   /* done */    
   buffini(&curmodnames);

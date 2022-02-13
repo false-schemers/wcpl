@@ -21,6 +21,7 @@ sym_t g_wasi_mod; /* module for wasi */
 sym_t g_lm_id;    /* id for linear memory */
 sym_t g_sp_id;    /* id for stack pointer global */
 size_t g_sdbaddr; /* static data allocation start */
+size_t g_stacksz; /* stack size in bytes */
 
 /* initialization */
 void init_wcpl(dsbuf_t *plibv)
@@ -35,7 +36,8 @@ void init_wcpl(dsbuf_t *plibv)
   g_env_mod = intern("env");
   g_lm_id = intern("__linear_memory");
   g_sp_id = intern("__stack_pointer");
-  g_sdbaddr = 1024; /* address 0 reserved for NULL */
+  g_sdbaddr = 1024; /* >0, 16-aligned: address 0 reserved for NULL */
+  g_stacksz = 64*1024; /* 64K default */
 } 
 
 void fini_wcpl(void)
