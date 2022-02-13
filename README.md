@@ -42,18 +42,42 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - free-form labels and `goto`
 - `setjmp`/`longjmp` (not in WASM model)
 
-
-# additional WCPL-specific features
+# Additional WCPL-specific features
 
 - `#pragma module "foo"` in headers
+
+# Libraries already implemented
+
+- `<wasi/api.h>` (header only, implemented by host)
+- `<ctype.h>`
+- `<string.h>`
+- `<errno.h>`
+- `<stdarg.h>` (header only)
+- `<stdbool.h>` (header only)
+- `<stddef.h>` (header only)
+- `<stdint.h>` (header only)
+- `<inttypes.h>` (header only)
+ 
+# Libaries to be implemented
+
+- `<stdlib.h>`
+- `<stdio.h>`
+- `<time.h>`
+- `<math.h>`
+
+# Libaries that won't be supported
+
+- `<locale.h>`
+- `<setjmp.h>`
+- `<signal.h>`
 
 
 # Linking
 
-The plan is to use WAT format with symbolic identifiers in place of indices as
-object file format; linking will use symbolic names, so no custom sections or 
-relocation tables are needed. Not every WAT file can serve as WCPL object file
-however; certain constraints need to be satisfied.
+WCPL uses extended WAT format with symbolic identifiers in place of indices as
+object file format which uses symbolic names for relocatable constants, so no 
+custom sections or relocation tables are needed. Linker's output is regular WAT 
+format with no extensions; WASM format will be an option in the future.
  
 
 # Installation
