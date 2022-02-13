@@ -2744,7 +2744,7 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
         exprintf("cannot locate memory '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
       newpe = watiebnewbk(&pm->exports, IEK_MEM); newpe->mod = pe->mod; newpe->id = pe->id; 
       memswap(pe, newpe, sizeof(watie_t)); /* mod/id still there so bsearch works */
-      newpe->exported = false;
+      newpe->exported = true; /* memory should be exported! */
     } break;
     case IEK_DATA: { 
       watie_t *pd = bufbsearch(&pmi->exports, pmii, modid_cmp), *newpd;
@@ -2845,11 +2845,11 @@ void watify_wat_module(wat_module_t* pm)
   /* prepare dpmap for binary search */
   bufqsort(&dpmap, modid_cmp);
   
-  /* walk over functions and convert our IN_REF_DATA to IN_I32_CONST */
+  /* convert our IN_REF_DATA to IN_I32_CONST, patch memory export */
   for (i = 0; i < watieblen(&pm->exports); ++i) {
-    watie_t *pf = watiebref(&pm->exports, i);
-    if (pf->iek == IEK_FUNC) {
-      size_t j;
+    watie_t *pe = watiebref(&pm->exports, i);
+    if (pe->iek == IEK_FUNC) {
+      watie_t *pf = pe; size_t j;
       for (j = 0; j < icblen(&pf->code); ++j) {
         inscode_t *pic = icbref(&pf->code, j);
         if (pic->in == IN_REF_DATA) {
@@ -2861,6 +2861,11 @@ void watify_wat_module(wat_module_t* pm)
           pic->in = IN_I32_CONST;
           pic->arg.u = pdpme->address;
         }
+      }
+    } else if (pe->iek == IEK_MEM) {
+      /* it seems to be required that mem is exported as "memory" */
+      if (pe->mod == g_env_mod && pe->id == g_lm_id) {
+        pe->id = intern("memory"); pe->exported = true;
       }
     }
   }

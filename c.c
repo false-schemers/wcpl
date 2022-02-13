@@ -3172,8 +3172,6 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
       pic = icbnewbk(&pf->code); pic->in = IN_IF; pic->arg.u = BT_VOID;
       pic = icbnewbk(&pf->code); pic->in = IN_LOCAL_GET; pic->id = r;
       pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("proc_exit"); pic->arg2.mod = g_wasi_mod;
-      pic = icbnewbk(&pf->code); pic->in = IN_ELSE;
-      pic = icbnewbk(&pf->code); pic->in = IN_UNREACHABLE;
       pic = icbnewbk(&pf->code); pic->in = IN_END;
     } break;
     default: assert(false);
@@ -3300,7 +3298,10 @@ int main(int argc, char **argv)
       }
     }
     link_wat_modules(&wmb, &wm);
+
+    logef("# all modules linked successfully\n", symname(g_wasi_mod));
     write_wat_module(&wm, stdout);
+
     wat_module_fini(&wm);
     wat_module_buf_fini(&wmb); 
   }
