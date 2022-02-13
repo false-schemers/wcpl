@@ -56,6 +56,7 @@ extern void *excalloc(size_t n, size_t s);
 extern void *exrealloc(void *m, size_t n);
 extern char *exstrdup(const char *s);
 extern char *exstrndup(const char* s, size_t n);
+extern char *strtrc(char *str, int c, int toc);
 extern char *strprf(const char *str, const char *prefix);
 extern char *strsuf(const char *str, const char *suffix);
 extern bool streql(const char *s1, const char *s2);

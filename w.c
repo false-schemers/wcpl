@@ -2675,8 +2675,8 @@ void load_library_wat_module(sym_t mod, wat_module_t* pm)
 {
   chbuf_t cb = mkchb(); size_t i;
   sws_t *pws = NULL;
-  for (i = 0; i < buflen(g_pbases); ++i) {
-    sym_t *pb = bufref(g_pbases, i);
+  for (i = 0; i < buflen(g_lbases); ++i) {
+    sym_t *pb = bufref(g_lbases, i);
     pws = newsws(chbsetf(&cb, "%s%s.o", symname(*pb), symname(mod)));
     if (pws) break;
     pws = newsws(chbsetf(&cb, "%s%s.wo", symname(*pb), symname(mod)));

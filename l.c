@@ -83,6 +83,13 @@ char *exstrndup(const char* s, size_t n)
   return t;
 }
 
+char *strtrc(char* str, int c, int toc)
+{
+  char *s;
+  for (s = str; *s; ++s) if (*s == c) *s = toc;
+  return str;
+}
+
 char *strprf(const char *str, const char *prefix)
 {
   assert(str); assert(prefix);

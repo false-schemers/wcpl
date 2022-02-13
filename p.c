@@ -34,13 +34,19 @@ sym_t modname_from_path(const char *path)
   return mod;
 }
 
-pws_t *pws_from_modname(sym_t mod)
+pws_t *pws_from_modname(bool sys, sym_t mod)
 {
   pws_t *pws = NULL;
   if (mod) {
     size_t i; chbuf_t cb = mkchb();
-    for (i = 0; i < buflen(g_pbases); ++i) {
-      sym_t *pb = bufref(g_pbases, i);
+    if (!sys) { /* start with current directory */
+      pws = newpws(chbsetf(&cb, "%s", symname(mod)));
+      if (!pws) pws = newpws(chbsetf(&cb, "%s.h", symname(mod)));
+      if (!pws) pws = newpws(chbsetf(&cb, "%s.wh", symname(mod)));
+    }
+    /* search include base directories */
+    if (!pws) for (i = 0; i < buflen(g_ibases); ++i) {
+      sym_t *pb = bufref(g_ibases, i);
       pws = newpws(chbsetf(&cb, "%s%s", symname(*pb), symname(mod)));
       if (pws) break;
       pws = newpws(chbsetf(&cb, "%s%s.h", symname(*pb), symname(mod)));
@@ -3357,26 +3363,42 @@ static void parse_include_directive(pws_t *pw, node_t *pn, int startpos)
   chbuf_t cb; bool gotdot = false;
   chbinit(&cb);
   dropt(pw);
-  expect(pw, TT_LT, "<");
-  while (peekt(pw) != TT_GT) {
-    if (peekt(pw) == TT_DOT) {
-      dropt(pw); gotdot = true;
-    } else if (!gotdot && peekt(pw) == TT_IDENTIFIER) {
-      chbputs(pw->tokstr, &cb); dropt(pw);
-    } else if (!gotdot && peekt(pw) == TT_SLASH) {
-      chbputc('.', &cb); dropt(pw);
-    } else if (gotdot && peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "h")) {
-      dropt(pw); break;
-    } else if (gotdot && peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "wh")) {
-      dropt(pw); break;
-    } else if (gotdot) {
-      reprintf(pw, peekpos(pw), "unsupported file extension in include directive");
-      break;
+  if (peekt(pw) == TT_STRING) {
+    char *sep, *s;
+    if ((sep = strsuf(pw->tokstr, ".h")) != NULL) chbset(&cb, pw->tokstr, sep-pw->tokstr);
+    else if ((sep = strsuf(pw->tokstr, ".wh")) != NULL) chbset(&cb, pw->tokstr, sep-pw->tokstr);
+    else chbsets(&cb, pw->tokstr);
+    s = chbdata(&cb);
+    if (strspn(s, STR_az STR_AZ STR_09 "_/") != strlen(s))
+      reprintf(pw, peekpos(pw), "unsupported module name in include directive");
+    dropt(pw);
+    strtrc(s, '/', '.');
+    ndset(pn, NT_INCLUDE, pw->id, startpos);
+    pn->name = intern(chbdata(&cb));
+    pn->op = TT_STRING;
+  } else {
+    expect(pw, TT_LT, "<");
+    while (peekt(pw) != TT_GT) {
+      if (peekt(pw) == TT_DOT) {
+        dropt(pw); gotdot = true;
+      } else if (!gotdot && peekt(pw) == TT_IDENTIFIER) {
+        chbputs(pw->tokstr, &cb); dropt(pw);
+      } else if (!gotdot && peekt(pw) == TT_SLASH) {
+        chbputc('.', &cb); dropt(pw);
+      } else if (gotdot && peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "h")) {
+        dropt(pw); break;
+      } else if (gotdot && peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "wh")) {
+        dropt(pw); break;
+      } else if (gotdot) {
+        reprintf(pw, peekpos(pw), "unsupported file extension in include directive");
+        break;
+      }
     }
+    expect(pw, TT_GT, ">");
+    ndset(pn, NT_INCLUDE, pw->id, startpos);
+    pn->name = intern(chbdata(&cb));
+    pn->op = TT_IDENTIFIER;
   }
-  expect(pw, TT_GT, ">");
-  ndset(pn, NT_INCLUDE, pw->id, startpos);
-  pn->name = intern(chbdata(&cb));
   chbfini(&cb);
 }
 
@@ -3817,7 +3839,8 @@ static void dump(node_t *pn, FILE* fp, int indent)
       fprintf(fp, "(macrodef %s", symname(pn->name));
     } break;
     case NT_INCLUDE: {
-      fprintf(fp, "(include %s", symname(pn->name));
+      char *it = (pn->op == TT_STRING) ? "user" : "system";
+      fprintf(fp, "(include %s %s", it, symname(pn->name));
     } break;
     case NT_IMPORT: {
       bool final = (pn->sc == SC_REGISTER || pn->sc == SC_AUTO);  

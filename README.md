@@ -15,14 +15,22 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - labels can only label starts/ends of sub-blocks; `goto` can only target labels in the same block or its parent blocks
 - assignment of structures/unions (and possibly same-type arrays?)
 - vararg macros and stdarg.h
-- headers included as `#include <foo>` can have the following extensions: (none), `.h`, `.wh`
-- headers are looked up in directories given via `-L` option and `WCPL_LIBRARY_PATH` environment variable
-- lookup directory should end in separator char (`/` on Un*x, `\` on Windows), file name is just appended to it
+- object modules can have the following extensions: `.o`, `.wo`
+- system object modules are looked up in library directories given via `-L` option and `WCPL_LIBRARY_PATH` environment variable
+- system headers included as `#include <foo>` can have the following extensions: (none), `.h`, `.wh`
+- system headers are looked up in directories given via `-I` option and `WCPL_INCLUDE_PATH` environment variable
+- also, system headers are looked up in `include` sub-directories of library directories as specified above
+- user headers included as `#include "foo"` can have the following extensions: (none), `.h`, `.wh`
+- user headers are looked up first in current directory, then in system directories as stated above
+- user object modules should be provided explicitly as command line arguments
+- lookup directories should end in separator char (`/` on Un*x, `\` on Windows), file name is just appended to it
 
 # C features not yet supported
 
 - taking address of a global var (needs 'auto' transformation, should be allowed for statics)
-
+- `{}` initializers for locals and globals
+- `static` variables in function scope
+- taking address of a function, indirect calls
 
 # C features that won't be supported
 

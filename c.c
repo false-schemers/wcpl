@@ -15,7 +15,8 @@
 #include "c.h"
 
 /* wcpl globals */
-buf_t *g_pbases;  /* module search bases */
+buf_t *g_ibases;  /* module include search bases */
+buf_t *g_lbases;  /* module object module search bases */
 sym_t g_env_mod;  /* environment module */
 sym_t g_wasi_mod; /* module for wasi */
 sym_t g_lm_id;    /* id for linear memory */
@@ -24,13 +25,20 @@ size_t g_sdbaddr; /* static data allocation start */
 size_t g_stacksz; /* stack size in bytes */
 
 /* initialization */
-void init_wcpl(dsbuf_t *plibv)
+void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv)
 {
   size_t i;
-  g_pbases = newbuf(sizeof(sym_t));
+  g_ibases = newbuf(sizeof(sym_t));
+  for (i = 0; i < dsblen(pincv); ++i) {
+    dstr_t *pds = dsbref(pincv, i);
+    *(sym_t*)bufnewbk(g_ibases) = intern(*pds);
+  }
+  g_lbases = newbuf(sizeof(sym_t));
   for (i = 0; i < dsblen(plibv); ++i) {
     dstr_t *pds = dsbref(plibv, i);
-    *(sym_t*)bufnewbk(g_pbases) = intern(*pds);
+    int sepchar = strsuf(*pds, "\\") ? '\\' : '/';
+    *(sym_t*)bufnewbk(g_lbases) = intern(*pds);
+    *(sym_t*)bufnewbk(g_ibases) = internf("%sinclude%c", *pds, sepchar);
   }
   g_wasi_mod = intern("wasi_snapshot_preview1");
   g_env_mod = intern("env");
@@ -42,7 +50,8 @@ void init_wcpl(dsbuf_t *plibv)
 
 void fini_wcpl(void)
 {
-  freebuf(g_pbases);
+  freebuf(g_ibases);
+  freebuf(g_lbases);
   g_wasi_mod = g_env_mod = 0;
   g_lm_id = g_sp_id = 0;
 }
@@ -3072,16 +3081,17 @@ static void process_top_node(sym_t mmod, node_t *pn, wat_module_t *pm)
 }
 
 /* parse/process include file and its includes */
-static void process_include(pws_t *pw, int startpos, sym_t name, wat_module_t *pm)
+static void process_include(pws_t *pw, int startpos, bool sys, sym_t name, wat_module_t *pm)
 {
   pws_t *pwi; node_t nd = mknd();
-  pwi = pws_from_modname(name); /* searches g_pbases */
+  pwi = pws_from_modname(sys, name); /* searches g_ibases */
   if (pwi) {
     /* this should be workspace #1... */
     assert(pwsid(pwi) > 0);
     while (parse_top_form(pwi, &nd)) {
       if (nd.nt == NT_INCLUDE) {
-        process_include(pwi, nd.startpos, nd.name, pm);
+        bool sys = (nd.op != TT_STRING);
+        process_include(pwi, nd.startpos, sys, nd.name, pm);
       } else {
         process_top_node(0, &nd, pm);
       }
@@ -3106,7 +3116,8 @@ static sym_t process_module(const char *fname, wat_module_t *pm)
     assert(pwscurmod(pw));
     while (parse_top_form(pw, &nd)) {
       if (nd.nt == NT_INCLUDE) {
-        process_include(pw, nd.startpos, nd.name, pm);
+        bool sys = (nd.op != TT_STRING);
+        process_include(pw, nd.startpos, sys, nd.name, pm);
       } else {
         process_top_node(pwscurmod(pw), &nd, pm);
       }
@@ -3233,12 +3244,13 @@ int main(int argc, char **argv)
   const char *ifile_arg = "-";
   const char *ofile_arg = NULL;
   bool c_opt = false;
-  const char *lpath;
-  dsbuf_t libv; 
+  const char *path;
+  dsbuf_t incv, libv; 
   
-  dsbinit(&libv);
-  lpath = ""; dsbpushbk(&libv, (dstr_t*)&lpath);
-  if ((lpath = getenv("WCPL_LIBRARY_PATH")) != NULL) dsbpushbk(&libv, (dstr_t*)&lpath);
+  dsbinit(&incv);
+  if ((path = getenv("WCPL_INCLUDE_PATH")) != NULL) dsbpushbk(&incv, (dstr_t*)&path);
+  dsbinit(&libv); 
+  if ((path = getenv("WCPL_LIBRARY_PATH")) != NULL) dsbpushbk(&libv, (dstr_t*)&path);
 
   setprogname(argv[0]);
   setusage
@@ -3249,21 +3261,23 @@ int main(int argc, char **argv)
      "  -q        Suppress logging ('quiet')\n"
      "  -c        Compile single input file\n"
      "  -o ofile  Output file\n"
-     "  -L path   Add library path\n"
+     "  -I path   Add include path (must end with separator)\n"
+     "  -L path   Add library path (must end with separator)\n"
      "  -h        This help");
-  while ((opt = egetopt(argc, argv, "wvqco:L:h")) != EOF) {
+  while ((opt = egetopt(argc, argv, "wvqco:L:I:h")) != EOF) {
     switch (opt) {
       case 'w':  setwlevel(3); break;
       case 'v':  incverbosity(); break;
       case 'q':  incquietness(); break;
       case 'c':  c_opt = true; break;
       case 'o':  ofile_arg = eoptarg; break;
+      case 'I':  dsbpushbk(&incv, &eoptarg); break;
       case 'L':  dsbpushbk(&libv, &eoptarg); break;
       case 'h':  eusage("WCPL 0.01 built on "__DATE__);
     }
   }
 
-  init_wcpl(&libv);
+  init_wcpl(&incv, &libv);
 
   if (c_opt) {
     /* compile single source file */
@@ -3309,7 +3323,7 @@ int main(int argc, char **argv)
   }
 
   fini_wcpl();
-  dsbfini(&libv);
+  dsbfini(&incv); dsbfini(&libv);
   return EXIT_SUCCESS;
 }
 
