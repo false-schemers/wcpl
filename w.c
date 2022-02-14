@@ -1057,6 +1057,7 @@ instr_t name_instr(const char *name)
     pi = bufnewbk(&g_nimap); pi[0] = intern("table.grow"), pi[1] = IN_TABLE_GROW;          
     pi = bufnewbk(&g_nimap); pi[0] = intern("table.size"), pi[1] = IN_TABLE_SIZE;          
     pi = bufnewbk(&g_nimap); pi[0] = intern("table.fill"), pi[1] = IN_TABLE_FILL;
+    pi = bufnewbk(&g_nimap); pi[0] = intern("ref.data"), pi[1] = IN_REF_DATA; /* not in WASM! */
     bufqsort(&g_nimap, sym_cmp);
   }
   sym = intern(name);
@@ -1109,6 +1110,8 @@ insig_t instr_sig(instr_t in)
       return INSIG_XT;
     case IN_TABLE_INIT:    case IN_TABLE_COPY:
       return INSIG_X_Y;
+    case IN_REF_DATA: /* not in WASM! */
+      return INSIG_D; 
   }
   return INSIG_NONE;
 }
@@ -1355,8 +1358,9 @@ static void wat_export_datas(watiebuf_t *pdb)
       const char *smod = symname(pd->mod), *sname = symname(pd->id);
       unsigned char *pc = pd->data.buf; size_t i, n = pd->data.fill;
       if (smod && sname) { /* symbolic segment (nonfinal) */
+        char *vcs = (pd->mut == MT_VAR) ? "var" : "const";
         assert(pd->align); assert(pd->ic.id == 0);
-        chbsetf(g_watbuf, "(data $%s:%s align=%d \"", smod, sname, pd->align);
+        chbsetf(g_watbuf, "(data $%s:%s %s align=%d", smod, sname, vcs, pd->align);
       } else { /* positioned segment (final, WAT-compatible) */
         chbuf_t cb = mkchb();
         assert(!pd->align); assert(pd->ic.in == IN_I32_CONST);
@@ -2398,6 +2402,7 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
       case INSIG_L: case INSIG_XL: { /* br/brif, local.xxx */
         pic->id = parse_id(pw);
       } break;  
+      case INSIG_D: /* ref.data -- not in WASM! */
       case INSIG_XG: { /* call/return_call, global.xxx */
         sym_t mod, id; parse_mod_id(pw, &mod, &id);
         pic->id = id; pic->arg2.mod = mod;
@@ -2498,8 +2503,13 @@ static void parse_import_des(sws_t *pw, watie_t *pi)
   } else if (ahead(pw, "memory")) {
     dropt(pw);
     pi->iek = IEK_MEM;
-    /* fixme */
-    if (ahead(pw, "0")) dropt(pw);
+    parse_import_name(pw, pi);
+    pi->lt = LT_MIN;
+    pi->n = parse_uint(pw);
+    if (!ahead(pw, ")")) {
+      pi->lt = LT_MINMAX;
+      pi->m = parse_uint(pw);  
+    }
   } else if (ahead(pw, "func")) {
     dropt(pw);
     pi->iek = IEK_FUNC;
@@ -2537,6 +2547,12 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     char *s;
     dropt(pw);
     parse_mod_id(pw, &pd->mod, &pd->id);
+    if (peekt(pw) == WT_KEYWORD && streql(pw->tokstr, "var")) {
+      pd->mut = MT_VAR; dropt(pw);
+    }
+    if (peekt(pw) == WT_KEYWORD && streql(pw->tokstr, "const")) {
+      pd->mut = MT_CONST; dropt(pw);
+    }
     if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "align=")) != NULL) {
       char *e; unsigned long align; errno = 0; align = strtoul(s, &e, 10); 
       if (errno || *e != 0 || (align != 1 && align != 2 && align != 4 && align != 8 && align != 16)) 
@@ -2653,6 +2669,7 @@ static void parse_module(sws_t *pw, wat_module_t* pm)
 {
   expect(pw, "(");
   expect(pw, "module");
+  if (peekt(pw) != WT_ID) seprintf(pw, "missing module name");
   pm->name = parse_id(pw);
   while (!ahead(pw, ")")) parse_modulefield(pw, pm);
   expect(pw, ")");

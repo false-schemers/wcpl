@@ -237,7 +237,7 @@ static bool clearinput(pws_t *pw)
   /* readjust and repeat unless at eof */
   if (!pw->inateof) {
     /* continuing after successful parse, its associated info is no longer needed */
-    /* throw away unichars before curi -- but not after the beginning of the line where curi
+    /* throw away chars before curi -- but not after the beginning of the line where curi
      * is located as we don't want to lose the ability to show current line as error line;
      * also we still need to keep track of discarded chars for position calculations */
     chbuf_t *pp = &pw->chars; 
@@ -2549,7 +2549,7 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
     switch (instr_sig(in)) {
       case INSIG_NONE:
         break;
-      case INSIG_BT:   case INSIG_L:   
+      case INSIG_BT:   case INSIG_L:    case INSIG_D:
       case INSIG_XL:   case INSIG_XG:   case INSIG_XT:
       case INSIG_T:    case INSIG_I32:  case INSIG_I64:
         /* fixme: more specific parsing needed */
@@ -2607,7 +2607,9 @@ static void parse_cast_expr(pws_t *pw, node_t *pn)
     switch (peekt(pw)) {
       case TT_LBRC: { 
         parse_initializer(pw, &nd);
-        wrap_cast(pn, &nd);
+        assert(nd.nt == NT_DISPLAY);
+        ndswap(pn, ndnewfr(&nd));
+        ndswap(pn, &nd);
       } break;
       case TT_ASM_KW: {
         ndswap(pn, &nd);
@@ -2693,7 +2695,6 @@ static void parse_conditional_expr(pws_t *pw, node_t *pn)
 static void parse_assignment_expr(pws_t *pw, node_t *pn)
 {
   parse_conditional_expr(pw, pn);
-#if 1
   switch (peekt(pw)) {
     case TT_ASN:      case TT_AND_ASN:  case TT_OR_ASN:
     case TT_XOR_ASN:  case TT_REM_ASN:  case TT_SLASH_ASN:
@@ -2706,24 +2707,6 @@ static void parse_assignment_expr(pws_t *pw, node_t *pn)
       ndfini(&nd);
     }
   }
-#else /* limited ? */
-  switch (pn->nt) {
-    case NT_IDENTIFIER: case NT_SUBSCRIPT: case NT_PREFIX: {
-      switch (peekt(pw)) {
-        case TT_ASN:      case TT_AND_ASN:  case TT_OR_ASN:
-        case TT_XOR_ASN:  case TT_REM_ASN:  case TT_SLASH_ASN:
-        case TT_STAR_ASN: case TT_PLUS_ASN: case TT_MINUS_ASN:
-        case TT_SHL_ASN:  case TT_SHR_ASN: {
-          tt_t op; node_t nd = mknd(); 
-          op = pw->ctk; dropt(pw);
-          parse_assignment_expr(pw, &nd);
-          wrap_assignment(pn, op, &nd);
-          ndfini(&nd);
-        }
-      }
-    }
-  }
-#endif
 }
 
 static void parse_expr(pws_t *pw, node_t *pn)
@@ -3029,7 +3012,7 @@ static sym_t parse_declarator(pws_t *pw, node_t *ptn)
   /* fixme: invert nd using ptn as a 'seed' type */
   id = invert_declarator(&nd, ptn);
   ndfini(&nd); 
-  return id; // ? id : intern("?");
+  return id;
 }
 
 static void parse_initializer(pws_t *pw, node_t *pn)
@@ -3050,13 +3033,13 @@ static void parse_initializer(pws_t *pw, node_t *pn)
 static void parse_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t *pnb)
 {
   /* declarator (= expr)? */
-  node_t *pn = ndbnewbk(pnb), *pni, tn; sym_t id;
+  node_t *pn = ndbnewbk(pnb), *pni, *psn, tn; sym_t id;
   ndicpy(&tn, ptn);
   ndset(pn, NT_VARDECL, pw->id, pw->pos);
   pn->name = id = parse_declarator(pw, &tn);
   if (id == 0) reprintf(pw, pw->pos, "declared identifier is missing");
   pn->name = id; pn->sc = sc;
-  ndswap(&tn, ndnewbk(pn)); 
+  ndcpy(ndnewbk(pn), &tn); 
   if (peekt(pw) != TT_ASN) return;
   dropt(pw);
   pn = ndbnewbk(pnb);
@@ -3065,7 +3048,11 @@ static void parse_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t
   pni = ndnewbk(pn);
   ndset(pni, NT_IDENTIFIER, pw->id, pw->pos); 
   pni->name = id;
-  parse_initializer(pw, ndnewbk(pn)); 
+  psn = ndnewbk(pn);
+  parse_initializer(pw, psn);
+  if (psn->nt == NT_DISPLAY && (!ndlen(psn) || ndref(psn, 0)->nt != NT_TYPE)) {
+    ndswap(ndnewfr(psn), &tn);
+  }  
   ndfini(&tn);
 }
 

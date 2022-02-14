@@ -1062,6 +1062,82 @@ unsigned long *s8ctoucb(const char *str, unsigned long rc, buf_t *pb)
   return (unsigned long *)bufdata(pb);
 }
 
+/* grow pcb to get to the required alignment */
+void binalign(chbuf_t* pcb, size_t align)
+{
+  size_t addr = buflen(pcb), n;
+  assert(align == 1 || align == 2 || align == 4 || align == 8 || align == 16);
+  n = addr % align;
+  if (n > 0) bufresize(pcb, addr+(align-n));
+}
+
+/* lay out numbers as little-endian binary into cbuf */
+void binchar(int c, chbuf_t* pcb) /* align=1 */
+{
+  chbputc(c, pcb);
+}
+
+void binshort(int s, chbuf_t* pcb) /* align=2 */
+{
+  binalign(pcb, 2);
+  chbputc((s >> 0) & 0xFF, pcb);
+  chbputc((s >> 8) & 0xFF, pcb);
+}
+
+void binint(int i, chbuf_t* pcb) /* align=4 */
+{
+  binalign(pcb, 4);
+  chbputc((i >> 0)  & 0xFF, pcb);
+  chbputc((i >> 8)  & 0xFF, pcb);
+  chbputc((i >> 16) & 0xFF, pcb);
+  chbputc((i >> 24) & 0xFF, pcb);
+}
+
+void binllong(long long ll, chbuf_t* pcb) /* align=8 */
+{
+  binalign(pcb, 8);
+  chbputc((ll >> 0)  & 0xFF, pcb);
+  chbputc((ll >> 8)  & 0xFF, pcb);
+  chbputc((ll >> 16) & 0xFF, pcb);
+  chbputc((ll >> 24) & 0xFF, pcb);
+  chbputc((ll >> 32) & 0xFF, pcb);
+  chbputc((ll >> 40) & 0xFF, pcb);
+  chbputc((ll >> 48) & 0xFF, pcb);
+  chbputc((ll >> 56) & 0xFF, pcb);
+}
+
+void binuchar(unsigned uc, chbuf_t* pcb) /* align=1 */
+{
+  chbputc((int)uc, pcb);
+}
+
+void binushort(unsigned us, chbuf_t* pcb) /* align=2 */
+{
+  binshort((int)us, pcb);
+}
+
+void binuint(unsigned ui, chbuf_t* pcb) /* align=4 */
+{
+  binint((int)ui, pcb);
+}
+
+void binullong(unsigned long long ull, chbuf_t* pcb) /* align=8 */
+{
+  binllong((long long)ull, pcb);
+}
+
+void binfloat(float f, chbuf_t* pcb) /* align=4 */
+{
+  union { int i; float f; } inf; inf.f = f;
+  binint(inf.i, pcb); 
+}
+
+void bindouble(double d, chbuf_t* pcb) /* align=8 */
+{
+  union { long long ll; double d; } ind; ind.d = d;
+  binllong(ind.ll, pcb); 
+}
+
 
 /* symbols */
 

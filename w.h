@@ -304,7 +304,7 @@ typedef enum insig {
   INSIG_X_Y, INSIG_T,
   INSIG_I32, INSIG_I64,
   INSIG_F32, INSIG_F64, 
-  INSIG_MEMARG
+  INSIG_MEMARG, INSIG_D
 } insig_t;
 
 
@@ -460,7 +460,7 @@ typedef struct watie {
   bool exported;  /* 0 if private (export only) */
   funcsig_t fs;   /* FUNC: signature */
   valtype_t vt;   /* GLOBAL: value type (scalar) */
-  muttype_t mut;  /* GLOBAL: var/const */
+  muttype_t mut;  /* GLOBAL/DATA: var/const */
   inscode_t ic;   /* GLOBAL: def init code */
   limtype_t lt;   /* MEM: limits type */
   unsigned n;     /* MEM: min limit */
