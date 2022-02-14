@@ -57,7 +57,7 @@ void fini_wcpl(void)
 }
 
 /* compiler globals */
-static dsmebuf_t g_dsmap; /* of dsmelt_t, sorted by cb */
+static dsmebuf_t g_dsbuf; /* of dsmelt_t */
 static sym_t g_curmod; /* currently processed module */
 
 /* g_dsmap element */
@@ -94,7 +94,7 @@ int dsme_cmp(const void *p1, const void *p2)
 
 void init_compiler(void)
 {
-  dsmebinit(&g_dsmap);
+  dsmebinit(&g_dsbuf);
   init_workspaces();
   init_nodepool();
   init_regpool();
@@ -104,7 +104,7 @@ void init_compiler(void)
 
 void fini_compiler(void)
 {
-  dsmebfini(&g_dsmap);
+  dsmebfini(&g_dsbuf);
   fini_workspaces();
   fini_nodepool();
   fini_regpool();
@@ -116,24 +116,16 @@ void fini_compiler(void)
 /* data segment operations */
 
 /* intern the string literal, return dseg id */
-intern_strlit(node_t *pn)
+static sym_t intern_strlit(node_t *pn)
 {
-  dsme_t e, *pe; sym_t dsid;
+  dsme_t *pe;
   assert(pn->nt == NT_LITERAL && (pn->ts == TS_STRING || pn->ts == TS_LSTRING));
-  dsmeinit(&e); chbcpy(&e.data, &pn->data); 
-  e.align = (pn->ts == TS_LSTRING) ? 4 /* wchar_t */ : 1 /* char */;
-  pe = bufbsearch(&g_dsmap, &e, dsme_cmp);
-  if (!pe) { /* add data to the map */
-    pe = bufnewbk(&g_dsmap);
-    memswap(pe, &e, sizeof(dsme_t)); 
-    pe->ind = buflen(&g_dsmap);
-    dsid = internf("ds%d$", pe->ind);
-    bufqsort(&g_dsmap, dsme_cmp);
-  } else {
-    dsid = internf("ds%d$", pe->ind);
-  }
-  dsmefini(&e);
-  return dsid;
+  pe = dsmebnewbk(&g_dsbuf);
+  chbcpy(&pe->data, &pn->data); 
+  pe->align = (pn->ts == TS_LSTRING) ? 4 /* wchar_t */ : 1 /* char */;
+  pe->write = false;
+  pe->id = internf("ds%d$", (int)buflen(&g_dsbuf));
+  return pe->id;
 }
 
 
@@ -3222,14 +3214,15 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
     }
   }
 
-  if (buflen(&g_dsmap) > 0) {
+  if (buflen(&g_dsbuf) > 0) {
     size_t i;
-    for (i = 0; i < dsmeblen(&g_dsmap); ++i) {
-      dsme_t *pe = dsmebref(&g_dsmap, i);
+    for (i = 0; i < dsmeblen(&g_dsbuf); ++i) {
+      dsme_t *pe = dsmebref(&g_dsbuf, i);
       watie_t *pd = watiebnewbk(&pwm->exports, IEK_DATA);
-      pd->mod = mod; pd->id = internf("ds%d$", pe->ind);
+      pd->mod = mod; pd->id = pe->id;
       bufswap(&pd->data, &pe->data);
       pd->align = pe->align;
+      pd->mut = pe->write ? MT_VAR : MT_CONST;
     }
   }
 

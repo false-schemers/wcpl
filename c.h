@@ -13,11 +13,13 @@ extern sym_t g_sp_id;     /* id for stack pointer global */
 extern size_t g_sdbaddr;  /* static data allocation start */
 extern size_t g_stacksz;  /* stack size in bytes */
 
-/* g_dsmap element */
+/* g_dsbuf element */
 typedef struct dsme {
   chbuf_t data; /* data segment data */
   int align;    /* alignment in bytes: 1,2,4,8,16 */
-  size_t ind;   /* unique index within this map */
+  bool write;   /* belongs to wtiteable memory */
+  sym_t id;     /* module-local dseg id */
+  size_t addr;  /* used by linker */
 } dsme_t;
 
 extern dsme_t* dsmeinit(dsme_t* pe);

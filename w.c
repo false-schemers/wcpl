@@ -2834,27 +2834,43 @@ size_t watify_wat_module(wat_module_t* pm)
   for (i = 0; i < watieblen(&pm->exports); /* del or bumpi */) {
     watie_t *pd = watiebref(&pm->exports, i);
     if (pd->iek == IEK_DATA) {
-      dsme_t e, *pe; dpme_t *pme; dsmeinit(&e); 
-      memswap(&e.data, &pd->data, sizeof(buf_t));
-      e.align = pd->align; assert(pd->align);
-      pe = bufbsearch(&dsmap, &e, dsme_cmp);
-      if (!pe) { /* new data elt */
-        size_t addr = curaddr, align, n;
-        pe = bufnewbk(&dsmap);
-        memswap(pe, &e, sizeof(dsme_t)); 
+      dpme_t *pme; size_t addr;
+      if (pd->mut == MT_CONST) {
+        /* try to share it with equals */
+        dsme_t e, *pe; dsmeinit(&e); 
+        chbcpy(&e.data, &pd->data);
+        e.align = pd->align; assert(pd->align);
+        pe = bufbsearch(&dsmap, &e, dsme_cmp);
+        if (!pe) { /* new data elt */
+          size_t align, n;
+          addr = curaddr;
+          pe = bufnewbk(&dsmap);
+          memswap(pe, &e, sizeof(dsme_t)); 
+          align = pd->align, n = addr % align;
+          if (n > 0) addr += align - n;
+          if (n > 0) bufresize(&dseg, buflen(&dseg) + (align-n));
+          chbcat(&dseg, &pe->data);
+          pe->addr = addr;
+          bufqsort(&dsmap, dsme_cmp);
+          curaddr = addr + buflen(&pe->data);
+        } else {
+          addr = pe->addr;
+        }
+        dsmefini(&e);
+      } else {
+        /* writeable -- can't share */
+        size_t align, n;
+        addr = curaddr;
         align = pd->align, n = addr % align;
         if (n > 0) addr += align - n;
         if (n > 0) bufresize(&dseg, buflen(&dseg) + (align-n));
-        chbcat(&dseg, &pe->data);
-        bufqsort(&dsmap, dsme_cmp);
-        pe->ind = addr;
-        curaddr = addr + buflen(&pe->data);
+        chbcat(&dseg, &pd->data);
+        curaddr = addr + buflen(&pd->data);
       }
       pme = bufnewbk(&dpmap);
       pme->mod = pd->mod; pme->id = pd->id;
-      pme->address = pe->ind;
+      pme->address = addr;
       watiefini(pd); bufrem(&pm->exports, i);
-      dsmefini(&e);
     } else {
       ++i;
     }
