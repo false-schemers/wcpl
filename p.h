@@ -185,7 +185,7 @@ extern void clear_regpool(void);
 extern sym_t rpalloc(valtype_t vt);
 extern sym_t rpalloc_label(void);
 
-/* simple comparison of NT_TYPE nodes for equivalence */
+/* compare NT_TYPE nodes for 'deep' equivalence */
 extern bool same_type(const node_t *pctn1, const node_t *pctn2);
 
 /* node builders; modify pn in place and return it */
