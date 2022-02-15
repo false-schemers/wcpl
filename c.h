@@ -13,26 +13,6 @@ extern sym_t g_sp_id;     /* id for stack pointer global */
 extern size_t g_sdbaddr;  /* static data allocation start */
 extern size_t g_stacksz;  /* stack size in bytes */
 
-/* g_dsbuf element */
-typedef struct dsme {
-  chbuf_t data; /* data segment data */
-  int align;    /* alignment in bytes: 1,2,4,8,16 */
-  bool write;   /* belongs to wtiteable memory */
-  sym_t id;     /* module-local dseg id */
-  size_t addr;  /* used by linker */
-} dsme_t;
-
-extern dsme_t* dsmeinit(dsme_t* pe);
-extern void dsmefini(dsme_t* pe);
-typedef buf_t dsmebuf_t; 
-#define dsmebinit(mem) bufinit(mem, sizeof(dsme_t))
-extern void dsmebfini(dsmebuf_t* pb);
-#define dsmeblen(pb) buflen(pb)
-#define dsmebref(pb, i) ((dsme_t*)bufref(pb, i))
-#define dsmebnewbk(pb) dsmeinit(bufnewbk(pb))
-extern int dsme_cmp(const void *p1, const void *p2);
-
-
 /* calc size/align for ptn; prn is NULL or reference node for errors, use 0 for lvl */
 extern void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl);
 /* calc offset for ptn.fld; prn is NULL or reference node for errors */

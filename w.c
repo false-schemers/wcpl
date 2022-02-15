@@ -2816,6 +2816,53 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
   }
 }
 
+/* data sharing map */
+typedef struct dsme {
+  chbuf_t data; /* data segment data */
+  int align;    /* alignment in bytes: 1,2,4,8,16 */
+  bool write;   /* belongs to wtiteable memory */
+  sym_t id;     /* module-local dseg id */
+  size_t addr;  /* used by linker */
+} dsme_t;
+
+typedef buf_t dsmebuf_t; 
+#define dsmebinit(mem) bufinit(mem, sizeof(dsme_t))
+#define dsmeblen(pb) buflen(pb)
+#define dsmebref(pb, i) ((dsme_t*)bufref(pb, i))
+#define dsmebnewbk(pb) dsmeinit(bufnewbk(pb))
+
+/* g_dsmap element */
+dsme_t* dsmeinit(dsme_t* pe)
+{
+  memset(pe, 0, sizeof(dsme_t));
+  chbinit(&pe->data);
+  return pe;
+}
+
+void dsmefini(dsme_t* pe)
+{
+  chbfini(&pe->data);
+}
+
+void dsmebfini(dsmebuf_t* pb)
+{
+  dsme_t *pe; size_t i;
+  assert(pb); assert(pb->esz = sizeof(dsme_t));
+  pe = (dsme_t*)(pb->buf);
+  for (i = 0; i < pb->fill; ++i) dsmefini(pe+i);
+  buffini(pb);
+}
+
+int dsme_cmp(const void *p1, const void *p2)
+{
+  dsme_t *pe1 = (dsme_t*)p1, *pe2 = (dsme_t*)p2; 
+  int cmp = chbuf_cmp(&pe1->data, &pe2->data);
+  if (cmp) return cmp;
+  cmp = pe1->align - pe2->align;
+  if (cmp < 0) return -1; if (cmp > 0) return 1;
+  return 0;
+}
+
 /* data placement map */
 typedef struct dpmentry {
   sym_t mod, id;  /* mod:id; used for sorting */

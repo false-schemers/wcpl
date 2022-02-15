@@ -57,75 +57,27 @@ void fini_wcpl(void)
 }
 
 /* compiler globals */
-static dsmebuf_t g_dsbuf; /* of dsmelt_t */
-static sym_t g_curmod; /* currently processed module */
-
-/* g_dsmap element */
-dsme_t* dsmeinit(dsme_t* pe)
-{
-  memset(pe, 0, sizeof(dsme_t));
-  chbinit(&pe->data);
-  return pe;
-}
-
-void dsmefini(dsme_t* pe)
-{
-  chbfini(&pe->data);
-}
-
-void dsmebfini(dsmebuf_t* pb)
-{
-  dsme_t *pe; size_t i;
-  assert(pb); assert(pb->esz = sizeof(dsme_t));
-  pe = (dsme_t*)(pb->buf);
-  for (i = 0; i < pb->fill; ++i) dsmefini(pe+i);
-  buffini(pb);
-}
-
-int dsme_cmp(const void *p1, const void *p2)
-{
-  dsme_t *pe1 = (dsme_t*)p1, *pe2 = (dsme_t*)p2; 
-  int cmp = chbuf_cmp(&pe1->data, &pe2->data);
-  if (cmp) return cmp;
-  cmp = pe1->align - pe2->align;
-  if (cmp < 0) return -1; if (cmp > 0) return 1;
-  return 0;
-}
+static sym_t g_curmod; 
+static wat_module_t *g_curpwm;
 
 void init_compiler(void)
 {
-  dsmebinit(&g_dsbuf);
   init_workspaces();
   init_nodepool();
   init_regpool();
   init_symbols();
   g_curmod = 0;
+  g_curpwm = NULL;
 }
 
 void fini_compiler(void)
 {
-  dsmebfini(&g_dsbuf);
   fini_workspaces();
   fini_nodepool();
   fini_regpool();
   fini_symbols();
   g_curmod = 0;
-}
-
-
-/* data segment operations */
-
-/* intern the string literal, return dseg id */
-static sym_t intern_strlit(node_t *pn)
-{
-  dsme_t *pe;
-  assert(pn->nt == NT_LITERAL && (pn->ts == TS_STRING || pn->ts == TS_LSTRING));
-  pe = dsmebnewbk(&g_dsbuf);
-  chbcpy(&pe->data, &pn->data); 
-  pe->align = (pn->ts == TS_LSTRING) ? 4 /* wchar_t */ : 1 /* char */;
-  pe->write = false;
-  pe->id = internf("ds%d$", (int)buflen(&g_dsbuf));
-  return pe->id;
+  g_curpwm = NULL;
 }
 
 
@@ -2460,6 +2412,19 @@ static node_t *compile_bulkasn(node_t *prn, node_t *pdan, node_t *psan)
   return pcn;
 }
 
+/* intern the string literal, return data id */
+static sym_t intern_strlit(node_t *pn)
+{
+  size_t n = watieblen(&g_curpwm->exports);
+  watie_t *pd = watiebnewbk(&g_curpwm->exports, IEK_DATA);
+  pd->mod = g_curmod;
+  pd->id = internf("ds%d$", (int)n);
+  chbcpy(&pd->data, &pn->data); 
+  pd->align = (pn->ts == TS_LSTRING) ? 4 /* wchar_t */ : 1 /* char */;
+  pd->mut = MT_CONST;
+  return pd->id;
+}
+
 /* compile expr/statement (that is, convert it to asm tree); prib is var/reg info,
  * ret is return type for statements, NULL for expressions returning a value
  * NB: code that has bulk type actually produces a pointer (cf. arrays) */
@@ -3052,6 +3017,7 @@ static void process_top_node(sym_t mmod, node_t *pn, wat_module_t *pm)
     /* in module mmod: produce code */
     size_t i;
     g_curmod = mmod;
+    g_curpwm = pm;
     if (pn->nt == NT_FUNDEF) process_fundef(mmod, pn, pm);
     else if (pn->nt == NT_INTRCALL) process_top_intrcall(pn); 
     else if (pn->nt != NT_BLOCK) neprintf(pn, "unexpected top-level declaration");
@@ -3211,18 +3177,6 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
           }
         } 
       }
-    }
-  }
-
-  if (buflen(&g_dsbuf) > 0) {
-    size_t i;
-    for (i = 0; i < dsmeblen(&g_dsbuf); ++i) {
-      dsme_t *pe = dsmebref(&g_dsbuf, i);
-      watie_t *pd = watiebnewbk(&pwm->exports, IEK_DATA);
-      pd->mod = mod; pd->id = pe->id;
-      bufswap(&pd->data, &pe->data);
-      pd->align = pe->align;
-      pd->mut = pe->write ? MT_VAR : MT_CONST;
     }
   }
 
