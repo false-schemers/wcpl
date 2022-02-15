@@ -385,6 +385,8 @@ void init_symbols(void)
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
   intern_symbol("ptrdiff_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
+  intern_symbol("intptr_t", TT_TYPE_NAME, ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
   intern_symbol("va_arg_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_ULLONG;
   intern_symbol("NULL", TT_MACRO_NAME, ndblen(&g_nodes));

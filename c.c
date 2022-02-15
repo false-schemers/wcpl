@@ -1443,7 +1443,7 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         return;
       } break;  
     case TS_UCHAR: case TS_USHORT: { /* mask upper bits */
-        inscode_t *pic; unsigned m = (tsto == TS_CHAR) ? 0xFF : 0xFFFF;
+        inscode_t *pic; unsigned m = (tsto == TS_UCHAR) ? 0xFF : 0xFFFF;
         asm_numerical_cast(TS_UINT, tsfrom, pdata);
         pic = icbnewbk(pdata); pic->in = IN_I32_CONST; pic->arg.u = m;
         icbnewbk(pdata)->in = IN_I32_AND;
