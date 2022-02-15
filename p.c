@@ -2576,7 +2576,7 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
       case INSIG_F64:
         pic->arg.d = parse_asm_double(pw);
         break;
-      case INSIG_LS_L:
+      case INSIG_LS_L: case INSIG_D_O:
         assert(false); /* fixme */
       default:
         assert(false);     

@@ -294,7 +294,8 @@ typedef enum instr {
   /* ... */
   IN_PLACEHOLDER = -1, /* for internal use */
   IN_REGDECL = -2, /* for internal use */
-  IN_REF_DATA = -3 /* for internal use */
+  IN_REF_DATA = -3, /* for internal use */
+  IN_DATA_PUT_REF = -4 /* for internal use */
 } instr_t;
 
 typedef enum insig {
@@ -304,7 +305,8 @@ typedef enum insig {
   INSIG_X_Y, INSIG_T,
   INSIG_I32, INSIG_I64,
   INSIG_F32, INSIG_F64, 
-  INSIG_MEMARG, INSIG_D
+  INSIG_MEMARG, 
+  INSIG_D, INSIG_D_O /* for internal use */
 } insig_t;
 
 
