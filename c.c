@@ -989,13 +989,6 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
     case NT_TYPE: {
       /* nothing of interest in here */
     } break;
-    case NT_SUBSCRIPT: { /* x[y] => *(x + y) */
-      assert(ndlen(pn) == 2);
-      expr_wasmify(ndref(pn, 0), pvib, plib);
-      expr_wasmify(ndref(pn, 1), pvib, plib);
-      pn->nt = NT_INFIX, pn->op = TT_PLUS;
-      wrap_unary_operator(pn, pn->startpos, TT_STAR);
-    } break;
     case NT_POSTFIX: {
       assert(ndlen(pn) == 1);
       expr_wasmify(ndref(pn, 0), pvib, plib);
@@ -2150,6 +2143,23 @@ static node_t *compile_addrof(node_t *prn, node_t *pan)
   return pan;
 } 
 
+/* compile x[y] */
+static node_t *compile_subscript(node_t *prn, node_t *pana, node_t *pani)
+{
+  node_t *pata = acode_type(pana), *pati = acode_type(pani);
+  if (pata->ts == TS_ARRAY) {
+    /* automatically downcast type to type of element pointer */
+    assert(ndlen(pata) == 2); ndrem(pata, 1); /* no static/dynamic range check */
+    pata->ts = TS_PTR;
+  }
+  if (pata->ts == TS_PTR || pati->ts == TS_PTR) { 
+    /* x[y] => *(x + y) */
+    return compile_ataddr(prn, compile_binary(prn, pana, TT_PLUS, pani));
+  } 
+  neprintf(prn, "cannot compile subscript expression");
+  return NULL; /* never */
+}
+
 /* compile ++x --x x++ x-- and assignments; ptn is cast type or NULL */
 static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op, node_t *pvn, bool post)
 {
@@ -2496,7 +2506,11 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
       if (ret && getwlevel() < 1) nwprintf(pn, "warning: identifier value is not used");
       pcn = compile_idref(pn, mod, pn->name, ptn);
     } break;
-    case NT_SUBSCRIPT: assert(false); break; /* dewasmified */
+    case NT_SUBSCRIPT: {
+      node_t *pan1 = expr_compile(ndcref(pn, 0), prib, NULL);
+      node_t *pan2 = expr_compile(ndcref(pn, 1), prib, NULL);
+      pcn = compile_subscript(pn, pan1, pan2);
+    } break;
     case NT_CALL: {
       size_t i; buf_t apb = mkbuf(sizeof(node_t*));
       node_t *pfn = expr_compile(ndref(pn, 0), prib, NULL);
