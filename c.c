@@ -507,6 +507,115 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld, node_t **ppftn)
   return 0; /* won't happen */
 }
 
+#if 1
+/* static eval value */
+typedef struct seval {
+  ts_t ts;      /* TS_PTR or ts_numerical */
+  numval_t val; /* ts_numerical */
+  sym_t id;     /* TS_PTR */
+} seval_t; 
+
+/* evaluate pn expression statically, putting result into pr */
+bool static_eval(node_t *pn, seval_t *pr)
+{
+  switch (pn->nt) {
+    case NT_LITERAL: {
+      if (ts_numerical(pn->ts)) {
+        pr->ts = pn->ts;
+        pr->val = pn->val;
+        return true;
+      }
+    } break;
+    case NT_INTRCALL: {
+      if (pn->intr == INTR_SIZEOF || pn->intr == INTR_ALIGNOF) {
+        size_t size, align; assert(ndlen(pn) == 1);
+        measure_type(ndref(pn, 0), pn, &size, &align, 0);
+        pr->ts = TS_INT; 
+        if (pn->intr == INTR_SIZEOF) pr->val.i = (int)size;
+        else pr->val.i = (int)align;
+        return true;
+      } else if (pn->intr == INTR_OFFSETOF) {
+        size_t offset; assert(ndlen(pn) == 2 && ndref(pn, 1)->nt == NT_IDENTIFIER);
+        offset = measure_offset(ndref(pn, 0), pn, ndref(pn, 1)->name, NULL);
+        pr->ts = TS_INT; 
+        pr->val.i = (int)offset;
+        return true;
+      }
+    } break;
+    case NT_PREFIX: {
+      seval_t rx; bool ok = false; 
+      assert(ndlen(pn) == 1); 
+      if (static_eval(ndref(pn, 0), &rx)) {
+        if (ts_numerical(rx.ts)) {
+          numval_t vz; ts_t tz = numval_unop(pn->op, rx.ts, rx.val, &vz);
+          if (tz != TS_VOID) {
+            pr->ts = tz; pr->val = vz; ok = true;
+          }
+        }
+      }
+      return ok;
+    } break;
+    case NT_INFIX: {
+      seval_t rx, ry; bool ok = false;
+      assert(ndlen(pn) == 2); 
+      if (static_eval(ndref(pn, 0), &rx) && static_eval(ndref(pn, 1), &ry)) {
+        if (ts_numerical(rx.ts) && ts_numerical(ry.ts)) {
+          numval_t vz; ts_t tz = numval_binop(pn->op, rx.ts, rx.val, ry.ts, ry.val, &vz);
+          if (tz != TS_VOID) { pr->ts = tz; pr->val = vz; ok = true; }
+        }
+      }
+      return ok;
+    } break;
+    case NT_COND: {
+      seval_t r; bool ok = false; int cond;
+      assert(ndlen(pn) == 3);
+      if (arithmetic_eval_to_int(ndref(pn, 0), &cond)) {
+        if (cond) ok = static_eval(ndref(pn, 1), &r);
+        else ok = static_eval(ndref(pn, 2), &r);
+        if (ok && !ts_numerical(r.ts)) ok = false;
+        if (ok) { pr->ts = r.ts; pr->val = r.val; }
+      } 
+      return ok;
+    } break;
+    case NT_CAST: {
+      seval_t rx; ts_t tc; bool ok = false;
+      assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
+      tc = ndref(pn, 0)->ts; 
+      if (ts_numerical(tc) && static_eval(ndref(pn, 1), &rx) && ts_numerical(rx.ts)) {
+        numval_t vc = rx.val; numval_convert(tc, rx.ts, &vc);
+        pr->ts = tc; pr->val = vc; ok = true;
+      }
+      return ok;
+    } break;
+  }
+  return false;
+}
+
+/* evaluate integer expression pn statically, putting result into pi */
+bool arithmetic_eval_to_int(node_t *pn, int *pri)
+{
+  seval_t r; bool ok = false;
+  if (static_eval(pn, &r) && ts_numerical(r.ts)) {
+    numval_convert(TS_INT, r.ts, &r.val);
+    *pri = (int)r.val.i;
+    ok = true;
+  }
+  return ok;
+}
+
+/* evaluate pn expression statically, putting result into prn (numbers only) */
+bool arithmetic_eval(node_t *pn, node_t *prn)
+{
+  seval_t r; bool ok = false;
+  if (static_eval(pn, &r) && ts_numerical(r.ts)) {
+    ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
+    prn->ts = r.ts; prn->val = r.val; 
+    ok = true;
+  }
+  return ok;
+}
+
+#else
 /* evaluate integer expression pn statically, putting result into pi */
 bool arithmetic_eval_to_int(node_t *pn, int *pri)
 {
@@ -607,6 +716,8 @@ bool arithmetic_eval(node_t *pn, node_t *prn)
   }
   return false;
 }
+#endif
+
 
 static void check_static_assert(node_t *pn)
 {
