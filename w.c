@@ -1004,6 +1004,8 @@ const char *instr_name(instr_t in)
     case IN_TABLE_GROW: s = "table.grow"; break;
     case IN_TABLE_SIZE: s = "table.size"; break;
     case IN_TABLE_FILL: s = "table.fill"; break;
+    case IN_REF_DATA: s = "ref.data"; break; /* not in WASM! */
+    case IN_DATA_PUT_REF: s = "data.put_ref"; break; /* not in WASM! */
     default: {
       size_t i = (size_t)in;
       if (in <= 0xff && g_innames[i]) s = g_innames[i];
@@ -1112,9 +1114,9 @@ insig_t instr_sig(instr_t in)
     case IN_TABLE_INIT:    case IN_TABLE_COPY:
       return INSIG_X_Y;
     case IN_REF_DATA: /* not in WASM! */
-      return INSIG_D; 
+      return INSIG_RD; 
     case IN_DATA_PUT_REF: /* not in WASM! */
-      return INSIG_D_O; 
+      return INSIG_PR; 
   }
   return INSIG_NONE;
 }
@@ -1174,12 +1176,14 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
     case INSIG_LS_L:
       chbputf(pcb, " (; see next %llu+1 branches ;)", pic->arg.u);
       break; /* takes multiple inscodes, should be taken care of by caller */
-    case INSIG_D: /* IN_REF_DATA -- not in WASM! */ 
+    case INSIG_RD: /* IN_REF_DATA -- not in WASM! */ 
       chbputf(pcb, " $%s:%s", symname(pic->arg2.mod), symname(pic->id));
+      if (pic->arg.i != 0) chbputf(pcb, " offset=%lld", pic->arg.i); 
       break;
-    case INSIG_D_O: /* IN_DATA_PUT_REF -- not in WASM! */
-      chbputf(pcb, " $%s:%s offset=%llu", 
-        symname(pic->arg2.mod), symname(pic->id), pic->arg.u);
+    case INSIG_PR: /* IN_DATA_PUT_REF -- not in WASM! */
+      if (pic->arg2.mod && pic->id) /* shortcut for ref.data followed by put.ref */
+        chbputf(pcb, " $%s:%s offset=%llu", symname(pic->arg2.mod), symname(pic->id));
+      chbputf(pcb, " offset=%llu", pic->arg.u);
       break;
     default:
       assert(false);     
@@ -1401,7 +1405,7 @@ static void wat_export_datas(watiebuf_t *pdb)
         g_watindent += 2;
         for (j = 0; j < icblen(&pd->code); ++j) {
           inscode_t *pic = icbref(&pd->code, j);
-          assert(pic->in == IN_DATA_PUT_REF);
+          assert(pic->in == IN_REF_DATA || pic->in == IN_DATA_PUT_REF);
           format_inscode(pic, g_watbuf);
           if (j == icblen(&pd->code)) chbputs("))", g_watbuf);
           wat_line(chbdata(g_watbuf));
@@ -2426,7 +2430,6 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
       case INSIG_L: case INSIG_XL: { /* br/brif, local.xxx */
         pic->id = parse_id(pw);
       } break;  
-      case INSIG_D: /* ref.data -- not in WASM! */
       case INSIG_XG: { /* call/return_call, global.xxx */
         sym_t mod, id; parse_mod_id(pw, &mod, &id);
         pic->id = id; pic->arg2.mod = mod;
@@ -2485,9 +2488,25 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
           seprintf(pw, "invalid floating-point literal %s", pw->tokstr);
         } 
       } break;
-      case INSIG_D_O: { /* data.put_ref -- not in WASM! */
-        char *s; unsigned long offset;
+      case INSIG_RD: { /* ref.data -- not in WASM! */
+        char *s; long offset;
         sym_t mod, id; parse_mod_id(pw, &mod, &id);
+        pic->id = id; pic->arg2.mod = mod;
+        pic->arg.i = 0; /* offset; check if given explicitly */
+        if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "offset=")) != NULL) {
+          char *e; errno = 0; offset = strtol(s, &e, 10); 
+          if (errno || *e != 0 || offset < INT_MIN || offset > INT_MAX) 
+            seprintf(pw, "invalid offset= argument");
+          else {
+            pic->arg.i = offset;
+            dropt(pw);
+          }
+        }
+      } break;
+      case INSIG_PR: { /* data.put_ref -- not in WASM! */
+        char *s; unsigned long offset;
+        sym_t mod = 0, id = 0; /* $mod:id pair is optional */
+        if (peekt(pw) == WT_ID) parse_mod_id(pw, &mod, &id);
         pic->id = id; pic->arg2.mod = mod;
         if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "offset=")) != NULL) {
           char *e; errno = 0; offset = strtoul(s, &e, 10); 
@@ -2608,7 +2627,7 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
       while (!ahead(pw, ")")) {
         inscode_t *pic = icbnewbk(&pd->code);
         parse_ins(pw, pic, &pd->code);
-        if (pic->in != IN_DATA_PUT_REF)
+        if (pic->in != IN_REF_DATA && pic->in != IN_DATA_PUT_REF)
           seprintf(pw, "unexpected instruction in WCPL data segment");
       }
       if (pd->align < 4) /* wasm32 : alignment of a pointer */
@@ -2969,16 +2988,24 @@ size_t watify_wat_module(wat_module_t* pm)
           for (i = 0; i < icblen(&pd->code); ++i) {
             modid_t mi; dpme_t *pdpme; size_t off; 
             inscode_t *pic = icbref(&pd->code, i);
-            assert(pic->in == IN_DATA_PUT_REF);
-            mi.mod = pic->arg2.mod; mi.id = pic->id;
-            pdpme = bufbsearch(&dpmap, &mi, modid_cmp);
-            if (!pdpme) exprintf("internal error: undefined ref in data.put_ref $%s:%s", 
-              symname(mi.mod), symname(mi.id));
-            chbclear(&cb); binuint(pdpme->address, &cb); /* wasm32 */
+            if (pic->in == IN_REF_DATA || pic->in == IN_DATA_PUT_REF) {
+              mi.mod = pic->arg2.mod; mi.id = pic->id;
+              pdpme = bufbsearch(&dpmap, &mi, modid_cmp);
+              if (!pdpme) exprintf("internal error: undefined ref in data: $%s:%s", 
+                mi.mod ? symname(mi.mod) : "?", mi.id ? symname(mi.id) : "?");
+            } else exprintf("internal error: unexpected instruction in data patch");
+            chbclear(&cb);
+            if (pic->in == IN_REF_DATA) {
+              binint((unsigned)((long long)pdpme->address + pic->arg.i), &cb); /* wasm32 */
+              if (i == icblen(&pd->code)) exprintf("internal error in data patch"); 
+              pic = icbref(&pd->code, ++i); /* skip to next put_ref */
+            } else if (pic->in == IN_DATA_PUT_REF) {
+              binuint((unsigned)pdpme->address, &cb); /* wasm32 */
+            }
+            if (pic->in != IN_DATA_PUT_REF) exprintf("internal error in data patch");
             off = (size_t)pic->arg.u;
             if (off % 4 != 0 || off + 4 > chblen(&pd->data)) /* wasm32 */
-              exprintf("internal error: cannot patch data.put_ref $%s:%s", 
-                symname(mi.mod), symname(mi.id));
+              exprintf("internal error: cannot patch data: bad offset %lu", (unsigned long)off);
             memcpy(chbdata(&pd->data) + off, chbdata(&cb), 4); /* wasm32 */
           }
           chbfini(&cb);
@@ -3012,7 +3039,7 @@ size_t watify_wat_module(wat_module_t* pm)
           if (!pdpme) exprintf("internal error: cannot patch ref.data $%s:%s", 
             symname(mi.mod), symname(mi.id));
           pic->in = IN_I32_CONST;
-          pic->arg.u = pdpme->address;
+          pic->arg.i = (long long)pdpme->address + pic->arg.i;
         }
       }
     } 

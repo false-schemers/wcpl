@@ -442,7 +442,7 @@ void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int l
       if (ndlen(ptn) == 2) {
         node_t *petn = ndref(ptn, 0), *pcn = ndref(ptn, 1); 
         int count = 0;
-        if (!static_eval_to_int(pcn, &count) || count <= 0)
+        if (!arithmetic_eval_to_int(pcn, &count) || count <= 0)
           n2eprintf(pcn, prn, "can't allocate data for arrays of nonconstant/nonpositive size");
         measure_type(petn, prn, psize, palign, lvl+1);
         *psize *= count;
@@ -508,10 +508,10 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld, node_t **ppftn)
 }
 
 /* evaluate integer expression pn statically, putting result into pi */
-bool static_eval_to_int(node_t *pn, int *pri)
+bool arithmetic_eval_to_int(node_t *pn, int *pri)
 {
   node_t nd = mknd(); bool ok = false;
-  if (static_eval(pn, &nd) && nd.nt == NT_LITERAL && ts_numerical(nd.ts)) {
+  if (arithmetic_eval(pn, &nd) && nd.nt == NT_LITERAL && ts_numerical(nd.ts)) {
     numval_t v = nd.val; numval_convert(TS_INT, nd.ts, &v);
     *pri = (int)v.i, ok = true;
   }
@@ -520,7 +520,7 @@ bool static_eval_to_int(node_t *pn, int *pri)
 }
 
 /* evaluate pn expression statically, putting result into prn (numbers only) */
-bool static_eval(node_t *pn, node_t *prn)
+bool arithmetic_eval(node_t *pn, node_t *prn)
 {
   switch (pn->nt) {
     case NT_LITERAL: {
@@ -548,7 +548,7 @@ bool static_eval(node_t *pn, node_t *prn)
     case NT_PREFIX: {
       node_t nx = mknd(); bool ok = false; 
       assert(ndlen(pn) == 1); 
-      if ((static_eval)(ndref(pn, 0), &nx)) {
+      if (arithmetic_eval(ndref(pn, 0), &nx)) {
         assert(nx.nt == NT_LITERAL);
         if (ts_numerical(nx.ts)) {
           numval_t vz; ts_t tz = numval_unop(pn->op, nx.ts, nx.val, &vz);
@@ -564,7 +564,7 @@ bool static_eval(node_t *pn, node_t *prn)
     case NT_INFIX: {
       node_t nx = mknd(), ny = mknd(); bool ok = false;
       assert(ndlen(pn) == 2); 
-      if ((static_eval)(ndref(pn, 0), &nx) && (static_eval)(ndref(pn, 1), &ny)) {
+      if (arithmetic_eval(ndref(pn, 0), &nx) && arithmetic_eval(ndref(pn, 1), &ny)) {
         assert(nx.nt == NT_LITERAL && ny.nt == NT_LITERAL);
         if (ts_numerical(nx.ts) && ts_numerical(ny.ts)) {
           numval_t vz; ts_t tz = numval_binop(pn->op, nx.ts, nx.val, ny.ts, ny.val, &vz);
@@ -580,9 +580,9 @@ bool static_eval(node_t *pn, node_t *prn)
     case NT_COND: {
       node_t nr = mknd(); bool ok = false; int cond;
       assert(ndlen(pn) == 3);
-      if (static_eval_to_int(ndref(pn, 0), &cond)) {
-        if (cond) ok = (static_eval)(ndref(pn, 1), &nr);
-        else ok = (static_eval)(ndref(pn, 2), &nr);
+      if (arithmetic_eval_to_int(ndref(pn, 0), &cond)) {
+        if (cond) ok = arithmetic_eval(ndref(pn, 1), &nr);
+        else ok = arithmetic_eval(ndref(pn, 2), &nr);
         if (ok && !ts_numerical(nr.ts)) ok = false;
         if (ok) {
           ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
@@ -596,7 +596,7 @@ bool static_eval(node_t *pn, node_t *prn)
       node_t nx = mknd(); ts_t tc; bool ok = false;
       assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
       tc = ndref(pn, 0)->ts; 
-      if (ts_numerical(tc) && (static_eval)(ndref(pn, 1), &nx) && ts_numerical(nx.ts)) {
+      if (ts_numerical(tc) && arithmetic_eval(ndref(pn, 1), &nx) && ts_numerical(nx.ts)) {
         numval_t vc = nx.val; numval_convert(tc, nx.ts, &vc);
         ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos); 
         prn->ts = tc; prn->val = vc; ok = true;
@@ -616,7 +616,7 @@ static void check_static_assert(node_t *pn)
     pen = ndref(pn, 0), psn = ndlen(pn) == 2 ? ndref(pn, 1) : NULL;
     if (psn && (psn->nt != NT_LITERAL || psn->ts != TS_STRING))
       neprintf(pn, "unexpected 2nd arg of static_assert (string literal expected)");
-    if (!static_eval_to_int(pen, &res))
+    if (!arithmetic_eval_to_int(pen, &res))
       n2eprintf(pen, pn, "unexpected lhs of static_assert comparison (static test expected)");
     if (res == 0) {
       if (!psn) neprintf(pn, "static_assert failed");
@@ -625,11 +625,11 @@ static void check_static_assert(node_t *pn)
   }
 }
 
-/* check if node can be evaluated statically (numbers only)
+/* check if node can be evaluated statically as an arithmetic expression
  * NB: positive answer does not guarantee successful or error-free evaluation
  * (but eval errors will also happen at run time if original expr is compiled);
  * negative answer saves time on attempting actual evaluation */
-static bool static_constant(node_t *pn)
+static bool arithmetic_constant_expr(node_t *pn)
 {
   switch (pn->nt) {
     case NT_LITERAL: 
@@ -644,7 +644,7 @@ static bool static_constant(node_t *pn)
       assert(ndlen(pn) == 1); 
       switch (pn->op) {
         case TT_PLUS:  case TT_MINUS: case TT_TILDE: case TT_NOT:
-          return static_constant(ndref(pn, 0));
+          return arithmetic_constant_expr(ndref(pn, 0));
       }
       return false;
     case NT_INFIX: 
@@ -654,16 +654,16 @@ static bool static_constant(node_t *pn)
         case TT_OR:    case TT_XOR:   case TT_SLASH: case TT_REM:
         case TT_SHL:   case TT_SHR:   case TT_EQ:    case TT_NE:
         case TT_LT:    case TT_GT:    case TT_LE:    case TT_GE:
-          return static_constant(ndref(pn, 0)) && static_constant(ndref(pn, 1));
+          return arithmetic_constant_expr(ndref(pn, 0)) && arithmetic_constant_expr(ndref(pn, 1));
       } 
       return false;
     case NT_COND:
       assert(ndlen(pn) == 3); 
-      return static_constant(ndref(pn, 0)) && 
-             static_constant(ndref(pn, 1)) && static_constant(ndref(pn, 2));
+      return arithmetic_constant_expr(ndref(pn, 0)) && 
+             arithmetic_constant_expr(ndref(pn, 1)) && arithmetic_constant_expr(ndref(pn, 2));
     case NT_CAST: 
       assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
-      return ts_numerical(ndref(pn, 0)->ts) && static_constant(ndref(pn, 1));
+      return ts_numerical(ndref(pn, 0)->ts) && arithmetic_constant_expr(ndref(pn, 1));
   }
   return false;
 }
@@ -1073,7 +1073,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
     } break;
     case NT_CASE: {
       int x; size_t i; assert(ndlen(pn) >= 1);
-      if (static_eval_to_int(ndref(pn, 0), &x)) set_to_int(ndref(pn, 0), x);
+      if (arithmetic_eval_to_int(ndref(pn, 0), &x)) set_to_int(ndref(pn, 0), x);
       else neprintf(pn, "noninteger case label"); 
       for (i = 1; i < ndlen(pn); ++i) expr_wasmify(ndref(pn, i), pvib, plib);
     } break;
@@ -1842,6 +1842,14 @@ static node_t *acode_pushin_id_uarg(node_t *pcn, instr_t in, sym_t id, unsigned 
   return pcn;
 }
 
+/* push instruction with id and mod to the end of pcn code */
+static node_t *acode_pushin_id_mod_iarg(node_t *pcn, instr_t in, sym_t id, sym_t mod, int i)
+{
+  inscode_t *pic = icbnewbk(&pcn->data); pic->in = in; 
+  pic->id = id; pic->arg2.mod = mod; pic->arg.i = i;
+  return pcn;
+}
+
 
 /* copy contents of pan code to the end of pcn code */
 static node_t *acode_copyin(node_t *pcn, const node_t *pan)
@@ -2431,10 +2439,10 @@ static sym_t intern_strlit(node_t *pn)
 static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
 {
   node_t *pcn = NULL; numval_t v;
-  if (static_constant(pn)) {
+  if (arithmetic_constant_expr(pn)) {
     node_t nd = mknd();
     if (ret && getwlevel() < 1) nwprintf(pn, "warning: constant value is not used"); 
-    if (static_eval(pn, &nd)) ndswap(&nd, pn);
+    if (arithmetic_eval(pn, &nd)) ndswap(&nd, pn);
     ndfini(&nd);
   }
   switch (pn->nt) {
@@ -2447,7 +2455,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
           ts_t ts; sym_t id; assert(pn->data.esz == 1);
           id = intern_strlit(pn); ts = (pn->ts == TS_STRING ? TS_CHAR : TS_INT);
           pcn = npnewcode(pn); wrap_type_pointer(ndsettype(ndnewbk(pcn), ts));
-          acode_pushin_id_mod(pcn, IN_REF_DATA, id, g_curmod);
+          acode_pushin_id_mod_iarg(pcn, IN_REF_DATA, id, g_curmod, 0);
         } break;
         default: {
           assert(ts_numerical(pn->ts));

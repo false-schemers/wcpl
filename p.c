@@ -2458,7 +2458,7 @@ static unsigned long long parse_asm_unsigned(pws_t *pw)
   node_t xnd = mknd(), lnd = mknd(); bool ok = false;
   int startpos = peekpos(pw);
   parse_primary_expr(pw, &xnd);
-  if (static_eval(&xnd, &lnd) && lnd.nt == NT_LITERAL) {
+  if (arithmetic_eval(&xnd, &lnd) && lnd.nt == NT_LITERAL) {
     switch (lnd.ts) {
       case TS_UINT: case TS_ULONG: case TS_ULLONG: {
         unsigned long long ull = lnd.val.u;
@@ -2477,7 +2477,7 @@ static double parse_asm_double(pws_t *pw)
   node_t xnd = mknd(), lnd = mknd(); bool ok = false;
   int startpos = peekpos(pw);
   parse_primary_expr(pw, &xnd);
-  if (static_eval(&xnd, &lnd) && lnd.nt == NT_LITERAL) {
+  if (arithmetic_eval(&xnd, &lnd) && lnd.nt == NT_LITERAL) {
     switch (lnd.ts) {
       case TS_FLOAT: case TS_DOUBLE: {
         double d = lnd.ts == TS_FLOAT ? lnd.val.f : lnd.val.d;
@@ -2550,7 +2550,7 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
     switch (instr_sig(in)) {
       case INSIG_NONE:
         break;
-      case INSIG_BT:   case INSIG_L:    case INSIG_D:
+      case INSIG_BT:   case INSIG_L:    case INSIG_RD:
       case INSIG_XL:   case INSIG_XG:   case INSIG_XT:
       case INSIG_T:    case INSIG_I32:  case INSIG_I64:
         /* fixme: more specific parsing needed */
@@ -2575,7 +2575,7 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
       case INSIG_F64:
         pic->arg.d = parse_asm_double(pw);
         break;
-      case INSIG_LS_L: case INSIG_D_O:
+      case INSIG_LS_L: case INSIG_PR:
         assert(false); /* fixme */
       default:
         assert(false);     
@@ -2763,7 +2763,7 @@ void parse_enum_body(pws_t *pw, node_t *pn)
       if (peekt(pw) == TT_ASN) {
         dropt(pw);
         parse_conditional_expr(pw, pnv);
-        if (!static_eval_to_int(pnv, &curval))
+        if (!arithmetic_eval_to_int(pnv, &curval))
           neprintf(pnv, "invalid enum initializer (int constant expected)");
       }
       ndset(pnv, NT_LITERAL, pw->id, pni->startpos);
