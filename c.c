@@ -15,19 +15,21 @@
 #include "c.h"
 
 /* wcpl globals */
-buf_t *g_ibases;  /* module include search bases */
-buf_t *g_lbases;  /* module object module search bases */
-sym_t g_env_mod;  /* environment module */
-sym_t g_wasi_mod; /* module for wasi */
-sym_t g_lm_id;    /* id for linear memory */
-sym_t g_sp_id;    /* id for stack pointer global */
-size_t g_sdbaddr; /* static data allocation start */
-size_t g_stacksz; /* stack size in bytes */
+long   g_optlvl;   /* -O arg */
+buf_t *g_ibases;   /* module include search bases */
+buf_t *g_lbases;   /* module object module search bases */
+sym_t  g_env_mod;  /* environment module */
+sym_t  g_wasi_mod; /* module for wasi */
+sym_t  g_lm_id;    /* id for linear memory */
+sym_t  g_sp_id;    /* id for stack pointer global */
+size_t g_sdbaddr;  /* static data allocation start */
+size_t g_stacksz;  /* stack size in bytes */
 
 /* initialization */
-void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv)
+void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl)
 {
   size_t i;
+  g_optlvl = optlvl; 
   g_ibases = newbuf(sizeof(sym_t));
   for (i = 0; i < dsblen(pincv); ++i) {
     dstr_t *pds = dsbref(pincv, i);
@@ -2850,10 +2852,11 @@ static node_t *fundef_flatten(node_t *pdn)
 }
 
 /* simple peephole optimization */
-static void fundef_peephole(node_t *pcn)
+static void fundef_peephole(node_t *pcn, int optlvl)
 {
-  icbuf_t *picb = &pcn->data; size_t i;
-  for (i = 0; i < icblen(picb); /* rem or bump i */) {
+  icbuf_t *picb = &pcn->data; size_t i, nmods;
+repeat:
+  for (nmods = i = 0; i < icblen(picb); /* rem or bump i */) {
     bool nexti = i+1;
     if (i > 0) {
       inscode_t *pprevi = icbref(picb, i-1);
@@ -2862,26 +2865,27 @@ static void fundef_peephole(node_t *pcn)
         if (pprevi->in == IN_LOCAL_TEE) {
           pprevi->in = IN_LOCAL_SET;
           icbrem(picb, i);
-          nexti = i;
+          ++nmods; nexti = i;
         } else if (pprevi->in == IN_LOCAL_GET || pprevi->in == IN_GLOBAL_GET) {
           icbrem(picb, i-1);
           icbrem(picb, i-1);
-          nexti = i-1;
+          ++nmods; nexti = i-1;
         } else if (IN_I32_LOAD <= pprevi->in && pprevi->in <= IN_I64_LOAD32_U) {
           icbrem(picb, i-1);
           icbrem(picb, i-1);
-          nexti = i-1;
+          ++nmods; nexti = i-1;
         }
       } else if (pthisi->in == IN_LOCAL_GET) {
         if (pprevi->in == IN_LOCAL_SET && pprevi->id && pprevi->id == pthisi->id) {
           pprevi->in = IN_LOCAL_TEE;
           icbrem(picb, i);
-          nexti = i;
+          ++nmods; nexti = i;
         }
       }
     }
     i = nexti;
   }
+  if (nmods > 0 && --optlvl > 0) goto repeat;
 }
 
 /* convert type node to a valtype */
@@ -2998,10 +3002,12 @@ static void process_fundef(sym_t mmod, node_t *pn, wat_module_t *pm)
     fprintf(stderr, "fundef_flatten ==>\n");
     dump_node(pcn, stderr);
   }
-  fundef_peephole(pcn);
-  if (getverbosity() > 0) {
-    fprintf(stderr, "fundef_peephole ==>\n");
-    dump_node(pcn, stderr);
+  if (g_optlvl > 0) {
+    fundef_peephole(pcn, (int)g_optlvl);
+    if (getverbosity() > 0) {
+      fprintf(stderr, "fundef_peephole[-O%d] ==>\n", (int)g_optlvl);
+      dump_node(pcn, stderr);
+    }
   }
   /* add to watf module */
   pf = watiebnewbk(&pm->exports, IEK_FUNC);
@@ -3239,6 +3245,7 @@ int main(int argc, char **argv)
   const char *ifile_arg = "-";
   const char *ofile_arg = NULL;
   bool c_opt = false;
+  long lvl_arg = 2;
   const char *path;
   dsbuf_t incv, libv; 
   
@@ -3255,16 +3262,18 @@ int main(int argc, char **argv)
      "  -v        Increase verbosity\n"
      "  -q        Suppress logging ('quiet')\n"
      "  -c        Compile single input file\n"
+     "  -O lvl    Optimization level; defaults to 2\n"
      "  -o ofile  Output file\n"
      "  -I path   Add include path (must end with separator)\n"
      "  -L path   Add library path (must end with separator)\n"
      "  -h        This help");
-  while ((opt = egetopt(argc, argv, "wvqco:L:I:h")) != EOF) {
+  while ((opt = egetopt(argc, argv, "wvqcO:o:L:I:h")) != EOF) {
     switch (opt) {
       case 'w':  setwlevel(3); break;
       case 'v':  incverbosity(); break;
       case 'q':  incquietness(); break;
       case 'c':  c_opt = true; break;
+      case 'O':  lvl_arg = atol(eoptarg); break;
       case 'o':  ofile_arg = eoptarg; break;
       case 'I':  dsbpushbk(&incv, &eoptarg); break;
       case 'L':  dsbpushbk(&libv, &eoptarg); break;
@@ -3272,7 +3281,7 @@ int main(int argc, char **argv)
     }
   }
 
-  init_wcpl(&incv, &libv);
+  init_wcpl(&incv, &libv, lvl_arg);
 
   if (c_opt) {
     /* compile single source file */
