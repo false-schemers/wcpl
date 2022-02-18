@@ -479,6 +479,7 @@ typedef buf_t watiebuf_t;
 extern void watiebfini(watiebuf_t* pb);
 #define watieblen(pb) buflen(pb)
 #define watiebref(pb, i) ((watie_t*)bufref(pb, i))
+#define watiebnewfr(pb, iek) watieinit(bufnewfr(pb), iek)
 #define watiebnewbk(pb, iek) watieinit(bufnewbk(pb), iek)
 
 typedef enum main {

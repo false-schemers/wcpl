@@ -5,7 +5,7 @@
 
 int errno;
 
-/* used by perror
+/* used by perror */
 const char *_emsg[77] = {
   "No error occurred",
   "Argument list too long",
@@ -84,7 +84,7 @@ const char *_emsg[77] = {
   "Text file busy",
   "Cross-device link",
   "Extension: Capabilities insufficient"
-}; */
+};
 
 static_assert(ESUCCESS == ERRNO_SUCCESS);
 static_assert(E2BIG == ERRNO_2BIG);

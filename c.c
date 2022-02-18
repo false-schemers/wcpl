@@ -530,6 +530,24 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld, node_t **ppftn)
   return 0; /* won't happen */
 }
 
+/* intern the string literal, return fresh data id */
+static sym_t intern_strlit(node_t *pn)
+{
+  if (!pn->name) { /* first attempt */
+    size_t n = watieblen(&g_curpwm->exports);
+    watie_t *pd = watiebnewbk(&g_curpwm->exports, IEK_DATA);
+    assert(pn->ts == TS_STRING || pn->ts == TS_LSTRING);
+    pd->mod = g_curmod;
+    pd->id = internf("ds%d$", (int)n);
+    chbcpy(&pd->data, &pn->data); 
+    pd->align = (pn->ts == TS_LSTRING) ? 4 /* wchar_t */ : 1 /* char */;
+    pd->mut = MT_CONST;
+    pn->name = pd->id;
+  }
+  return pn->name;
+}
+
+
 /* static eval value */
 typedef struct seval {
   ts_t ts;      /* TS_PTR or ts_numerical */
@@ -545,6 +563,23 @@ bool static_eval(node_t *pn, seval_t *pr)
       if (ts_numerical(pn->ts)) {
         pr->ts = pn->ts;
         pr->val = pn->val;
+        return true;
+      } else if (pn->ts == TS_STRING || pn->ts == TS_LSTRING) {
+        sym_t id = pn->name;
+        if (!id) {
+          node_t vn = mknd();
+          ts_t ets = (pn->ts == TS_STRING) ? TS_CHAR : TS_INT;
+          id = intern_strlit(pn); /* sets pn->name */
+          ndset(&vn, NT_VARDECL, pn->pwsid, pn->startpos);
+          vn.name = id;
+          wrap_type_pointer(ndsettype(ndnewbk(&vn), ets));
+          /* post id so initialize_bulk_data can find it */
+          post_symbol(g_curmod, &vn, true/*final*/, true/*hide*/);
+          ndfini(&vn);
+        }
+        pr->ts = TS_PTR;
+        pr->id = id;
+        pr->val.i = 0; /* no offset */
         return true;
       }
     } break;
@@ -761,26 +796,8 @@ static void vardef_check_type(node_t *ptn)
   }
 }
 
-#if 0
-/* check if this expression will produce valid const code */
-static void check_constnd(sym_t mmod, node_t *pn, node_t *pvn)
-{
-  /* valid ins: t.const ref.null ref.func global.get referring to imported const */
-  switch (pn->nt) {
-    case NT_LITERAL: /* compiles to t.const ref.null */
-      return; 
-    case NT_IDENTIFIER: { /* may compile to valid global.get */
-      const node_t *pin = lookup_global(pn->name);
-      /* all our imported globals are const, so we need to check module only */ 
-      if (pin && pin->name != mmod) return; 
-    } break;  
-  }
-  n2eprintf(pn, pvn, "non-constant initializer expression");
-}
-#endif
-
 /* initialize preallocated bulk data with display initializer */
-static void initialize_bulk_data(watie_t *pd, size_t off, node_t *ptn, node_t *pdn)
+static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *ptn, node_t *pdn)
 {
   if (ts_bulk(ptn->ts) && pdn->nt == NT_DISPLAY) {
     /* element-by-element initialization */
@@ -795,7 +812,7 @@ static void initialize_bulk_data(watie_t *pd, size_t off, node_t *ptn, node_t *p
       measure_type(petn, ptn, &size, &align, 0);
       for (offi = 0, j = 1; j < ndlen(pdn); ++j) {
         if (offi >= asize) n2eprintf(ndref(pdn, j), pdn, "too many initializers for array");
-        else initialize_bulk_data(pd, off+offi, petn, ndref(pdn, j));
+        else initialize_bulk_data(pdidx, pd, off+offi, petn, ndref(pdn, j));
         offi += size;
       }
       if (offi < asize) neprintf(pdn, "too few initializers for array");
@@ -811,7 +828,7 @@ static void initialize_bulk_data(watie_t *pd, size_t off, node_t *ptn, node_t *p
         assert(ptni->nt == NT_VARDECL && ndlen(ptni) == 1);
         offi = measure_offset(ptn, ptni, ptni->name, &pfni);
         if (j < ndlen(pdn)) {
-          initialize_bulk_data(pd, off+offi, pfni, ndref(pdn, j));
+          initialize_bulk_data(pdidx, pd, off+offi, pfni, ndref(pdn, j));
         } else {
           neprintf(pdn, "initializer is too short");
         }
@@ -824,6 +841,7 @@ static void initialize_bulk_data(watie_t *pd, size_t off, node_t *ptn, node_t *p
     seval_t r; buf_t cb = mkchb();
     if (!static_eval(pdn, &r) || !ts_numerical(r.ts)) 
       neprintf(pdn, "non-constant initializer");
+    pd = watiebref(&g_curpwm->exports, pdidx); /* re-fetch after static_eval */
     switch (r.ts) {
       case TS_CHAR:   binchar((int)r.val.i, &cb); break;
       case TS_UCHAR:  binuchar((unsigned)r.val.u, &cb); break;
@@ -842,20 +860,25 @@ static void initialize_bulk_data(watie_t *pd, size_t off, node_t *ptn, node_t *p
     memcpy(chbdata(&pd->data) + off, chbdata(&cb), chblen(&cb));
     chbfini(&cb);
   } else if (ptn->ts == TS_PTR) {
-    seval_t r; const node_t *pin;
+    seval_t r; const node_t *pin, *pitn;
     if (!static_eval(pdn, &r) || r.ts != TS_PTR) 
       neprintf(pdn, "constant address initializer expected");
+    pd = watiebref(&g_curpwm->exports, pdidx); /* re-fetch after static_eval */
     assert(r.id); pin = lookup_global(r.id);
     if (!pin) neprintf(pdn, "unknown name in address initializer");
     assert(pin->nt == NT_IMPORT && ndlen(pin) == 1 && ndcref(pin, 0)->nt == NT_TYPE);
-    if (ts_bulk(ndcref(pin, 0)->ts)) {
+    pitn = ndcref(pin, 0);
+    if (ts_bulk(pitn->ts) || pitn->ts == TS_PTR) {
       inscode_t *pic = icbnewbk(&pd->code);
       pic->in = IN_REF_DATA; pic->id = r.id; pic->arg2.mod = pin->name;
       pic->arg.i = r.val.i; /* 0 or numerical offset in 'elements' */
       if (r.val.i != 0) { /* have to use scale factor to get byte offset */
         /* got to make sure that static_eval allows things like &intarray[4] */
         neprintf(pdn, "NYI: offset in address initializer");
-      }      
+      }
+      pic = icbnewbk(&pd->code);
+      pic->in = IN_DATA_PUT_REF;
+      pic->arg.u = off;      
     } else {
       neprintf(pdn, "address initializer should be a reference to a nonscalar type");
     }
@@ -875,15 +898,6 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
   assert(pdn->nt == NT_VARDECL); assert(ndlen(pdn) == 1);
   ptn = ndref(pdn, 0); assert(ptn->nt == NT_TYPE);
   vardef_check_type(ptn);
-#if 0
-  /* if initializer is present, check it for constness */  
-  if (pin) { 
-    assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
-    assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
-    /* todo: try to const-fold it first! */
-    check_constnd(mmod, ndref(pin, 1), pin);
-  }
-#endif
   /* post it for later use */
   final = true; hide = (pdn->sc == SC_STATIC);
   /* if it is just function declared, allow definition to come later */
@@ -894,6 +908,7 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
     assert(ptn->ts != TS_FUNCTION);
     if (ts_bulk(ptn->ts)) { /* compiles to a var data segment */
       size_t size, align;
+      size_t pdidx = watieblen(&g_curpwm->exports);
       watie_t *pd = watiebnewbk(&g_curpwm->exports, IEK_DATA);
       pd->mod = mmod; pd->id = pdn->name;
       pd->exported = !hide;
@@ -903,10 +918,11 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
       if (pin) {
         assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
         assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
-        initialize_bulk_data(pd, 0, ptn, ndref(pin, 1));
+        initialize_bulk_data(pdidx, pd, 0, ptn, ndref(pin, 1));
       }
       pd->mut = MT_VAR;
     } else { /* compiles to a global */
+      size_t pgidx = watieblen(&g_curpwm->exports);
       watie_t *pg = watiebnewbk(&g_curpwm->exports, IEK_GLOBAL);
       pg->mod = mmod; pg->id = pdn->name;
       pg->exported = !hide;
@@ -915,6 +931,7 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
         assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
         if (!static_eval(ndref(pin, 1), &r) || !ts_numerical(r.ts)) 
           neprintf(pin, "non-constant initializer");
+        pg = watiebref(&g_curpwm->exports, pgidx); /* re-fetch after static_eval */
         asm_numerical_const(r.ts, &r.val, &pg->ic);
       }  
       pg->mut = MT_VAR;    
@@ -2628,19 +2645,6 @@ static node_t *compile_bulkasn(node_t *prn, node_t *pdan, node_t *psan)
   acode_pushin_uarg(pcn, IN_I32_CONST, size);
   acode_pushin(pcn, IN_MEMORY_COPY);
   return pcn;
-}
-
-/* intern the string literal, return data id */
-static sym_t intern_strlit(node_t *pn)
-{
-  size_t n = watieblen(&g_curpwm->exports);
-  watie_t *pd = watiebnewbk(&g_curpwm->exports, IEK_DATA);
-  pd->mod = g_curmod;
-  pd->id = internf("ds%d$", (int)n);
-  chbcpy(&pd->data, &pn->data); 
-  pd->align = (pn->ts == TS_LSTRING) ? 4 /* wchar_t */ : 1 /* char */;
-  pd->mut = MT_CONST;
-  return pd->id;
 }
 
 /* compile expr/statement (that is, convert it to asm tree); prib is var/reg info,

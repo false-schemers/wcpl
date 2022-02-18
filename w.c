@@ -1415,14 +1415,14 @@ static void wat_export_datas(watiebuf_t *pdb)
       } else { /* WCPL data segment with ref slots */
         size_t j;
         assert(smod && sname); /* not in standard WAT! */
-        chbputs(" (", g_watbuf); 
         wat_line(chbdata(g_watbuf));
         g_watindent += 2;
         for (j = 0; j < icblen(&pd->code); ++j) {
           inscode_t *pic = icbref(&pd->code, j);
           assert(pic->in == IN_REF_DATA || pic->in == IN_DATA_PUT_REF);
           format_inscode(pic, g_watbuf);
-          if (j == icblen(&pd->code)) chbputs("))", g_watbuf);
+          chbinsc(g_watbuf, 0, j == 0 ? '(' : ' ');
+          if (j+1 == icblen(&pd->code)) chbputs("))", g_watbuf);
           wat_line(chbdata(g_watbuf));
         }
         g_watindent -= 2;
@@ -2517,27 +2517,7 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
         }
       } break;
       case INSIG_MEMARG: {
-#if 1
         unsigned long offset = parse_offset(pw), align = parse_align(pw);
-#else        
-        char *s; unsigned long offset, align;
-        if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "offset=")) != NULL) {
-          char *e; errno = 0; offset = strtoul(s, &e, 10); 
-          if (errno || *e != 0 || offset > UINT_MAX) 
-            seprintf(pw, "invalid offset= argument");
-          else dropt(pw);
-        } else { /* we require it! */
-          seprintf(pw, "missing offset= argument"); 
-        }
-        if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "align=")) != NULL) {
-          char *e; errno = 0; align = strtoul(s, &e, 10); 
-          if (errno || *e != 0 || (align != 1 && align != 2 && align != 4 && align != 8 && align != 16)) 
-            seprintf(pw, "invalid align= argument");
-          else dropt(pw);
-        } else { /* we require it! */
-          seprintf(pw, "missing align= argument"); 
-        }
-#endif        
         pic->arg.u = offset;
         switch (align) { /* fixme: use ntz? */
           case 1:  pic->arg2.u = 0; break;
@@ -2562,40 +2542,12 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
         sym_t mod, id; parse_mod_id(pw, &mod, &id);
         pic->id = id; pic->arg2.mod = mod;
         pic->arg.i = 0; /* offset; check if given explicitly */
-#if 1
         if (peekt(pw) == WT_KEYWORD && strprf(pw->tokstr, "offset=")) {
           pic->arg.i = parse_offset(pw);
         }
-#else
-        char *s; long offset;
-        if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "offset=")) != NULL) {
-          char *e; errno = 0; offset = strtol(s, &e, 10); 
-          if (errno || *e != 0 || offset < INT_MIN || offset > INT_MAX) 
-            seprintf(pw, "invalid offset= argument");
-          else {
-            pic->arg.i = offset;
-            dropt(pw);
-          }
-        }
-#endif
       } break;
       case INSIG_PR: { /* data.put_ref -- not in WASM! */
-#if 1
         pic->arg.u = parse_offset(pw);
-#else
-        char *s; unsigned long offset;
-        if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "offset=")) != NULL) {
-          char *e; errno = 0; offset = strtoul(s, &e, 10); 
-          if (errno || *e != 0 || offset > UINT_MAX) 
-            seprintf(pw, "invalid offset= argument");
-          else {
-            pic->arg.u = offset;
-            dropt(pw);
-          }
-        } else { /* we require it! */
-          seprintf(pw, "missing offset= argument"); 
-        }
-#endif        
       } break;
       /* case INSIG_LS_L: fixme; use *pexb */
       default:
@@ -2714,7 +2666,6 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     if (peekt(pw) == WT_KEYWORD && streql(pw->tokstr, "const")) {
       pd->mut = MT_CONST; dropt(pw);
     }
-#if 1
     if (peekt(pw) == WT_KEYWORD && strprf(pw->tokstr, "align=")) {
       pd->align = (int)parse_align(pw);
     }
@@ -2725,25 +2676,6 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
       size_t size = (size_t)parse_size(pw);
       chbclear(&pd->data); bufresize(&pd->data, size); /* zeroes */
     } else seprintf(pw, "missing size= or data string");
-#else
-    char *s;
-    if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "align=")) != NULL) {
-      char *e; unsigned long align; errno = 0; align = strtoul(s, &e, 10); 
-      if (errno || *e != 0 || (align != 1 && align != 2 && align != 4 && align != 8 && align != 16)) 
-        seprintf(pw, "invalid align= argument");
-      pd->align = (int)align;
-      dropt(pw);
-    }
-    if (peekt(pw) == WT_STRING) {
-      scan_string(pw, pw->tokstr, &pd->data);
-      dropt(pw);
-    } else if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "size=")) != NULL) {
-      char *e; unsigned long size; errno = 0; size = strtoul(s, &e, 10); 
-      if (errno || *e != 0 || size == 0) seprintf(pw, "invalid size= argument");
-      chbclear(&pd->data); bufresize(&pd->data, size); /* zeroes */
-      dropt(pw);
-    } else seprintf(pw, "missing size= or data string");
-#endif
     if (ahead(pw, "(")) { /* WCPL non-lead data segment */
       dropt(pw);
       while (!ahead(pw, ")")) {

@@ -170,6 +170,7 @@ extern void chbputg(double v, chbuf_t* pcb);
 extern void chbputvf(chbuf_t* pcb, const char *fmt, va_list ap);
 extern void chbputf(chbuf_t* pcb, const char *fmt, ...);
 extern void chbput4le(unsigned v, chbuf_t* pcb);
+extern void chbinsc(chbuf_t* pcb, size_t n, int c);
 extern char* chbset(chbuf_t* pcb, const char *s, size_t n);
 extern char* chbsets(chbuf_t* pcb, const char *s);
 extern char* chbsetf(chbuf_t* pcb, const char *fmt, ...);
