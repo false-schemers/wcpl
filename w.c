@@ -1359,6 +1359,12 @@ static void wat_export_globals(watiebuf_t *peb)
   }
 }
 
+static bool data_all_zeroes(const char *pc, size_t n)
+{
+  while (n-- > 0) if (*pc != 0) return false; else ++pc;
+  return true;
+}
+
 static void wat_export_datas(watiebuf_t *pdb)
 {
   size_t i;
@@ -1376,23 +1382,27 @@ static void wat_export_datas(watiebuf_t *pdb)
         assert(!pd->align); assert(pd->ic.in == IN_I32_CONST);
         chbsetf(g_watbuf, "(data (%s)", format_inscode(&pd->ic, &cb));
         chbfini(&cb);
-      }  
-      chbputs(" \"", g_watbuf);
-      for (i = 0; i < n; ++i) {
-        unsigned c = pc[i]; char ec = 0;
-        switch (c) {
-          case 0x09: ec = 't';  break; 
-          case 0x0A: ec = 'n';  break;
-          case 0x0D: ec = 'r';  break;
-          case 0x22: ec = '\"'; break;
-          case 0x27: ec = '\''; break;
-          case 0x5C: ec = '\\'; break;
-        }
-        if (ec) chbputf(g_watbuf, "\\%c", ec);
-        else if (' ' <= c && c <= 127) chbputc(c, g_watbuf); 
-        else chbputf(g_watbuf, "\\%x%x", (c>>4)&0xF, c&0xF);
       }
-      chbputc('\"', g_watbuf); 
+      if (data_all_zeroes(pc, n)) {
+        chbputf(g_watbuf, " size=%z", n);
+      } else {  
+        chbputs(" \"", g_watbuf);
+        for (i = 0; i < n; ++i) {
+          unsigned c = pc[i]; char ec = 0;
+          switch (c) {
+            case 0x09: ec = 't';  break; 
+            case 0x0A: ec = 'n';  break;
+            case 0x0D: ec = 'r';  break;
+            case 0x22: ec = '\"'; break;
+            case 0x27: ec = '\''; break;
+            case 0x5C: ec = '\\'; break;
+          }
+          if (ec) chbputf(g_watbuf, "\\%c", ec);
+          else if (' ' <= c && c <= 127) chbputc(c, g_watbuf); 
+          else chbputf(g_watbuf, "\\%x%x", (c>>4)&0xF, c&0xF);
+        }
+        chbputc('\"', g_watbuf); 
+      }
       if (icblen(&pd->code) == 0) { /* leaf segment */
         chbputc(')', g_watbuf); 
         wat_line(chbdata(g_watbuf));
@@ -2615,8 +2625,13 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
       pd->align = (int)align;
       dropt(pw);
     }
-    if (peekt(pw) == WT_STRING) scan_string(pw, pw->tokstr, &pd->data); 
-    else seprintf(pw, "missing data string");
+    if (peekt(pw) == WT_STRING) {
+      scan_string(pw, pw->tokstr, &pd->data);
+    } else if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "size=")) != NULL) {
+      char *e; unsigned long size; errno = 0; size = strtoul(s, &e, 10); 
+      if (errno || *e != 0 || size == 0) seprintf(pw, "invalid size= argument");
+      chbclear(&pd->data); bufresize(&pd->data, size); /* zeroes */
+    } else seprintf(pw, "missing size= or data string");
     dropt(pw);
     if (ahead(pw, "(")) { /* WCPL non-lead data segment */
       dropt(pw);

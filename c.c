@@ -367,6 +367,27 @@ ts_t numval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t 
   return tz;
 }  
 
+/* produce numerical constant instruction from literal */
+static void asm_numerical_const(ts_t ts, numval_t *pval, inscode_t *pic)
+{
+  switch (ts) {
+    case TS_INT: case TS_UINT:
+    case TS_LONG: case TS_ULONG: /* wasm32 model (will be different under wasm64) */
+      pic->in = IN_I32_CONST; pic->arg.u = pval->u;
+      break;
+    case TS_LLONG: case TS_ULLONG: 
+      pic->in = IN_I64_CONST; pic->arg.u = pval->u;
+      break;
+    case TS_FLOAT:
+      pic->in = IN_F32_CONST; pic->arg.f = pval->f;
+      break;
+    case TS_DOUBLE: 
+      pic->in = IN_F64_CONST; pic->arg.d = pval->d;
+      break;
+    default: assert(false);
+  }
+}
+
 /* calc size/align for ptn; prn is NULL or reference node for errors */
 void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl)
 {
@@ -712,6 +733,35 @@ static void post_vardecl(sym_t mod, node_t *pn, bool final, bool hide)
   }
 }
 
+/* check if this global variable type is legal in WCPL */
+static void vardef_check_type(node_t *ptn)
+{
+  assert(ptn->nt == NT_TYPE);
+  switch (ptn->ts) {
+    case TS_ENUM: /* ok, treated as int */
+    case TS_CHAR: case TS_UCHAR:   /* ok but widened to int */
+    case TS_SHORT: case TS_USHORT: /* ok but widened to int */
+    case TS_INT: case TS_UINT: 
+    case TS_LONG: case TS_ULONG:  
+    case TS_LLONG: case TS_ULLONG:  
+    case TS_FLOAT: case TS_DOUBLE:
+    case TS_PTR: 
+      break;
+    case TS_ARRAY:
+      assert(ndlen(ptn) == 2);
+      if (ndref(ptn, 1)->nt == NT_NULL) {
+        neprintf(ptn, "not supported: fexible array as global variable type");
+      }
+      break;
+    case TS_STRUCT:
+    case TS_UNION:
+      break;
+    default:
+      neprintf(ptn, "global variables of this type are not supported");
+  }
+}
+
+#if 0
 /* check if this expression will produce valid const code */
 static void check_constnd(sym_t mmod, node_t *pn, node_t *pvn)
 {
@@ -727,15 +777,105 @@ static void check_constnd(sym_t mmod, node_t *pn, node_t *pvn)
   }
   n2eprintf(pn, pvn, "non-constant initializer expression");
 }
+#endif
+
+/* initialize preallocated bulk data with display initializer */
+static void initialize_bulk_data(watie_t *pd, size_t off, node_t *ptn, node_t *pdn)
+{
+  if (ts_bulk(ptn->ts) && pdn->nt == NT_DISPLAY) {
+    /* element-by-element initialization */
+    if (ndref(pdn, 0)->ts != TS_VOID && !same_type(ptn, ndref(pdn, 0)))
+      neprintf(pdn, "initializer has incompatible type");
+    /* start at off and go from element to element updating off */
+    if (ptn->ts == TS_ARRAY) {
+      size_t j, asize, size, align, offi; node_t *petn, *pecn;
+      assert(ndlen(ptn) == 2);
+      measure_type(ptn, ptn, &asize, &align, 0);
+      petn = ndref(ptn, 0), pecn = ndref(ptn, 1);
+      measure_type(petn, ptn, &size, &align, 0);
+      for (offi = 0, j = 1; j < ndlen(pdn); ++j) {
+        if (offi >= asize) n2eprintf(ndref(pdn, j), pdn, "too many initializers for array");
+        else initialize_bulk_data(pd, off+offi, petn, ndref(pdn, j));
+        offi += size;
+      }
+      if (offi < asize) neprintf(pdn, "too few initializers for array");
+    } else { /* struct or union */
+      size_t i, j, offi;
+      if (ptn->name && !ndlen(ptn)) {
+        node_t *pftn = (node_t *)lookup_eus_type(ptn->ts, ptn->name);
+        if (!pftn) n2eprintf(ptn, pdn, "can't initialize incomplete type");
+        else ptn = pftn;
+      }
+      for (i = 0, j = 1; i < ndlen(ptn); ++i, ++j) {
+        node_t *ptni = ndref(ptn, i), *pfni;
+        assert(ptni->nt == NT_VARDECL && ndlen(ptni) == 1);
+        offi = measure_offset(ptn, ptni, ptni->name, &pfni);
+        if (j < ndlen(pdn)) {
+          initialize_bulk_data(pd, off+offi, pfni, ndref(pdn, j));
+        } else {
+          neprintf(pdn, "initializer is too short");
+        }
+        if (ptn->ts == TS_UNION) break; /* first member only! */
+      }
+      if (j != ndlen(pdn)) 
+        neprintf(pdn, "initializer is too long");
+    }
+  } else if (ts_numerical(ptn->ts)) {
+    seval_t r; buf_t cb = mkchb();
+    if (!static_eval(pdn, &r) || !ts_numerical(r.ts)) 
+      neprintf(pdn, "non-constant initializer");
+    switch (r.ts) {
+      case TS_CHAR:   binchar((int)r.val.i, &cb); break;
+      case TS_UCHAR:  binuchar((unsigned)r.val.u, &cb); break;
+      case TS_SHORT:  binshort((int)r.val.i, &cb); break;
+      case TS_USHORT: binushort((unsigned)r.val.u, &cb); break;
+      case TS_LONG:   /* wasm32 */
+      case TS_INT:    binint((int)r.val.i, &cb); break;
+      case TS_ULONG:  /* wasm32 */
+      case TS_UINT:   binuint((unsigned)r.val.u, &cb); break;
+      case TS_LLONG:  binllong(r.val.i, &cb); break;
+      case TS_ULLONG: binullong(r.val.u, &cb); break;
+      case TS_FLOAT:  binfloat(r.val.f, &cb); break;
+      case TS_DOUBLE: bindouble(r.val.d, &cb); break; 
+      default: assert(false);
+    }
+    memcpy(chbdata(&pd->data) + off, chbdata(&cb), chblen(&cb));
+    chbfini(&cb);
+  } else if (ptn->ts == TS_PTR) {
+    seval_t r; const node_t *pin;
+    if (!static_eval(pdn, &r) || r.ts != TS_PTR) 
+      neprintf(pdn, "constant address initializer expected");
+    assert(r.id); pin = lookup_global(r.id);
+    if (!pin) neprintf(pdn, "unknown name in address initializer");
+    assert(pin->nt == NT_IMPORT && ndlen(pin) == 1 && ndcref(pin, 0)->nt == NT_TYPE);
+    if (ts_bulk(ndcref(pin, 0)->ts)) {
+      inscode_t *pic = icbnewbk(&pd->code);
+      pic->in = IN_REF_DATA; pic->id = r.id; pic->arg2.mod = pin->name;
+      pic->arg.i = r.val.i; /* 0 or numerical offset in 'elements' */
+      if (r.val.i != 0) { /* have to use scale factor to get byte offset */
+        /* got to make sure that static_eval allows things like &intarray[4] */
+        neprintf(pdn, "NYI: offset in address initializer");
+      }      
+    } else {
+      neprintf(pdn, "address initializer should be a reference to a nonscalar type");
+    }
+  }
+}
 
 /* process var declaration in main module */
 static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
 {
   bool final, hide;
+  node_t *ptn;
   if (getverbosity() > 0) {
     dump_node(pdn, stderr);
     if (pin) dump_node(pin, stderr);
   }
+  /* check variable type for legality */
+  assert(pdn->nt == NT_VARDECL); assert(ndlen(pdn) == 1);
+  ptn = ndref(pdn, 0); assert(ptn->nt == NT_TYPE);
+  vardef_check_type(ptn);
+#if 0
   /* if initializer is present, check it for constness */  
   if (pin) { 
     assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
@@ -743,15 +883,45 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
     /* todo: try to const-fold it first! */
     check_constnd(mmod, ndref(pin, 1), pin);
   }
+#endif
   /* post it for later use */
   final = true; hide = (pdn->sc == SC_STATIC);
   /* if it is just function declared, allow definition to come later */
-  if (ndlen(pdn) > 0 && ndref(pdn, 0)->ts == TS_FUNCTION) final = false;
+  if (ptn->ts == TS_FUNCTION) final = false;
   post_vardecl(mmod, pdn, final, hide); /* final */
-  /* todo: compile to global */
+  /* compile to global */
+  if (final) { 
+    assert(ptn->ts != TS_FUNCTION);
+    if (ts_bulk(ptn->ts)) { /* compiles to a var data segment */
+      size_t size, align;
+      watie_t *pd = watiebnewbk(&g_curpwm->exports, IEK_DATA);
+      pd->mod = mmod; pd->id = pdn->name;
+      measure_type(ptn, pdn, &size, &align, 0);
+      bufresize(&pd->data, size); /* fills with zeroes */
+      pd->align = align;
+      if (pin) {
+        assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
+        assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
+        initialize_bulk_data(pd, 0, ptn, ndref(pin, 1));
+      }
+      pd->mut = MT_VAR;
+    } else { /* compiles to a global */
+      watie_t *pg = watiebnewbk(&g_curpwm->exports, IEK_GLOBAL);
+      pg->mod = mmod; pg->id = pdn->name;
+      pg->exported = !hide;
+      if (pin) {
+        seval_t r; assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
+        assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
+        if (!static_eval(ndref(pin, 1), &r) || !ts_numerical(r.ts)) 
+          neprintf(pin, "non-constant initializer");
+        asm_numerical_const(r.ts, &r.val, &pg->ic);
+      }  
+      pg->mut = MT_VAR;    
+    }
+  }
 }
 
-/* check if this function type is legal in wasm */
+/* check if this function type is legal in WCPL */
 static void fundef_check_type(node_t *ptn)
 {
   size_t i;
@@ -1708,28 +1878,6 @@ static bool asm_binary(ts_t ts, tt_t op, icbuf_t *pdata)
   return true;
 }
 
-/* produce numerical constant instruction from literal */
-static void asm_numerical_constant(ts_t ts, numval_t *pval, icbuf_t *pdata)
-{
-  inscode_t *pic = icbnewbk(pdata);
-  switch (ts) {
-    case TS_INT: case TS_UINT:
-    case TS_LONG: case TS_ULONG: /* wasm32 model (will be different under wasm64) */
-      pic->in = IN_I32_CONST; pic->arg.u = pval->u;
-      break;
-    case TS_LLONG: case TS_ULLONG: 
-      pic->in = IN_I64_CONST; pic->arg.u = pval->u;
-      break;
-    case TS_FLOAT:
-      pic->in = IN_F32_CONST; pic->arg.f = pval->f;
-      break;
-    case TS_DOUBLE: 
-      pic->in = IN_F64_CONST; pic->arg.d = pval->d;
-      break;
-    default: assert(false);
-  }
-}
-
 /* push instruction to pdata's front */
 static void asm_pushfr(icbuf_t *pdata, inscode_t *pic)
 {
@@ -1796,6 +1944,16 @@ static ts_t acode_const(node_t *pan, numval_t **ppnv)
     }
   }  
   return TS_VOID; /* 0 */
+}
+
+/* check if this node is a func ref code */
+static bool acode_func_ref(node_t *pan)
+{
+  if (pan->nt == NT_ACODE && icblen(&pan->data) == 1) {
+    instr_t in = icbref(&pan->data, 0)->in;
+    return (in == IN_REF_FUNC);
+  } 
+  return false;
 }
 
 /* check if this node is a var get; returns 0 or instruction code */
@@ -1906,7 +2064,7 @@ static node_t *compile_cast(node_t *prn, const node_t *ptn, node_t *pan)
 static node_t *compile_numlit(node_t *prn, ts_t ts, numval_t *pnv)
 {
   node_t *pcn = npnewcode(prn); ndsettype(ndnewbk(pcn), ts); 
-  asm_numerical_constant(ts, pnv, &pcn->data);
+  asm_numerical_const(ts, pnv, icbnewbk(&pcn->data));
   return pcn;
 }
 
@@ -1915,8 +2073,22 @@ static node_t *compile_idref(node_t *prn, sym_t mod, sym_t name, const node_t *p
 {
   inscode_t *pic; node_t *pcn = npnewcode(prn); ndpushbk(pcn, ptn);
   pic = icbnewbk(&pcn->data); pic->id = name;
-  if (mod) { pic->in = IN_GLOBAL_GET; pic->arg2.mod = mod; }
-  else pic->in = IN_LOCAL_GET;
+  if (mod) { 
+    pic->arg2.mod = mod; 
+    switch (ptn->ts) {
+      case TS_FUNCTION: 
+        pic->in = IN_REF_FUNC;
+        break;
+      case TS_ARRAY: case TS_STRUCT: case TS_UNION:
+        pic->in = IN_REF_DATA;
+        break;
+      default:
+        pic->in = IN_GLOBAL_GET; 
+        break;
+    }
+  } else {
+    pic->in = IN_LOCAL_GET;
+  }
   return pcn;
 }
 
@@ -1987,20 +2159,20 @@ static node_t *compile_unary(node_t *prn, tt_t op, node_t *pan)
     ndsettype(ndnewbk(pcn), (op == TT_NOT) ? TS_INT : rts);
     if (op == TT_MINUS && rts != TS_FLOAT && rts != TS_DOUBLE) {
       /* no NEG instructions for integers; -x => 0-x */
-      asm_numerical_constant(rts, (v.i = 0, &v), &pcn->data); 
+      asm_numerical_const(rts, (v.i = 0, &v), icbnewbk(&pcn->data)); 
       acode_swapin(pcn, pan);
       if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
       if (asm_binary(rts, TT_MINUS, &pcn->data)) return pcn;
     } else if (op == TT_TILDE && rts != TS_FLOAT && rts != TS_DOUBLE) {
       /* no INV instructions for integers; ~x => x^-1 */
-      asm_numerical_constant(rts, (v.i = -1, &v), &pcn->data); 
+      asm_numerical_const(rts, (v.i = -1, &v), icbnewbk(&pcn->data)); 
       acode_swapin(pcn, pan);
       if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
       if (asm_binary(rts, TT_XOR, &pcn->data)) return pcn;
     } else if (op == TT_NOT && (rts == TS_FLOAT || rts == TS_DOUBLE)) {
       /* no EQZ instructions for floats; !x => x==0.0 */
       if (rts == TS_FLOAT) v.f = 0.0; else v.d = 0.0;
-      asm_numerical_constant(rts, &v, &pcn->data); 
+      asm_numerical_const(rts, &v, icbnewbk(&pcn->data)); 
       acode_swapin(pcn, pan);
       if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
       if (asm_binary(rts, TT_EQ, &pcn->data)) return pcn;
@@ -2262,10 +2434,9 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     assert(!pdn);
     ndpushbk(pcn, ndref(pftn, 0));
   }
-  if (acode_rval_get(pfn)) {
+  if (acode_func_ref(pfn)) {
     inscode_t ic; asm_getbk(&pfn->data, &ic);
-    if (ic.in != IN_GLOBAL_GET) 
-      n2eprintf(ndref(prn, 0), prn, "not a function: %s", symname(ic.id));
+    assert(ic.in == IN_REF_FUNC); 
     cic.in = IN_CALL; cic.id = ic.id; cic.arg2 = ic.arg2; /* mod */
   } else {
     n2eprintf(ndref(prn, 0), prn, 
@@ -2498,7 +2669,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
         default: {
           assert(ts_numerical(pn->ts));
           pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), pn->ts);
-          asm_numerical_constant(pn->ts, &pn->val, &pcn->data);
+          asm_numerical_const(pn->ts, &pn->val, icbnewbk(&pcn->data));
         } break;
       }
     } break; 
@@ -3070,8 +3241,7 @@ static void process_top_node(sym_t mmod, node_t *pn, wat_module_t *pm)
   } else {
     /* in module mmod: produce code */
     size_t i;
-    g_curmod = mmod;
-    g_curpwm = pm;
+    g_curmod = mmod; g_curpwm = pm;
     if (pn->nt == NT_FUNDEF) process_fundef(mmod, pn, pm);
     else if (pn->nt == NT_INTRCALL) process_top_intrcall(pn); 
     else if (pn->nt != NT_BLOCK) neprintf(pn, "unexpected top-level declaration");

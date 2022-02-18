@@ -2620,7 +2620,8 @@ static void parse_cast_expr(pws_t *pw, node_t *pn)
             pasn->val.i = (long)ndlen(&nd);
           }
         }
-        ndswap(pn, ndnewfr(&nd));
+        /* replace placeholder type */
+        ndswap(pn, ndref(&nd, 0)); 
         ndswap(pn, &nd);
       } break;
       case TT_ASM_KW: {
@@ -3031,6 +3032,7 @@ static void parse_initializer(pws_t *pw, node_t *pn)
 {
   if (peekt(pw) == TT_LBRC) {
     ndset(pn, NT_DISPLAY, pw->id, peekpos(pw));
+    ndinsbk(pn, NT_TYPE); /* placeholder TS_VOID type */
     dropt(pw);
     while (peekt(pw) != TT_RBRC) {
       parse_initializer(pw, ndnewbk(pn));
@@ -3063,7 +3065,8 @@ static void parse_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t
   psn = ndnewbk(pn);
   parse_initializer(pw, psn);
   /* patch display's array size if needed */
-  if (psn->nt == NT_DISPLAY && (!ndlen(psn) || ndref(psn, 0)->nt != NT_TYPE)) {
+  if (psn->nt == NT_DISPLAY) {
+    assert(ndlen(psn) > 0 && ndref(psn, 0)->nt == NT_TYPE);
     if (tn.ts == TS_ARRAY) {
       node_t *pasn;
       assert(ndlen(&tn) == 2);
@@ -3071,10 +3074,11 @@ static void parse_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t
       if (pasn->nt == NT_NULL) {
         pasn->nt = NT_LITERAL;
         pasn->ts = TS_INT;
-        pasn->val.i = (long)ndlen(psn);
+        pasn->val.i = (long)ndlen(psn)-1; /* sans type */
       }
     }
-    ndswap(ndnewfr(psn), &tn);
+    /* replace placeholder type */
+    ndswap(ndref(psn, 0), &tn);
   }
   /* patch declarator's array size if needed */
   if (psn->nt == NT_DISPLAY && ndref(psn, 0)->ts == TS_ARRAY) {
