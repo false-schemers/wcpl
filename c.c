@@ -896,6 +896,7 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
       size_t size, align;
       watie_t *pd = watiebnewbk(&g_curpwm->exports, IEK_DATA);
       pd->mod = mmod; pd->id = pdn->name;
+      pd->exported = !hide;
       measure_type(ptn, pdn, &size, &align, 0);
       bufresize(&pd->data, size); /* fills with zeroes */
       pd->align = align;

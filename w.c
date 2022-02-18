@@ -1299,7 +1299,11 @@ static void wat_imports(watiebuf_t *pib)
         chbputc(')', g_watbuf); 
       } break;
       case IEK_DATA: {
-        assert(false); /* never imported */
+        char *vcs = (pi->mut == MT_VAR) ? "var" : "const";
+        chbputf(g_watbuf, "(data $%s:%s %s", smod, sname, vcs);
+        chbputf(g_watbuf, " align=%d", pi->align);
+        chbputf(g_watbuf, " size=%u", (unsigned)pi->n);
+        chbputc(')', g_watbuf); 
       } break;
       case IEK_MEM: {
         chbputf(g_watbuf, "(memory $%s:%s", smod, sname);
@@ -1376,15 +1380,17 @@ static void wat_export_datas(watiebuf_t *pdb)
       if (smod && sname) { /* symbolic segment (nonfinal) */
         char *vcs = (pd->mut == MT_VAR) ? "var" : "const";
         assert(pd->align); assert(pd->ic.id == 0);
-        chbsetf(g_watbuf, "(data $%s:%s %s align=%d", smod, sname, vcs, pd->align);
+        chbsetf(g_watbuf, "(data $%s:%s", smod, sname);
+        if (pd->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pd->id));
+        chbputf(g_watbuf, " %s align=%d", vcs, pd->align);
       } else { /* positioned segment (final, WAT-compatible) */
         chbuf_t cb = mkchb();
         assert(!pd->align); assert(pd->ic.in == IN_I32_CONST);
         chbsetf(g_watbuf, "(data (%s)", format_inscode(&pd->ic, &cb));
         chbfini(&cb);
       }
-      if (data_all_zeroes(pc, n)) {
-        chbputf(g_watbuf, " size=%z", n);
+      if (smod && sname && data_all_zeroes(pc, n)) {
+        chbputf(g_watbuf, " size=%z", n); /* .wo shortcut */
       } else {  
         chbputs(" \"", g_watbuf);
         for (i = 0; i < n; ++i) {
@@ -2219,6 +2225,11 @@ static wt_t peekt(sws_t *pw)
   return pw->ctk; 
 }
 
+static bool peeks(sws_t *pw, const char *s)
+{
+  return strprf(chbdata(&pw->chars)+pw->curi, s) != NULL;
+}
+
 static void dropt(sws_t *pw) 
 { 
   pw->gottk = false; 
@@ -2415,6 +2426,52 @@ static unsigned parse_uint(sws_t *pw)
   return (unsigned)v.u;
 }
 
+static unsigned long parse_offset(sws_t *pw)
+{
+  char *s;
+  if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "offset=")) != NULL) {
+    char *e; unsigned long offset; errno = 0; offset = strtoul(s, &e, 10); 
+    if (errno || *e != 0 || offset > UINT_MAX) 
+      seprintf(pw, "invalid offset= argument");
+    dropt(pw);
+    return offset;
+  } else {
+    seprintf(pw, "missing offset= argument");
+    return 0; /* won't happen */
+  }
+}
+
+static unsigned long parse_size(sws_t *pw)
+{
+  char *s;
+  if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "size=")) != NULL) {
+    char *e; unsigned long size; errno = 0; size = strtoul(s, &e, 10); 
+    if (errno || *e != 0 || size > UINT_MAX) 
+      seprintf(pw, "invalid size= argument");
+    dropt(pw);
+    return size;
+  } else {
+    seprintf(pw, "missing size= argument");
+    return 0; /* won't happen */
+  }
+}
+
+static unsigned long parse_align(sws_t *pw)
+{
+  char *s;
+  if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "align=")) != NULL) {
+    char *e; unsigned long align; errno = 0; align = strtoul(s, &e, 10); 
+    if (errno || *e != 0 || (align != 1 && align != 2 && align != 4 && align != 8 && align != 16)) 
+      seprintf(pw, "invalid align= argument");
+    dropt(pw);
+    return align;
+  } else {
+    seprintf(pw, "missing align= argument");
+    return 0; /* won't happen */
+  }
+}
+
+
 static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
 {
   if (peekt(pw) == WT_KEYWORD) {
@@ -2460,6 +2517,9 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
         }
       } break;
       case INSIG_MEMARG: {
+#if 1
+        unsigned long offset = parse_offset(pw), align = parse_align(pw);
+#else        
         char *s; unsigned long offset, align;
         if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "offset=")) != NULL) {
           char *e; errno = 0; offset = strtoul(s, &e, 10); 
@@ -2477,6 +2537,7 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
         } else { /* we require it! */
           seprintf(pw, "missing align= argument"); 
         }
+#endif        
         pic->arg.u = offset;
         switch (align) { /* fixme: use ntz? */
           case 1:  pic->arg2.u = 0; break;
@@ -2498,10 +2559,15 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
         } 
       } break;
       case INSIG_RD: { /* ref.data -- not in WASM! */
-        char *s; long offset;
         sym_t mod, id; parse_mod_id(pw, &mod, &id);
         pic->id = id; pic->arg2.mod = mod;
         pic->arg.i = 0; /* offset; check if given explicitly */
+#if 1
+        if (peekt(pw) == WT_KEYWORD && strprf(pw->tokstr, "offset=")) {
+          pic->arg.i = parse_offset(pw);
+        }
+#else
+        char *s; long offset;
         if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "offset=")) != NULL) {
           char *e; errno = 0; offset = strtol(s, &e, 10); 
           if (errno || *e != 0 || offset < INT_MIN || offset > INT_MAX) 
@@ -2511,8 +2577,12 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
             dropt(pw);
           }
         }
+#endif
       } break;
       case INSIG_PR: { /* data.put_ref -- not in WASM! */
+#if 1
+        pic->arg.u = parse_offset(pw);
+#else
         char *s; unsigned long offset;
         if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "offset=")) != NULL) {
           char *e; errno = 0; offset = strtoul(s, &e, 10); 
@@ -2525,6 +2595,7 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
         } else { /* we require it! */
           seprintf(pw, "missing offset= argument"); 
         }
+#endif        
       } break;
       /* case INSIG_LS_L: fixme; use *pexb */
       default:
@@ -2575,6 +2646,18 @@ static void parse_import_des(sws_t *pw, watie_t *pi)
       pi->lt = LT_MINMAX;
       pi->m = parse_uint(pw);  
     }
+  } else if (ahead(pw, "data")) {
+    dropt(pw);
+    pi->iek = IEK_DATA;
+    parse_import_name(pw, pi);
+    if (peekt(pw) == WT_KEYWORD && streql(pw->tokstr, "var")) {
+      pi->mut = MT_VAR; dropt(pw);
+    }
+    if (peekt(pw) == WT_KEYWORD && streql(pw->tokstr, "const")) {
+      pi->mut = MT_CONST; dropt(pw);
+    }
+    pi->align = (int)parse_align(pw);
+    pi->n = (unsigned)parse_size(pw);
   } else if (ahead(pw, "func")) {
     dropt(pw);
     pi->iek = IEK_FUNC;
@@ -2597,6 +2680,19 @@ static void parse_import_des(sws_t *pw, watie_t *pi)
   chbfini(&cb);
 }
 
+static void parse_optional_export(sws_t *pw, watie_t *pe)
+{
+  if (ahead(pw, "(") && peeks(pw, "export")) {
+    sym_t id; chbuf_t cb = mkchb();
+    dropt(pw); expect(pw, "export");
+    id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
+    if (id != pe->id) seprintf(pw, "unexpected export rename"); 
+    pe->exported = true;
+    expect(pw, ")");
+    chbfini(&cb);
+  }
+}
+
 static void parse_modulefield(sws_t *pw, wat_module_t* pm)
 {
   chbuf_t cb = mkchb();
@@ -2609,15 +2705,28 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     parse_import_des(pw, pi);
   } else if (ahead(pw, "data")) {
     watie_t *pd = watiebnewbk(&pm->exports, IEK_DATA);
-    char *s;
     dropt(pw);
     parse_mod_id(pw, &pd->mod, &pd->id);
+    parse_optional_export(pw, pd);
     if (peekt(pw) == WT_KEYWORD && streql(pw->tokstr, "var")) {
       pd->mut = MT_VAR; dropt(pw);
     }
     if (peekt(pw) == WT_KEYWORD && streql(pw->tokstr, "const")) {
       pd->mut = MT_CONST; dropt(pw);
     }
+#if 1
+    if (peekt(pw) == WT_KEYWORD && strprf(pw->tokstr, "align=")) {
+      pd->align = (int)parse_align(pw);
+    }
+    if (peekt(pw) == WT_STRING) {
+      scan_string(pw, pw->tokstr, &pd->data);
+      dropt(pw);
+    } else if (peekt(pw) == WT_KEYWORD && strprf(pw->tokstr, "size=")) {
+      size_t size = (size_t)parse_size(pw);
+      chbclear(&pd->data); bufresize(&pd->data, size); /* zeroes */
+    } else seprintf(pw, "missing size= or data string");
+#else
+    char *s;
     if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "align=")) != NULL) {
       char *e; unsigned long align; errno = 0; align = strtoul(s, &e, 10); 
       if (errno || *e != 0 || (align != 1 && align != 2 && align != 4 && align != 8 && align != 16)) 
@@ -2627,12 +2736,14 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     }
     if (peekt(pw) == WT_STRING) {
       scan_string(pw, pw->tokstr, &pd->data);
+      dropt(pw);
     } else if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "size=")) != NULL) {
       char *e; unsigned long size; errno = 0; size = strtoul(s, &e, 10); 
       if (errno || *e != 0 || size == 0) seprintf(pw, "invalid size= argument");
       chbclear(&pd->data); bufresize(&pd->data, size); /* zeroes */
+      dropt(pw);
     } else seprintf(pw, "missing size= or data string");
-    dropt(pw);
+#endif
     if (ahead(pw, "(")) { /* WCPL non-lead data segment */
       dropt(pw);
       while (!ahead(pw, ")")) {
@@ -2649,17 +2760,7 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     watie_t *pe = watiebnewbk(&pm->exports, IEK_MEM);
     dropt(pw);
     parse_mod_id(pw, &pe->mod, &pe->id);
-    while (ahead(pw, "(")) {
-      dropt(pw);
-      if (ahead(pw, "export")) {
-        sym_t id;
-        dropt(pw);
-        id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
-        if (id != pe->id) seprintf(pw, "unexpected export rename"); 
-        pe->exported = true;
-      } else seprintf(pw, "unexpected memory header field %s", pw->tokstr);
-      expect(pw, ")");
-    }
+    parse_optional_export(pw, pe);
     pe->n = parse_uint(pw);
     pe->lt = LT_MIN;
     if (!ahead(pw, ")")) {
@@ -2670,16 +2771,11 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     watie_t *pe = watiebnewbk(&pm->exports, IEK_GLOBAL);
     dropt(pw);
     parse_mod_id(pw, &pe->mod, &pe->id);
+    parse_optional_export(pw, pe);
     pe->mut = MT_CONST;
     while (ahead(pw, "(")) {
       dropt(pw);
-      if (ahead(pw, "export")) {
-        sym_t id;
-        dropt(pw);
-        id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
-        if (id != pe->id) seprintf(pw, "unexpected export rename"); 
-        pe->exported = true;
-      } else if (ahead(pw, "mut")) {
+      if (ahead(pw, "mut")) {
         dropt(pw);
         pe->mut = MT_VAR;
         pe->vt = parse_valtype(pw);
@@ -2700,15 +2796,10 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     watie_t *pe = watiebnewbk(&pm->exports, IEK_FUNC);
     dropt(pw);
     parse_mod_id(pw, &pe->mod, &pe->id);
+    parse_optional_export(pw, pe);
     while (ahead(pw, "(")) {
       dropt(pw);
-      if (ahead(pw, "export")) {
-        sym_t id;
-        dropt(pw);
-        id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
-        if (id != pe->id) seprintf(pw, "unexpected export rename"); 
-        pe->exported = true;
-      } else if (ahead(pw, "param")) {
+      if (ahead(pw, "param")) {
         inscode_t *pic = icbnewbk(&pe->code); valtype_t vt; 
         dropt(pw);
         pic->in = IN_REGDECL; pic->id = parse_id(pw); 

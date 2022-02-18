@@ -465,7 +465,7 @@ typedef struct watie {
   muttype_t mut;  /* GLOBAL/DATA: var/const */
   inscode_t ic;   /* GLOBAL: def init code */
   limtype_t lt;   /* MEM: limits type */
-  unsigned n;     /* MEM: min limit */
+  unsigned n;     /* MEM: min limit/DATA: size (import only) */
   unsigned m;     /* MEM: max limit */
   int align;      /* DATA: alignment in bytes: 1,2,4,8,16 */
   buf_t data;     /* DATA: bytes (export only) */
