@@ -25,7 +25,6 @@ sym_t  g_sp_id;    /* id for stack pointer global */
 size_t g_sdbaddr;  /* static data allocation start */
 size_t g_stacksz;  /* stack size in bytes */
 
-/* initialization */
 void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl)
 {
   size_t i;
@@ -58,6 +57,7 @@ void fini_wcpl(void)
   g_lm_id = g_sp_id = 0;
 }
 
+
 /* compiler globals */
 static sym_t g_curmod; 
 static wat_module_t *g_curpwm;
@@ -80,6 +80,29 @@ void fini_compiler(void)
   fini_symbols();
   g_curmod = 0;
   g_curpwm = NULL;
+}
+
+
+/* convert WCPL to a WASM type or VT_UNKN */
+static valtype_t ts2vt(ts_t ts)
+{
+  switch (ts) {
+    case TS_CHAR:  case TS_UCHAR:
+    case TS_SHORT: case TS_USHORT:
+    case TS_INT:   case TS_UINT:  
+      return VT_I32;
+    case TS_LONG:  case TS_ULONG:  
+    case TS_PTR: 
+      /* depends on wasm32/wasm64 model */
+      return VT_I32;
+    case TS_LLONG: case TS_ULLONG:  
+      return VT_I64;
+    case TS_FLOAT: 
+      return VT_F32;
+    case TS_DOUBLE:
+      return VT_F64; 
+  }
+  return VT_UNKN;
 }
 
 
@@ -249,7 +272,7 @@ ts_t numval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
         default:       tz = TS_VOID; break;
       }
     } break;
-    case TS_ULLONG: case TS_UINT: {
+    case TS_ULLONG: case TS_ULONG: case TS_UINT: {
       unsigned long long x = vx.u;
       switch (op) {
         case TT_PLUS:  pvz->u = integral_mask(tz, x); break;
@@ -259,7 +282,7 @@ ts_t numval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
         default:       tz = TS_VOID; break;
       }
     } break;
-    case TS_LLONG: case TS_INT: {
+    case TS_LLONG: case TS_LONG: case TS_INT: {
       long long x = vx.i;
       switch (op) {
         case TT_PLUS:  pvz->i = integral_sext(tz, x); break;
@@ -768,8 +791,8 @@ static void post_vardecl(sym_t mod, node_t *pn, bool final, bool hide)
   }
 }
 
-/* check if this global variable type is legal in WCPL */
-static void vardef_check_type(node_t *ptn)
+/* check if this global variable type is legal in WCPL; evals array sizes */
+static node_t *vardef_check_type(node_t *ptn)
 {
   assert(ptn->nt == NT_TYPE);
   switch (ptn->ts) {
@@ -782,18 +805,26 @@ static void vardef_check_type(node_t *ptn)
     case TS_FLOAT: case TS_DOUBLE:
     case TS_PTR: 
       break;
-    case TS_ARRAY:
-      assert(ndlen(ptn) == 2);
-      if (ndref(ptn, 1)->nt == NT_NULL) {
-        neprintf(ptn, "not supported: fexible array as global variable type");
+    case TS_ARRAY: {
+      node_t *pcn; assert(ndlen(ptn) == 2);
+      pcn = ndref(ptn, 1);
+      if (pcn->nt == NT_NULL) {
+        neprintf(ptn, "not supported: flexible array as global variable type");
+      } else if (pcn->nt != NT_LITERAL || pcn->ts != TS_INT) {
+        int count = 0;
+        if (!arithmetic_eval_to_int(pcn, &count) || count <= 0)
+          n2eprintf(pcn, ptn, "array size should be positive constant");
+        ndset(pcn, NT_LITERAL, pcn->pwsid, pcn->startpos);
+        pcn->ts = TS_INT; pcn->val.i = count;
       }
-      break;
+    } break;
     case TS_STRUCT:
     case TS_UNION:
       break;
     default:
       neprintf(ptn, "global variables of this type are not supported");
   }
+  return ptn;
 }
 
 /* initialize preallocated bulk data with display initializer */
@@ -801,7 +832,7 @@ static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *
 {
   if (ts_bulk(ptn->ts) && pdn->nt == NT_DISPLAY) {
     /* element-by-element initialization */
-    if (ndref(pdn, 0)->ts != TS_VOID && !same_type(ptn, ndref(pdn, 0)))
+    if (ndref(pdn, 0)->ts != TS_VOID && !same_type(ptn, vardef_check_type(ndref(pdn, 0))))
       neprintf(pdn, "initializer has incompatible type");
     /* start at off and go from element to element updating off */
     if (ptn->ts == TS_ARRAY) {
@@ -897,7 +928,7 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
   /* check variable type for legality */
   assert(pdn->nt == NT_VARDECL); assert(ndlen(pdn) == 1);
   ptn = ndref(pdn, 0); assert(ptn->nt == NT_TYPE);
-  vardef_check_type(ptn);
+  vardef_check_type(ptn); /* evals array sizes */
   /* post it for later use */
   final = true; hide = (pdn->sc == SC_STATIC);
   /* if it is just function declared, allow definition to come later */
@@ -934,7 +965,9 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
         pg = watiebref(&g_curpwm->exports, pgidx); /* re-fetch after static_eval */
         asm_numerical_const(r.ts, &r.val, &pg->ic);
       }  
-      pg->mut = MT_VAR;    
+      pg->mut = MT_VAR;
+      pg->vt = ts2vt(ptn->ts);
+      if (pg->vt == VT_UNKN) neprintf(pin, "invalid type for a global");
     }
   }
 }
@@ -961,12 +994,25 @@ static void fundef_check_type(node_t *ptn)
       case TS_FLOAT: case TS_DOUBLE:
       case TS_PTR: 
         break;
-      case TS_ARRAY:
-        assert(ndlen(ptni) == 2);
-        if (ndref(ptni, 1)->nt == NT_NULL) { /* t foo[] == t* foo */
+      case TS_ARRAY: {
+        node_t *pcn; assert(ndlen(ptni) == 2);
+        pcn = ndref(ptni, 1);
+#if 1
+        if (pcn->nt == NT_NULL) { /* t foo[] == t* foo */
           ndbrem(&ptni->body, 1); ptni->ts = TS_PTR;
-        } else neprintf(ptni, "not supported: array as function parameter/return type");
-        break;
+        } // else neprintf(ptni, "not supported: array as function parameter/return type");
+#else
+        if (pcn->nt == NT_NULL) {
+          neprintf(ptn, "not supported: flexible array as global variable type");
+        } else if (pcn->nt != NT_LITERAL || pcn->ts != TS_INT) {
+          int count = 0;
+          if (!arithmetic_eval_to_int(pcn, &count) || count <= 0)
+            n2eprintf(pcn, prn, "array size should be positive constant");
+          ndset(pcn, NT_LITERAL, pcn->pwsid, pcn->startpos);
+          pcn->ts = TS_INT; pcn->val.i = count;
+        }
+#endif
+      } break;
       case TS_STRUCT:
         if (i > 0) neprintf(ptni, "not supported: struct as function parameter type");
         break;
@@ -977,7 +1023,7 @@ static void fundef_check_type(node_t *ptn)
         if (i+1 != ndlen(ptn)) neprintf(ptni, "nonfinal ... in function parameter list");
         break; 
       default:
-        neprintf(ptni, "function arguments of this type are not supported");
+        neprintf(ptni, "function arguments of this type are not supported: %s", ts_name(ptni->ts));
     }
   }
 }
@@ -1415,7 +1461,7 @@ static void fundef_wasmify(node_t *pdn)
         } /* else fall through */ 
       }
       default:
-        neprintf(pdni, "function arguments of this type are not supported");
+        neprintf(pdni, "function arguments of type %s are not supported", ts_name(ptni->ts));
     }
   }
 
@@ -3064,28 +3110,19 @@ repeat:
   if (nmods > 0 && --optlvl > 0) goto repeat;
 }
 
-/* convert type node to a valtype */
+/* convert function param/result type node to a valtype */
 static void tn2vt(node_t *ptn, vtbuf_t *pvtb)
 {
   assert(ptn->nt == NT_TYPE);
-  switch (ptn->ts) {
-    case TS_VOID: /* put nothing */ break;
-    case TS_CHAR:  case TS_UCHAR:
-    case TS_SHORT: case TS_USHORT:
-    case TS_INT:   case TS_UINT:  
-      *vtbnewbk(pvtb) = VT_I32; break;  
-    case TS_LONG:  case TS_ULONG:  
-    case TS_PTR: 
-      /* fixme: should depend on wasm32/wasm64 model */
-      *vtbnewbk(pvtb) = VT_I32; break;  
-    case TS_LLONG: case TS_ULLONG:  
-      *vtbnewbk(pvtb) = VT_I64; break;
-    case TS_FLOAT: /* legal in wasm, no auto promotion to double */
-      *vtbnewbk(pvtb) = VT_F32; break;
-    case TS_DOUBLE:
-      *vtbnewbk(pvtb) = VT_F64; break;
-    default:
+  if (ptn->ts == TS_VOID) {
+    /* put nothing */
+  } else {
+    valtype_t vt = ts2vt(ptn->ts);
+    if (vt == VT_UNKN) {
       neprintf(ptn, "function arguments of this type are not supported");
+    } else {
+      *vtbnewbk(pvtb) = vt;
+    }
   }
 }
 
@@ -3238,6 +3275,7 @@ static void process_top_node(sym_t mmod, node_t *pn, wat_module_t *pm)
       } else if (pni->nt == NT_VARDECL && pni->name && ndlen(pni) == 1) {
         node_t *ptn = ndref(pni, 0); assert(ptn->nt == NT_TYPE);
         if (ptn->ts == TS_FUNCTION) fundef_check_type(ptn);
+        else vardef_check_type(ptn);
         post_vardecl(pn->name, pni, false, false); /* not final, not hidden */
       } else {
         neprintf(pni, "extern declaration expected");
@@ -3400,10 +3438,14 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
           pi->mod = pn->name, pi->id = id;
           ftn2fsig(ptn, &pi->fs);
         } else {
+          watie_t *pi;
           if (getverbosity() > 0) {
             fprintf(stderr, "imported global %s:%s =>\n", symname(pn->name), symname(id));
             dump_node(ptn, stderr);
           }
+          pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
+          pi->mod = pn->name, pi->id = id;
+          pi->vt = ts2vt(ts_bulk(ptn->ts) ? TS_PTR : ptn->ts);
         } 
       }
     }

@@ -112,6 +112,7 @@ extern void *bufpopbk(buf_t* pb);
 extern void *bufnewfr(buf_t* pb);
 extern void  bufpopfr(buf_t* pb);
 extern void *bufalloc(buf_t* pb, size_t n);
+extern void bufrev(buf_t* pb);
 extern void bufqsort(buf_t* pb, int (*cmp)(const void *, const void *)); /* unstable */
 extern void bufremdups(buf_t* pb, int (*cmp)(const void *, const void *), void (*fini)(void *)); /* adjacent */
 extern void* bufsearch(const buf_t* pb, const void *pe, int (*cmp)(const void *, const void *)); /* linear */

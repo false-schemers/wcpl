@@ -522,6 +522,22 @@ void *bufalloc(buf_t* pb, size_t n)
   return pbk;
 }
 
+void bufrev(buf_t* pb)
+{
+  char *pdata; 
+  size_t i, j, len, esz;
+  assert(pb);
+  len = pb->fill;
+  if (len < 2) return;
+  esz = pb->esz;
+  i = 0; j = len-1;  
+  pdata = (char*)pb->buf;
+  while (i < j) {
+    memswap(pdata+i*esz, pdata+j*esz, esz);
+    ++i, --j;
+  }
+}
+
 /* unstable sort */
 void bufqsort(buf_t* pb, int (*cmp)(const void *, const void *))
 {

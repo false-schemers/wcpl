@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <ctype.h>
 
 void bzero(void *dst, size_t n)
@@ -332,4 +333,10 @@ size_t strxfrm(char *dest, const char *src, size_t n)
   /* fake */
   strncpy(dest, src, n);
   return strlen(src);
+}
+
+const char *strerror(int errno)
+{
+  if (errno < 0 || errno > ERRNO_MAXERR) return "?unknown error";
+  return _emsg[errno];
 }

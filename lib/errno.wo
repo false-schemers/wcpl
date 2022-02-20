@@ -1,0 +1,237 @@
+(module $errno
+  (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
+  (import "env" "__linear_memory" (memory $env:__linear_memory 0))
+  (global $errno:errno (export "errno") (mut i32))
+  (data $errno:_emsg (export "_emsg") const align=4 size=308
+    (ref.data $errno:ds2$
+     data.put_ref offset=0
+     ref.data $errno:ds3$
+     data.put_ref offset=4
+     ref.data $errno:ds4$
+     data.put_ref offset=8
+     ref.data $errno:ds5$
+     data.put_ref offset=12
+     ref.data $errno:ds6$
+     data.put_ref offset=16
+     ref.data $errno:ds7$
+     data.put_ref offset=20
+     ref.data $errno:ds8$
+     data.put_ref offset=24
+     ref.data $errno:ds9$
+     data.put_ref offset=28
+     ref.data $errno:ds10$
+     data.put_ref offset=32
+     ref.data $errno:ds11$
+     data.put_ref offset=36
+     ref.data $errno:ds12$
+     data.put_ref offset=40
+     ref.data $errno:ds13$
+     data.put_ref offset=44
+     ref.data $errno:ds14$
+     data.put_ref offset=48
+     ref.data $errno:ds15$
+     data.put_ref offset=52
+     ref.data $errno:ds16$
+     data.put_ref offset=56
+     ref.data $errno:ds17$
+     data.put_ref offset=60
+     ref.data $errno:ds18$
+     data.put_ref offset=64
+     ref.data $errno:ds19$
+     data.put_ref offset=68
+     ref.data $errno:ds20$
+     data.put_ref offset=72
+     ref.data $errno:ds21$
+     data.put_ref offset=76
+     ref.data $errno:ds22$
+     data.put_ref offset=80
+     ref.data $errno:ds23$
+     data.put_ref offset=84
+     ref.data $errno:ds24$
+     data.put_ref offset=88
+     ref.data $errno:ds25$
+     data.put_ref offset=92
+     ref.data $errno:ds26$
+     data.put_ref offset=96
+     ref.data $errno:ds27$
+     data.put_ref offset=100
+     ref.data $errno:ds28$
+     data.put_ref offset=104
+     ref.data $errno:ds29$
+     data.put_ref offset=108
+     ref.data $errno:ds30$
+     data.put_ref offset=112
+     ref.data $errno:ds31$
+     data.put_ref offset=116
+     ref.data $errno:ds32$
+     data.put_ref offset=120
+     ref.data $errno:ds33$
+     data.put_ref offset=124
+     ref.data $errno:ds34$
+     data.put_ref offset=128
+     ref.data $errno:ds35$
+     data.put_ref offset=132
+     ref.data $errno:ds36$
+     data.put_ref offset=136
+     ref.data $errno:ds37$
+     data.put_ref offset=140
+     ref.data $errno:ds38$
+     data.put_ref offset=144
+     ref.data $errno:ds39$
+     data.put_ref offset=148
+     ref.data $errno:ds40$
+     data.put_ref offset=152
+     ref.data $errno:ds41$
+     data.put_ref offset=156
+     ref.data $errno:ds42$
+     data.put_ref offset=160
+     ref.data $errno:ds43$
+     data.put_ref offset=164
+     ref.data $errno:ds44$
+     data.put_ref offset=168
+     ref.data $errno:ds45$
+     data.put_ref offset=172
+     ref.data $errno:ds46$
+     data.put_ref offset=176
+     ref.data $errno:ds47$
+     data.put_ref offset=180
+     ref.data $errno:ds48$
+     data.put_ref offset=184
+     ref.data $errno:ds49$
+     data.put_ref offset=188
+     ref.data $errno:ds50$
+     data.put_ref offset=192
+     ref.data $errno:ds51$
+     data.put_ref offset=196
+     ref.data $errno:ds52$
+     data.put_ref offset=200
+     ref.data $errno:ds53$
+     data.put_ref offset=204
+     ref.data $errno:ds54$
+     data.put_ref offset=208
+     ref.data $errno:ds55$
+     data.put_ref offset=212
+     ref.data $errno:ds56$
+     data.put_ref offset=216
+     ref.data $errno:ds57$
+     data.put_ref offset=220
+     ref.data $errno:ds58$
+     data.put_ref offset=224
+     ref.data $errno:ds59$
+     data.put_ref offset=228
+     ref.data $errno:ds60$
+     data.put_ref offset=232
+     ref.data $errno:ds61$
+     data.put_ref offset=236
+     ref.data $errno:ds62$
+     data.put_ref offset=240
+     ref.data $errno:ds63$
+     data.put_ref offset=244
+     ref.data $errno:ds64$
+     data.put_ref offset=248
+     ref.data $errno:ds65$
+     data.put_ref offset=252
+     ref.data $errno:ds66$
+     data.put_ref offset=256
+     ref.data $errno:ds67$
+     data.put_ref offset=260
+     ref.data $errno:ds68$
+     data.put_ref offset=264
+     ref.data $errno:ds69$
+     data.put_ref offset=268
+     ref.data $errno:ds70$
+     data.put_ref offset=272
+     ref.data $errno:ds71$
+     data.put_ref offset=276
+     ref.data $errno:ds72$
+     data.put_ref offset=280
+     ref.data $errno:ds73$
+     data.put_ref offset=284
+     ref.data $errno:ds74$
+     data.put_ref offset=288
+     ref.data $errno:ds75$
+     data.put_ref offset=292
+     ref.data $errno:ds76$
+     data.put_ref offset=296
+     ref.data $errno:ds77$
+     data.put_ref offset=300
+     ref.data $errno:ds78$
+     data.put_ref offset=304))
+  (data $errno:ds2$ const align=1 "No error occurred\00")
+  (data $errno:ds3$ const align=1 "Argument list too long\00")
+  (data $errno:ds4$ const align=1 "Permission denied\00")
+  (data $errno:ds5$ const align=1 "Address in use\00")
+  (data $errno:ds6$ const align=1 "Address not available\00")
+  (data $errno:ds7$ const align=1 "Address family not supported\00")
+  (data $errno:ds8$ const align=1 "Resource unavailable, or operation would block\00")
+  (data $errno:ds9$ const align=1 "Connection already in progress\00")
+  (data $errno:ds10$ const align=1 "Bad file descriptor\00")
+  (data $errno:ds11$ const align=1 "Bad message\00")
+  (data $errno:ds12$ const align=1 "Device or resource busy\00")
+  (data $errno:ds13$ const align=1 "Operation canceled\00")
+  (data $errno:ds14$ const align=1 "No child processes\00")
+  (data $errno:ds15$ const align=1 "Connection aborted\00")
+  (data $errno:ds16$ const align=1 "Connection refused\00")
+  (data $errno:ds17$ const align=1 "Connection reset\00")
+  (data $errno:ds18$ const align=1 "Resource deadlock would occur\00")
+  (data $errno:ds19$ const align=1 "Destination address required\00")
+  (data $errno:ds20$ const align=1 "Mathematics argument out of domain of function\00")
+  (data $errno:ds21$ const align=1 "Reserved\00")
+  (data $errno:ds22$ const align=1 "File exists\00")
+  (data $errno:ds23$ const align=1 "Bad address\00")
+  (data $errno:ds24$ const align=1 "File too large\00")
+  (data $errno:ds25$ const align=1 "Host is unreachable\00")
+  (data $errno:ds26$ const align=1 "Identifier removed\00")
+  (data $errno:ds27$ const align=1 "Illegal byte sequence\00")
+  (data $errno:ds28$ const align=1 "Operation in progress\00")
+  (data $errno:ds29$ const align=1 "Interrupted function\00")
+  (data $errno:ds30$ const align=1 "Invalid argument\00")
+  (data $errno:ds31$ const align=1 "I/O error\00")
+  (data $errno:ds32$ const align=1 "Socket is connected\00")
+  (data $errno:ds33$ const align=1 "Is a directory\00")
+  (data $errno:ds34$ const align=1 "Too many levels of symbolic links\00")
+  (data $errno:ds35$ const align=1 "File descriptor value too large\00")
+  (data $errno:ds36$ const align=1 "Too many links\00")
+  (data $errno:ds37$ const align=1 "Message too large\00")
+  (data $errno:ds38$ const align=1 "Reserved\00")
+  (data $errno:ds39$ const align=1 "Filename too long\00")
+  (data $errno:ds40$ const align=1 "Network is down\00")
+  (data $errno:ds41$ const align=1 "Connection aborted by network\00")
+  (data $errno:ds42$ const align=1 "Network unreachable\00")
+  (data $errno:ds43$ const align=1 "Too many files open in system\00")
+  (data $errno:ds44$ const align=1 "No buffer space available\00")
+  (data $errno:ds45$ const align=1 "No such device\00")
+  (data $errno:ds46$ const align=1 "No such file or directory\00")
+  (data $errno:ds47$ const align=1 "Executable file format error\00")
+  (data $errno:ds48$ const align=1 "No locks available\00")
+  (data $errno:ds49$ const align=1 "Reserved\00")
+  (data $errno:ds50$ const align=1 "Not enough space\00")
+  (data $errno:ds51$ const align=1 "No message of the desired type\00")
+  (data $errno:ds52$ const align=1 "Protocol not available\00")
+  (data $errno:ds53$ const align=1 "No space left on device\00")
+  (data $errno:ds54$ const align=1 "Function not supported\00")
+  (data $errno:ds55$ const align=1 "The socket is not connected\00")
+  (data $errno:ds56$ const align=1 "Not a directory or a symbolic link to a directory\00")
+  (data $errno:ds57$ const align=1 "Directory not empty\00")
+  (data $errno:ds58$ const align=1 "State not recoverable\00")
+  (data $errno:ds59$ const align=1 "Not a socket\00")
+  (data $errno:ds60$ const align=1 "Not supported, or operation not supported on socket\00")
+  (data $errno:ds61$ const align=1 "Inappropriate I/O control operation\00")
+  (data $errno:ds62$ const align=1 "No such device or address\00")
+  (data $errno:ds63$ const align=1 "Value too large to be stored in data type\00")
+  (data $errno:ds64$ const align=1 "Previous owner died\00")
+  (data $errno:ds65$ const align=1 "Operation not permitted\00")
+  (data $errno:ds66$ const align=1 "Broken pipe\00")
+  (data $errno:ds67$ const align=1 "Protocol error\00")
+  (data $errno:ds68$ const align=1 "Protocol not supported\00")
+  (data $errno:ds69$ const align=1 "Protocol wrong type for socket\00")
+  (data $errno:ds70$ const align=1 "Result too large\00")
+  (data $errno:ds71$ const align=1 "Read-only file system\00")
+  (data $errno:ds72$ const align=1 "Invalid seek\00")
+  (data $errno:ds73$ const align=1 "No such process\00")
+  (data $errno:ds74$ const align=1 "Reserved\00")
+  (data $errno:ds75$ const align=1 "Connection timed out\00")
+  (data $errno:ds76$ const align=1 "Text file busy\00")
+  (data $errno:ds77$ const align=1 "Cross-device link\00")
+  (data $errno:ds78$ const align=1 "Extension: Capabilities insufficient\00")
+)

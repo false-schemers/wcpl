@@ -21,7 +21,7 @@ typedef uint64_t uint_least64_t;
 typedef int64_t intmax_t;
 typedef uint64_t uintmax_t;
 
-typedef ptrdiff_t intptr_t;
+/* intptr_t is built-in */
 typedef size_t uintptr_t;
 
 #define INT8_MIN   (-1-0x7f)

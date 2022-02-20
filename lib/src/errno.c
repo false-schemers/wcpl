@@ -6,7 +6,7 @@
 int errno;
 
 /* used by perror */
-const char *_emsg[77] = {
+const char *_emsg[ERRNO_MAXERR+1] = {
   "No error occurred",
   "Argument list too long",
   "Permission denied",

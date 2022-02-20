@@ -1153,7 +1153,12 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
       else chbputf(pcb, " %lld", pic->arg.i); 
       break;
-    case INSIG_I32:  case INSIG_I64:
+    case INSIG_I32: {
+      long long i = (pic->arg.i << 32) >> 32; /* extend sign to upper 32 bits */
+      chbputf(pcb, " %lld", i); /* write negatives (if considered signed) as negatives */
+      if (pic->id) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
+    } break;
+    case INSIG_I64:
       chbputf(pcb, " %lld", pic->arg.i); 
       if (pic->id) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
       break;
@@ -1404,7 +1409,7 @@ static void wat_export_datas(watiebuf_t *pdb)
             case 0x5C: ec = '\\'; break;
           }
           if (ec) chbputf(g_watbuf, "\\%c", ec);
-          else if (' ' <= c && c <= 127) chbputc(c, g_watbuf); 
+          else if (' ' <= c && c < 127) chbputc(c, g_watbuf); 
           else chbputf(g_watbuf, "\\%x%x", (c>>4)&0xF, c&0xF);
         }
         chbputc('\"', g_watbuf); 
@@ -1470,7 +1475,7 @@ static void wat_export_funcs(watiebuf_t *pfb)
         for (k = j+1; k < j+1+n; ++k) {
           assert(k < icblen(&pf->code));
           pic = icbref(&pf->code, k); assert(pic->in == IN_BR && pic->id);
-          chbputf(g_watbuf, " %s", symname(pic->id));
+          chbputf(g_watbuf, " $%s", symname(pic->id));
         }
         wat_line(chbdata(g_watbuf));
         j += n; /* account for n aditional inscodes */
@@ -2549,7 +2554,20 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
       case INSIG_PR: { /* data.put_ref -- not in WASM! */
         pic->arg.u = parse_offset(pw);
       } break;
-      /* case INSIG_LS_L: fixme; use *pexb */
+      case INSIG_LS_L: { /* br_table */
+        size_t n = 0, coff;
+        if (!pexb) seprintf(pw, "unexpected br_table instruction");
+        coff = bufoff(pexb, pic);
+        while (peekt(pw) == WT_ID) {
+          pic = icbnewbk(pexb);
+          pic->in = IN_BR;
+          pic->id = parse_id(pw);
+          ++n;
+        }
+        if (n < 1) seprintf(pw, "invalid br_table instruction");
+        pic = icbref(pexb, coff);
+        pic->arg.u = n-1; /* sans default */ 
+      } break;
       default:
         assert(false);     
     }        
@@ -2857,7 +2875,8 @@ static bool process_subsystem_depglobal(modid_t *pmii, wat_module_t* pmi, wat_mo
 /* find pmii definition, trace it for dependants amd move over to pm */
 static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, wat_module_t* pm)
 {
-  wat_module_t* pmi = bufbsearch(pwb, &pmii->mod, sym_cmp); 
+  wat_module_t* pmi = bufbsearch(pwb, &pmii->mod, sym_cmp);
+  vvverbosef("process_depglobal: %s:%s\n", symname(pmii->mod), symname(pmii->id)); 
   if (!pmi) exprintf("cannot locate '%s' module (looking for %s)", symname(pmii->mod), symname(pmii->id));  
   switch (pmii->iek) {
     case IEK_MEM: {
@@ -2867,21 +2886,36 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
       newpe = watiebnewbk(&pm->exports, IEK_MEM); newpe->mod = pe->mod; newpe->id = pe->id; 
       memswap(pe, newpe, sizeof(watie_t)); /* mod/id still there so bsearch works */
       newpe->exported = true; /* memory should be exported! */
+      vverbosef("new mem entry: %s:%s\n", symname(pe->mod), symname(pe->id)); 
     } break;
     case IEK_DATA: { 
       watie_t *pd = bufbsearch(&pmi->exports, pmii, modid_cmp), *newpd;
+      modid_t mi; size_t i;
       if (!pd || pd->iek != IEK_DATA) 
         exprintf("cannot locate data '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
+      for (i = 0; i < icblen(&pd->code); ++i) {
+        inscode_t *pic = icbref(&pd->code, i);
+        if (pic->in == IN_REF_DATA) {
+          mi.mod = pic->arg2.mod; mi.id = pic->id;
+          mi.iek = IEK_DATA;
+          assert(mi.mod != 0 && mi.id != 0); /* must be relocatable! */
+          if (process_subsystem_depglobal(&mi, pmi, pm)) /* ok */ ;
+          else if (!bufsearch(pdg, &mi, modid_cmp)) *(modid_t*)bufnewbk(pdg) = mi;              
+        }
+      }
       newpd = watiebnewbk(&pm->exports, IEK_DATA); newpd->mod = pd->mod; newpd->id = pd->id; 
       memswap(pd, newpd, sizeof(watie_t)); /* mod/id still there so bsearch works */
+      newpd->exported = false;
+      vverbosef("new data entry: %s:%s\n", symname(pd->mod), symname(pd->id)); 
     } break;
     case IEK_GLOBAL: {
       watie_t *pe = bufbsearch(&pmi->exports, pmii, modid_cmp), *newpe;
       if (!pe || pe->iek != IEK_GLOBAL) 
         exprintf("cannot locate global '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
-      if (pe->ic.in == IN_GLOBAL_GET) {
+      if (pe->ic.in == IN_GLOBAL_GET || pe->ic.in == IN_REF_DATA) {
         inscode_t *pic = &pe->ic;
-        modid_t mi; mi.mod = pic->arg2.mod; mi.id = pic->id; mi.iek = IEK_GLOBAL;
+        modid_t mi; mi.mod = pic->arg2.mod; mi.id = pic->id; 
+        mi.iek = (pic->in == IN_GLOBAL_GET) ? IEK_GLOBAL : IEK_DATA;
         assert(mi.mod != 0 && mi.id != 0); /* must be relocatable! */
         if (process_subsystem_depglobal(&mi, pmi, pm)) /* ok */ ;
         else if (!bufsearch(pdg, &mi, modid_cmp)) *(modid_t*)bufnewbk(pdg) = mi;              
@@ -2889,6 +2923,7 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
       newpe = watiebnewbk(&pm->exports, IEK_GLOBAL); newpe->mod = pe->mod; newpe->id = pe->id; 
       memswap(pe, newpe, sizeof(watie_t)); /* mod/id still there so bsearch works */
       newpe->exported = false;
+      vverbosef("new global entry: %s:%s\n", symname(pe->mod), symname(pe->id)); 
     } break;
     case IEK_FUNC: {
       watie_t *pf = bufbsearch(&pmi->exports, pmii, modid_cmp), *newpf;
@@ -2909,13 +2944,16 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
           case IN_REF_DATA: {
             mi.mod = pic->arg2.mod; mi.id = pic->id;
             mi.iek = IEK_DATA;
-            if (!bufsearch(pdg, &mi, modid_cmp)) *(modid_t*)bufnewbk(pdg) = mi;              
+            assert(mi.mod != 0 && mi.id != 0); /* must be relocatable! */
+            if (process_subsystem_depglobal(&mi, pmi, pm)) /* ok */ ;
+            else if (!bufsearch(pdg, &mi, modid_cmp)) *(modid_t*)bufnewbk(pdg) = mi;              
           } break;
         }
       }
       newpf = watiebnewbk(&pm->exports, IEK_FUNC); newpf->mod = pf->mod; newpf->id = pf->id; 
       memswap(pf, newpf, sizeof(watie_t)); /* mod/id still there so bsearch works */
       newpf->exported = false;
+      vverbosef("new func entry: %s:%s\n", symname(pf->mod), symname(pf->id)); 
     } break;
     default: assert(false);
   }
@@ -2982,11 +3020,15 @@ size_t watify_wat_module(wat_module_t* pm)
   buf_t dpmap = mkbuf(sizeof(dpme_t));
   dsmebuf_t dsmap; dsmebinit(&dsmap);
   
+  /* reverse exports so leafs are processed before non-leafs */
+  bufrev(&pm->exports);
+  
   /* concatenate dss into one big data chunk */
   for (i = 0; i < watieblen(&pm->exports); /* del or bumpi */) {
     watie_t *pd = watiebref(&pm->exports, i);
     if (pd->iek == IEK_DATA) {
       dpme_t *pme; size_t addr;
+      vverbosef("converting dseg: %s:%s\n", symname(pd->mod), symname(pd->id));
       if (pd->mut == MT_CONST && icblen(&pd->code) == 0) {
         /* leaf, read-only: try to merge it with equals */
         dsme_t e, *pe; dsmeinit(&e); 
@@ -3024,7 +3066,7 @@ size_t watify_wat_module(wat_module_t* pm)
             if (!gotarg && pic->in == IN_REF_DATA) {
               unsigned address;
               mi.mod = pic->arg2.mod; mi.id = pic->id;
-              pdpme = bufbsearch(&dpmap, &mi, modid_cmp);
+              pdpme = bufsearch(&dpmap, &mi, modid_cmp); /* linear, still adding to it */
               if (!pdpme) exprintf("internal error: undefined ref in data: $%s:%s", 
                 mi.mod ? symname(mi.mod) : "?", mi.id ? symname(mi.id) : "?");
               address = (unsigned)((long long)pdpme->address + pic->arg.i);

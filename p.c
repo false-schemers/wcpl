@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <wchar.h>
+#include <math.h>
 #include "l.h"
 #include "w.h"
 #include "p.h"
@@ -396,6 +397,10 @@ void init_symbols(void)
   psn = ndnewbk(pn); ndset(psn, NT_LITERAL, -1, -1);
   psn->ts = TS_ULONG; psn->val.i = 0;
   wrap_node(pn, NT_MACRODEF); pn->name = intern("NULL");
+  intern_symbol("HUGE_VAL", TT_MACRO_NAME, ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
+  pn->ts = TS_DOUBLE; pn->val.d = HUGE_VAL;
+  wrap_node(pn, NT_MACRODEF); pn->name = intern("HUGE_VAL");
   intern_symbol("sizeof", TT_INTR_NAME, INTR_SIZEOF);
   intern_symbol("alignof", TT_INTR_NAME, INTR_ALIGNOF);
   intern_symbol("offsetof", TT_INTR_NAME, INTR_OFFSETOF);
@@ -432,7 +437,7 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
       if (pn1->nt != NT_TYPE || pn2->nt != NT_TYPE || 
           !same_type(pn1, pn2)) return false;
     }
-  } else if (ptn1->ts == TS_ARRAY || ptn1->ts == TS_ARRAY) {
+  } else if (ptn1->ts == TS_ARRAY) {
     /* allow incomplete array to be equivalent to a complete one */
     node_t *pn1, *pn2; 
     assert(ndlen(ptn1) == 2 && ndlen(ptn2) == 2);
@@ -1664,6 +1669,7 @@ node_t mknd(void)
 node_t* ndinit(node_t* pn)
 {
   memset(pn, 0, sizeof(node_t));
+  pn->pwsid = pn->startpos = -1;
   bufinit(&pn->data, sizeof(char)); /* chbuf by default */
   ndbinit(&pn->body);
   return pn;
@@ -2737,11 +2743,12 @@ static void parse_expr(pws_t *pw, node_t *pn)
 /* fill pn with definition of typedef'd type tn */
 static void load_typedef_type(pws_t *pw, node_t *pn, sym_t tn)
 {
-  int info = -1; 
+  int info = -1, pwsid = pn->pwsid, startpos = pn->startpos; 
   lookup_symbol(symname(tn), &info);
   if (info < 0) reprintf(pw, pw->pos, "can't find definition of type: %s", symname(tn));
   assert(info >= 0 && info < (int)ndblen(&g_nodes));
   ndcpy(pn, ndbref(&g_nodes, (size_t)info));
+  pn->pwsid = pwsid, pn->startpos = startpos; 
   assert(pn->nt == NT_TYPE);
 }
 

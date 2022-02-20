@@ -81,3 +81,6 @@
 #define ENOTCAPABLE 76
 
 extern int errno;
+
+#define ERRNO_MAXERR 76
+extern const char *_emsg[ERRNO_MAXERR+1];

@@ -1,0 +1,1774 @@
+(module $stdlib
+  (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
+  (import "env" "__linear_memory" (memory $env:__linear_memory 0))
+  (import "errno" "errno" (global $errno:errno i32))
+  (import "ctype" "isdigit" (func $ctype:isdigit (param i32) (result i32)))
+  (import "ctype" "isspace" (func $ctype:isspace (param i32) (result i32)))
+  (import "math" "pow" (func $math:pow (param f64) (param f64) (result f64)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $wasi_snapshot_preview1:proc_exit (param i32)))
+  (data $stdlib:rand48_seed var align=2 size=6)
+  (data $stdlib:utf8_table var align=4 "\80\00\00\00\00\00\00\00\00\00\00\00\7f\00\00\00\00\00\00\00\e0\00\00\00\c0\00\00\00\06\00\00\00\ff\07\00\00\80\00\00\00\f0\00\00\00\e0\00\00\00\0c\00\00\00\ff\ff\00\00\00\08\00\00\f8\00\00\00\f0\00\00\00\12\00\00\00\ff\ff\1f\00\00\00\01\00\fc\00\00\00\f8\00\00\00\18\00\00\00\ff\ff\ff\03\00\00 \00\fe\00\00\00\fc\00\00\00\1e\00\00\00\ff\ff\ff\7f\00\00\00\04\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00")
+  (func $stdlib:atof (export "atof")
+    (param $s i32) (result f64) 
+    local.get $s
+    i32.const 0
+    call $stdlib:strtod
+    return
+  )
+  (func $stdlib:atoi (export "atoi")
+    (param $s i32) (result i32) 
+    (local $n i32) (local $neg i32) 
+    i32.const 0
+    local.set $n
+    i32.const 0
+    local.set $neg
+    block $1$
+    loop $2$
+    local.get $s
+    i32.load8_s offset=0 align=1
+    call $ctype:isspace
+    if
+    local.get $s
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    drop
+    br $2$
+    end
+    end $2$
+    end $1$
+    block $3$
+    block $5$
+    block $4$
+    local.get $s
+    i32.load8_s offset=0 align=1
+    i32.const 43
+    i32.sub
+    br_table $5$ $3$ $4$ $3$
+    end $4$
+    i32.const 1
+    local.set $neg
+    end $5$
+    local.get $s
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    drop
+    end $3$
+    block $6$
+    loop $7$
+    local.get $s
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    if
+    i32.const 10
+    local.get $n
+    i32.mul
+    local.get $s
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.sub
+    i32.sub
+    local.set $n
+    br $7$
+    end
+    end $7$
+    end $6$
+    local.get $neg
+    if (result i32)
+    local.get $n
+    else
+    i32.const 0
+    local.get $n
+    i32.sub
+    end
+    return
+  )
+  (func $stdlib:atol (export "atol")
+    (param $s i32) (result i32) 
+    (local $n i32) (local $neg i32) 
+    i32.const 0
+    local.set $n
+    i32.const 0
+    local.set $neg
+    block $1$
+    loop $2$
+    local.get $s
+    i32.load8_s offset=0 align=1
+    call $ctype:isspace
+    if
+    local.get $s
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    drop
+    br $2$
+    end
+    end $2$
+    end $1$
+    block $3$
+    block $5$
+    block $4$
+    local.get $s
+    i32.load8_s offset=0 align=1
+    i32.const 43
+    i32.sub
+    br_table $5$ $3$ $4$ $3$
+    end $4$
+    i32.const 1
+    local.set $neg
+    end $5$
+    local.get $s
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    drop
+    end $3$
+    block $6$
+    loop $7$
+    local.get $s
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    if
+    i32.const 10
+    local.get $n
+    i32.mul
+    local.get $s
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.sub
+    i32.sub
+    local.set $n
+    br $7$
+    end
+    end $7$
+    end $6$
+    local.get $neg
+    if (result i32)
+    local.get $n
+    else
+    i32.const 0
+    local.get $n
+    i32.sub
+    end
+    return
+  )
+  (func $stdlib:atoll (export "atoll")
+    (param $s i32) (result i64) 
+    (local $n i64) (local $neg i32) 
+    i32.const 0
+    i64.extend_i32_s
+    local.set $n
+    i32.const 0
+    local.set $neg
+    block $1$
+    loop $2$
+    local.get $s
+    i32.load8_s offset=0 align=1
+    call $ctype:isspace
+    if
+    local.get $s
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    drop
+    br $2$
+    end
+    end $2$
+    end $1$
+    block $3$
+    block $5$
+    block $4$
+    local.get $s
+    i32.load8_s offset=0 align=1
+    i32.const 43
+    i32.sub
+    br_table $5$ $3$ $4$ $3$
+    end $4$
+    i32.const 1
+    local.set $neg
+    end $5$
+    local.get $s
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    drop
+    end $3$
+    block $6$
+    loop $7$
+    local.get $s
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    if
+    i32.const 10
+    i64.extend_i32_s
+    local.get $n
+    i64.mul
+    local.get $s
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.sub
+    i64.extend_i32_s
+    i64.sub
+    local.set $n
+    br $7$
+    end
+    end $7$
+    end $6$
+    local.get $neg
+    if (result i64)
+    local.get $n
+    else
+    i64.const 0
+    local.get $n
+    i64.sub
+    end
+    return
+  )
+  (func $stdlib:strtod (export "strtod")
+    (param $str i32) (param $end i32) (result f64) 
+    (local $d f64) (local $sign i32) (local $n i32) (local $p i32) (local $a i32) (local $f f64) (local $base f64) (local $e i32) (local $i1$ i32) 
+    f64.const 0
+    local.set $d
+    i32.const 0
+    local.set $n
+    local.get $str
+    local.set $p
+    local.get $str
+    local.set $a
+    block $1$
+    loop $2$
+    local.get $p
+    i32.load8_s offset=0 align=1
+    call $ctype:isspace
+    if
+    local.get $p
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    drop
+    br $2$
+    end
+    end $2$
+    end $1$
+    block $done
+    i32.const 1
+    local.set $sign
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 45
+    i32.eq
+    if
+    i32.const -1
+    local.set $sign
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    else
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 43
+    i32.eq
+    if
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    end
+    end
+    local.get $p
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    if
+    local.get $p
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.sub
+    f64.convert_i32_s
+    local.set $d
+    block $3$
+    loop $4$
+    local.get $p
+    i32.load8_s offset=0 align=1
+    if (result i32)
+    local.get $p
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    else
+    i32.const 0
+    end
+    if
+    local.get $d
+    f64.const 10
+    f64.mul
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.sub
+    f64.convert_i32_s
+    f64.add
+    local.set $d
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    local.get $n
+    i32.const 1
+    i32.add
+    local.set $n
+    br $4$
+    end
+    end $4$
+    end $3$
+    local.get $p
+    local.set $a
+    else
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 46
+    i32.ne
+    if
+    br $done
+    end
+    end
+    local.get $d
+    local.get $sign
+    f64.convert_i32_s
+    f64.mul
+    local.set $d
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 46
+    i32.eq
+    if
+    f64.const 0
+    local.set $f
+    f64.const 0.10000000000000001
+    local.set $base
+    local.get $p
+    i32.const 1
+    i32.add
+    local.tee $p
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    if
+    block $5$
+    loop $6$
+    local.get $p
+    i32.load8_s offset=0 align=1
+    if (result i32)
+    local.get $p
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    else
+    i32.const 0
+    end
+    if
+    local.get $f
+    local.get $base
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.sub
+    f64.convert_i32_s
+    f64.mul
+    f64.add
+    local.set $f
+    local.get $base
+    f64.const 10
+    f64.div
+    local.set $base
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    local.get $n
+    i32.const 1
+    i32.add
+    local.set $n
+    br $6$
+    end
+    end $6$
+    end $5$
+    end
+    local.get $d
+    local.get $f
+    local.get $sign
+    f64.convert_i32_s
+    f64.mul
+    f64.add
+    local.set $d
+    local.get $p
+    local.set $a
+    end
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 69
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 101
+    i32.eq
+    end
+    if
+    i32.const 0
+    local.set $e
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    i32.const 1
+    local.set $sign
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 45
+    i32.eq
+    if
+    i32.const -1
+    local.set $sign
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    else
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 43
+    i32.eq
+    if
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    end
+    end
+    local.get $p
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    if
+    block $7$
+    loop $8$
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.eq
+    if
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    br $8$
+    end
+    end $8$
+    end $7$
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 0
+    i32.eq
+    if
+    local.get $p
+    i32.const 1
+    i32.sub
+    local.set $p
+    end
+    local.get $p
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.sub
+    local.set $e
+    block $9$
+    loop $10$
+    local.get $p
+    i32.load8_s offset=0 align=1
+    if (result i32)
+    local.get $p
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    else
+    i32.const 0
+    end
+    if
+    local.get $e
+    i32.const 10
+    i32.mul
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.sub
+    i32.add
+    local.set $e
+    local.get $p
+    i32.const 1
+    i32.add
+    local.set $p
+    br $10$
+    end
+    end $10$
+    end $9$
+    local.get $e
+    local.get $sign
+    i32.mul
+    local.set $e
+    else
+    local.get $a
+    i32.const 1
+    i32.sub
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    i32.eqz
+    if
+    local.get $str
+    local.set $a
+    br $done
+    else
+    local.get $p
+    i32.load8_s offset=0 align=1
+    i32.const 0
+    i32.eq
+    if
+    br $done
+    end
+    end
+    end
+    local.get $d
+    f64.const 2.225073858507201
+    f64.eq
+    if (result i32)
+    local.get $e
+    i32.const -308
+    i32.eq
+    else
+    i32.const 0
+    end
+    if
+    f64.const 0
+    local.set $d
+    local.get $p
+    local.set $a
+    i32.const 68
+    global.set $errno:errno
+    br $done
+    end
+    local.get $d
+    f64.const 2.2250738585072014
+    f64.eq
+    if (result i32)
+    local.get $e
+    i32.const -308
+    i32.le_s
+    else
+    i32.const 0
+    end
+    if
+    local.get $d
+    f64.const 9.9999999999999991e-309
+    f64.mul
+    local.set $d
+    local.get $p
+    local.set $a
+    br $done
+    end
+    local.get $d
+    f64.const 10
+    local.get $e
+    f64.convert_i32_s
+    call $math:pow
+    f64.mul
+    local.set $d
+    local.get $p
+    local.set $a
+    else
+    local.get $p
+    local.get $str
+    i32.gt_u
+    if (result i32)
+    local.get $p
+    i32.const 1
+    i32.sub
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    i32.eqz
+    else
+    i32.const 0
+    end
+    if
+    local.get $str
+    local.set $a
+    br $done
+    end
+    end
+    end $done
+    local.get $end
+    i32.const 0
+    i32.ne
+    if
+    local.get $end
+    local.tee $i1$
+    local.get $a
+    i32.store offset=0 align=4
+    local.get $i1$
+    end
+    local.get $d
+    return
+  )
+  (func $stdlib:digitval
+    (param $c i32) (result i32) 
+    i32.const 48
+    local.get $c
+    i32.le_s
+    if (result i32)
+    local.get $c
+    i32.const 57
+    i32.le_s
+    else
+    i32.const 0
+    end
+    if
+    local.get $c
+    i32.const 48
+    i32.sub
+    return
+    end
+    i32.const 97
+    local.get $c
+    i32.le_s
+    if (result i32)
+    local.get $c
+    i32.const 122
+    i32.le_s
+    else
+    i32.const 0
+    end
+    if
+    i32.const 10
+    local.get $c
+    i32.add
+    i32.const 97
+    i32.sub
+    return
+    end
+    i32.const 65
+    local.get $c
+    i32.le_s
+    if (result i32)
+    local.get $c
+    i32.const 90
+    i32.le_s
+    else
+    i32.const 0
+    end
+    if
+    i32.const 10
+    local.get $c
+    i32.add
+    i32.const 65
+    i32.sub
+    return
+    end
+    i32.const -1
+    return
+  )
+  (func $stdlib:strntoumax
+    (param $nptr i32) (param $endptr i32) (param $base i32) (param $n i32) (result i64) 
+    (local $minus i32) (local $v i64) (local $d i32) (local $c i32) (local $i1$ i32) 
+    i32.const 0
+    local.set $minus
+    i32.const 0
+    i64.extend_i32_s
+    local.set $v
+    block $1$
+    loop $2$
+    local.get $n
+    if (result i32)
+    local.get $nptr
+    i32.load8_s offset=0 align=1
+    i32.const 255
+    i32.and
+    call $ctype:isspace
+    else
+    i32.const 0
+    end
+    if
+    local.get $nptr
+    local.get $nptr
+    i32.const 1
+    i32.add
+    local.set $nptr
+    drop
+    local.get $n
+    local.get $n
+    i32.const 1
+    i32.sub
+    local.set $n
+    drop
+    br $2$
+    end
+    end $2$
+    end $1$
+    local.get $n
+    if
+    local.get $nptr
+    i32.load8_s offset=0 align=1
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    local.tee $c
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 45
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $c
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 43
+    i32.eq
+    end
+    if
+    local.get $c
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 45
+    i32.eq
+    local.set $minus
+    local.get $nptr
+    local.get $nptr
+    i32.const 1
+    i32.add
+    local.set $nptr
+    drop
+    local.get $n
+    local.get $n
+    i32.const 1
+    i32.sub
+    local.set $n
+    drop
+    end
+    end
+    local.get $base
+    i32.const 0
+    i32.eq
+    if
+    local.get $n
+    i32.const 2
+    i32.ge_u
+    if (result i32)
+    local.get $nptr
+    i32.const 0
+    i32.add
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.eq
+    else
+    i32.const 0
+    end
+    if (result i32)
+    local.get $nptr
+    i32.const 1
+    i32.add
+    i32.load8_s offset=0 align=1
+    i32.const 120
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $nptr
+    i32.const 1
+    i32.add
+    i32.load8_s offset=0 align=1
+    i32.const 88
+    i32.eq
+    end
+    else
+    i32.const 0
+    end
+    if
+    local.get $n
+    i32.const 2
+    i32.sub
+    local.set $n
+    local.get $nptr
+    i32.const 2
+    i32.add
+    local.set $nptr
+    i32.const 16
+    local.set $base
+    else
+    local.get $n
+    i32.const 1
+    i32.ge_u
+    if (result i32)
+    local.get $nptr
+    i32.const 0
+    i32.add
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.eq
+    else
+    i32.const 0
+    end
+    if
+    local.get $n
+    local.get $n
+    i32.const 1
+    i32.sub
+    local.set $n
+    drop
+    local.get $nptr
+    local.get $nptr
+    i32.const 1
+    i32.add
+    local.set $nptr
+    drop
+    i32.const 8
+    local.set $base
+    else
+    i32.const 10
+    local.set $base
+    end
+    end
+    else
+    local.get $base
+    i32.const 16
+    i32.eq
+    if
+    local.get $n
+    i32.const 2
+    i32.ge_u
+    if (result i32)
+    local.get $nptr
+    i32.const 0
+    i32.add
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.eq
+    else
+    i32.const 0
+    end
+    if (result i32)
+    local.get $nptr
+    i32.const 1
+    i32.add
+    i32.load8_s offset=0 align=1
+    i32.const 120
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $nptr
+    i32.const 1
+    i32.add
+    i32.load8_s offset=0 align=1
+    i32.const 88
+    i32.eq
+    end
+    else
+    i32.const 0
+    end
+    if
+    local.get $n
+    i32.const 2
+    i32.sub
+    local.set $n
+    local.get $nptr
+    i32.const 2
+    i32.add
+    local.set $nptr
+    end
+    end
+    end
+    block $3$
+    loop $4$
+    local.get $n
+    if (result i32)
+    local.get $nptr
+    i32.load8_s offset=0 align=1
+    call $stdlib:digitval
+    local.tee $d
+    i32.const 0
+    i32.ge_s
+    else
+    i32.const 0
+    end
+    if (result i32)
+    local.get $d
+    local.get $base
+    i32.lt_s
+    else
+    i32.const 0
+    end
+    if
+    local.get $v
+    local.get $base
+    i64.extend_i32_s
+    i64.mul
+    local.get $d
+    i64.extend_i32_s
+    i64.add
+    local.set $v
+    local.get $n
+    local.get $n
+    i32.const 1
+    i32.sub
+    local.set $n
+    drop
+    local.get $nptr
+    local.get $nptr
+    i32.const 1
+    i32.add
+    local.set $nptr
+    drop
+    br $4$
+    end
+    end $4$
+    end $3$
+    local.get $endptr
+    i32.const 0
+    i32.ne
+    if
+    local.get $endptr
+    local.tee $i1$
+    local.get $nptr
+    i32.store offset=0 align=4
+    local.get $i1$
+    end
+    local.get $minus
+    if (result i64)
+    i64.const 0
+    local.get $v
+    i64.sub
+    else
+    local.get $v
+    end
+    return
+  )
+  (func $stdlib:strntoimax (export "strntoimax")
+    (param $nptr i32) (param $endptr i32) (param $base i32) (param $n i32) (result i64) 
+    local.get $nptr
+    local.get $endptr
+    local.get $base
+    local.get $n
+    call $stdlib:strntoumax
+    return
+  )
+  (func $stdlib:strtoimax (export "strtoimax")
+    (param $nptr i32) (param $endptr i32) (param $base i32) (result i64) 
+    local.get $nptr
+    local.get $endptr
+    local.get $base
+    i32.const -1
+    call $stdlib:strntoumax
+    return
+  )
+  (func $stdlib:strtol (export "strtol")
+    (param $nptr i32) (param $endptr i32) (param $base i32) (result i32) 
+    local.get $nptr
+    local.get $endptr
+    local.get $base
+    i32.const -1
+    call $stdlib:strntoumax
+    i32.wrap_i64
+    return
+  )
+  (func $stdlib:strtoll (export "strtoll")
+    (param $nptr i32) (param $endptr i32) (param $base i32) (result i64) 
+    local.get $nptr
+    local.get $endptr
+    local.get $base
+    i32.const -1
+    call $stdlib:strntoumax
+    return
+  )
+  (func $stdlib:strtoul (export "strtoul")
+    (param $nptr i32) (param $endptr i32) (param $base i32) (result i32) 
+    local.get $nptr
+    local.get $endptr
+    local.get $base
+    i32.const -1
+    call $stdlib:strntoumax
+    i32.wrap_i64
+    return
+  )
+  (func $stdlib:strtoull (export "strtoull")
+    (param $nptr i32) (param $endptr i32) (param $base i32) (result i64) 
+    local.get $nptr
+    local.get $endptr
+    local.get $base
+    i32.const -1
+    call $stdlib:strntoumax
+    return
+  )
+  (func $stdlib:strtoumax (export "strtoumax")
+    (param $nptr i32) (param $endptr i32) (param $base i32) (result i64) 
+    local.get $nptr
+    local.get $endptr
+    local.get $base
+    i32.const -1
+    call $stdlib:strntoumax
+    return
+  )
+  (func $stdlib:jrand48
+    (param $xsubi i32) (result i32) 
+    (local $x i64) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) 
+    local.get $xsubi
+    i32.const 0
+    i32.const 2
+    i32.mul
+    i32.add
+    i32.load16_u offset=0 align=2
+    i32.const 65535
+    i32.and
+    i64.extend_i32_u
+    local.get $xsubi
+    i32.const 1
+    i32.const 2
+    i32.mul
+    i32.add
+    i32.load16_u offset=0 align=2
+    i32.const 65535
+    i32.and
+    i64.extend_i32_u
+    i32.const 16
+    i64.extend_i32_s
+    i64.shl
+    i64.add
+    local.get $xsubi
+    i32.const 2
+    i32.const 2
+    i32.mul
+    i32.add
+    i32.load16_u offset=0 align=2
+    i32.const 65535
+    i32.and
+    i64.extend_i32_u
+    i32.const 32
+    i64.extend_i32_s
+    i64.shl
+    i64.add
+    local.set $x
+    i64.const 25214903917
+    local.get $x
+    i64.mul
+    i32.const 11
+    i64.extend_i32_s
+    i64.add
+    local.set $x
+    local.get $xsubi
+    i32.const 0
+    i32.const 2
+    i32.mul
+    i32.add
+    local.tee $i1$
+    local.get $x
+    i32.wrap_i64
+    i32.const 65535
+    i32.and
+    i32.store16 offset=0 align=2
+    local.get $i1$
+    local.get $xsubi
+    i32.const 1
+    i32.const 2
+    i32.mul
+    i32.add
+    local.tee $i2$
+    local.get $x
+    i32.const 16
+    i64.extend_i32_s
+    i64.shr_u
+    i32.wrap_i64
+    i32.const 65535
+    i32.and
+    i32.store16 offset=0 align=2
+    local.get $i2$
+    local.get $xsubi
+    i32.const 2
+    i32.const 2
+    i32.mul
+    i32.add
+    local.tee $i3$
+    local.get $x
+    i32.const 32
+    i64.extend_i32_s
+    i64.shr_u
+    i32.wrap_i64
+    i32.const 65535
+    i32.and
+    i32.store16 offset=0 align=2
+    local.get $i3$
+    local.get $x
+    i32.const 16
+    i64.extend_i32_s
+    i64.shr_u
+    i32.wrap_i64
+    return
+  )
+  (func $stdlib:rand (export "rand")
+    (result i32) 
+    ref.data $stdlib:rand48_seed
+    call $stdlib:jrand48
+    i32.const 1
+    i32.shr_s
+    return
+  )
+  (func $stdlib:srand (export "srand")
+    (param $seedval i32) 
+    (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) 
+    ref.data $stdlib:rand48_seed
+    i32.const 0
+    i32.const 2
+    i32.mul
+    i32.add
+    local.tee $i1$
+    i32.const 13070
+    i32.store16 offset=0 align=2
+    local.get $i1$
+    ref.data $stdlib:rand48_seed
+    i32.const 1
+    i32.const 2
+    i32.mul
+    i32.add
+    local.tee $i2$
+    local.get $seedval
+    i32.const 65535
+    i32.and
+    i32.store16 offset=0 align=2
+    local.get $i2$
+    ref.data $stdlib:rand48_seed
+    i32.const 2
+    i32.const 2
+    i32.mul
+    i32.add
+    local.tee $i3$
+    local.get $seedval
+    i32.const 16
+    i32.shr_u
+    i32.const 65535
+    i32.and
+    i32.store16 offset=0 align=2
+    local.get $i3$
+  )
+  (func $stdlib:abort (export "abort")
+    i32.const 1
+    call $wasi_snapshot_preview1:proc_exit
+  )
+  (func $stdlib:atexit (export "atexit")
+    (param $func i32) (result i32) 
+    i32.const -1
+    return
+  )
+  (func $stdlib:exit (export "exit")
+    (param $status i32) 
+    local.get $status
+    call $wasi_snapshot_preview1:proc_exit
+  )
+  (func $stdlib:getenv (export "getenv")
+    (param $name i32) (result i32) 
+  )
+  (func $stdlib:abs (export "abs")
+    (param $n i32) (result i32) 
+    local.get $n
+    i32.const 0
+    i32.lt_s
+    if (result i32)
+    i32.const 0
+    local.get $n
+    i32.sub
+    else
+    local.get $n
+    end
+    return
+  )
+  (func $stdlib:labs (export "labs")
+    (param $n i32) (result i32) 
+    local.get $n
+    i32.const 0
+    i32.lt_s
+    if (result i32)
+    i32.const 0
+    local.get $n
+    i32.sub
+    else
+    local.get $n
+    end
+    return
+  )
+  (func $stdlib:llabs (export "llabs")
+    (param $n i64) (result i64) 
+    local.get $n
+    i64.const 0
+    i64.lt_s
+    if (result i64)
+    i64.const 0
+    local.get $n
+    i64.sub
+    else
+    local.get $n
+    end
+    return
+  )
+  (func $stdlib:div (export "div")
+    (param $rp$ i32) (param $num i32) (param $den i32) 
+    (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
+    global.get $env:__stack_pointer
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    local.tee $fp$
+    local.tee $i1$
+    local.get $num
+    local.get $den
+    i32.div_s
+    i32.store offset=0 align=4
+    local.get $i1$
+    local.get $fp$
+    i32.const 4
+    i32.add
+    local.tee $i2$
+    local.get $num
+    local.get $den
+    i32.rem_s
+    i32.store offset=0 align=4
+    local.get $i2$
+    local.get $rp$
+    local.get $fp$
+    i32.const 8
+    memory.copy
+    local.get $fp$
+    global.set $env:__stack_pointer
+    return
+    local.get $fp$
+    global.set $env:__stack_pointer
+  )
+  (func $stdlib:ldiv (export "ldiv")
+    (param $rp$ i32) (param $num i32) (param $den i32) 
+    (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
+    global.get $env:__stack_pointer
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    local.tee $fp$
+    local.tee $i1$
+    local.get $num
+    local.get $den
+    i32.div_s
+    i32.store offset=0 align=4
+    local.get $i1$
+    local.get $fp$
+    i32.const 4
+    i32.add
+    local.tee $i2$
+    local.get $num
+    local.get $den
+    i32.rem_s
+    i32.store offset=0 align=4
+    local.get $i2$
+    local.get $rp$
+    local.get $fp$
+    i32.const 8
+    memory.copy
+    local.get $fp$
+    global.set $env:__stack_pointer
+    return
+    local.get $fp$
+    global.set $env:__stack_pointer
+  )
+  (func $stdlib:lldiv (export "lldiv")
+    (param $rp$ i32) (param $num i64) (param $den i64) 
+    (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
+    global.get $env:__stack_pointer
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    local.tee $fp$
+    local.tee $i1$
+    local.get $num
+    local.get $den
+    i64.div_s
+    i64.store offset=0 align=8
+    local.get $i1$
+    local.get $fp$
+    i32.const 8
+    i32.add
+    local.tee $i2$
+    local.get $num
+    local.get $den
+    i64.rem_s
+    i64.store offset=0 align=8
+    local.get $i2$
+    local.get $rp$
+    local.get $fp$
+    i32.const 16
+    memory.copy
+    local.get $fp$
+    global.set $env:__stack_pointer
+    return
+    local.get $fp$
+    global.set $env:__stack_pointer
+  )
+  (func $stdlib:mblen (export "mblen")
+    (param $s i32) (param $n i32) (result i32) 
+    i32.const 0
+    local.get $s
+    local.get $n
+    call $stdlib:mbtowc
+    return
+  )
+  (func $stdlib:mbtowc (export "mbtowc")
+    (param $p i32) (param $s i32) (param $n i32) (result i32) 
+    (local $ip i32) (local $c0 i32) (local $c i32) (local $nc i32) (local $l i32) (local $t i32) (local $i1$ i32) 
+    local.get $s
+    local.set $ip
+    block $ilseq
+    local.get $ip
+    i32.load8_u offset=0 align=1
+    local.tee $c0
+    local.set $l
+    i32.const 0
+    local.set $nc
+    local.get $s
+    i32.eqz
+    if
+    i32.const 0
+    return
+    end
+    local.get $n
+    i32.eqz
+    br_if $ilseq
+    block $2$
+    ref.data $stdlib:utf8_table
+    local.set $t
+    loop $1$
+    local.get $t
+    i32.load offset=0 align=4
+    i32.eqz
+    br_if $2$
+    block $3$
+    local.get $nc
+    local.get $nc
+    i32.const 1
+    i32.add
+    local.set $nc
+    drop
+    local.get $c0
+    local.get $t
+    i32.load offset=0 align=4
+    i32.and
+    local.get $t
+    i32.const 4
+    i32.add
+    i32.load offset=0 align=4
+    i32.eq
+    if
+    local.get $l
+    local.get $t
+    i32.const 12
+    i32.add
+    i32.load offset=0 align=4
+    i32.and
+    local.tee $l
+    local.get $t
+    i32.const 16
+    i32.add
+    i32.load offset=0 align=4
+    i32.lt_s
+    br_if $ilseq
+    local.get $p
+    local.tee $i1$
+    local.get $l
+    i32.store offset=0 align=4
+    local.get $i1$
+    local.get $nc
+    return
+    end
+    local.get $n
+    local.get $nc
+    i32.le_u
+    br_if $ilseq
+    local.get $ip
+    local.get $ip
+    i32.const 1
+    i32.add
+    local.set $ip
+    drop
+    local.get $ip
+    i32.load8_u offset=0 align=1
+    i32.const 128
+    i32.xor
+    i32.const 255
+    i32.and
+    local.tee $c
+    i32.const 192
+    i32.and
+    br_if $ilseq
+    local.get $l
+    i32.const 6
+    i32.shl
+    local.get $c
+    i32.or
+    local.set $l
+    end $3$
+    local.get $t
+    local.get $t
+    i32.const 1
+    i32.const 20
+    i32.mul
+    i32.add
+    local.set $t
+    drop
+    br $1$
+    end $1$
+    end $2$
+    end $ilseq
+    i32.const 25
+    global.set $errno:errno
+    i32.const -1
+    return
+  )
+  (func $stdlib:wctomb_chk
+    (param $s i32) (param $wc i32) (param $maxlen i32) (result i32) 
+    (local $l i32) (local $c i32) (local $nc i32) (local $t i32) (local $i1$ i32) (local $i2$ i32) 
+    local.get $wc
+    local.set $l
+    i32.const 0
+    local.set $nc
+    local.get $s
+    i32.const 0
+    i32.eq
+    if
+    i32.const 0
+    return
+    end
+    block $2$
+    ref.data $stdlib:utf8_table
+    local.set $t
+    loop $1$
+    local.get $t
+    i32.load offset=0 align=4
+    local.get $maxlen
+    i32.const 0
+    select
+    i32.eqz
+    br_if $2$
+    block $3$
+    local.get $nc
+    local.get $nc
+    i32.const 1
+    i32.add
+    local.set $nc
+    drop
+    local.get $l
+    local.get $t
+    i32.const 12
+    i32.add
+    i32.load offset=0 align=4
+    i32.le_s
+    if
+    local.get $t
+    i32.const 8
+    i32.add
+    i32.load offset=0 align=4
+    local.set $c
+    local.get $s
+    local.tee $i1$
+    local.get $t
+    i32.const 4
+    i32.add
+    i32.load offset=0 align=4
+    local.get $l
+    local.get $c
+    i32.shr_s
+    i32.or
+    i32.const 255
+    i32.and
+    i32.store8 offset=0 align=1
+    local.get $i1$
+    block $4$
+    loop $5$
+    local.get $c
+    i32.const 0
+    i32.gt_s
+    if
+    local.get $c
+    i32.const 6
+    i32.sub
+    local.set $c
+    local.get $s
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    drop
+    local.get $s
+    local.tee $i2$
+    i32.const 128
+    local.get $l
+    local.get $c
+    i32.shr_s
+    i32.const 63
+    i32.and
+    i32.const 255
+    i32.and
+    i32.or
+    i32.store8 offset=0 align=1
+    local.get $i2$
+    br $5$
+    end
+    end $5$
+    end $4$
+    local.get $nc
+    return
+    end
+    end $3$
+    local.get $t
+    local.get $t
+    i32.const 1
+    i32.const 20
+    i32.mul
+    i32.add
+    local.set $t
+    drop
+    local.get $maxlen
+    local.get $maxlen
+    i32.const 1
+    i32.sub
+    local.set $maxlen
+    drop
+    br $1$
+    end $1$
+    end $2$
+    i32.const -1
+    return
+  )
+  (func $stdlib:wctomb (export "wctomb")
+    (param $s i32) (param $wc i32) (result i32) 
+    local.get $s
+    local.get $wc
+    i32.const 6
+    call $stdlib:wctomb_chk
+    return
+  )
+  (func $stdlib:mbstowcs (export "mbstowcs")
+    (param $pwcs i32) (param $s i32) (param $n i32) (result i32) 
+    (local $op i32) (local $ip i32) (local $size i32) (local $i1$ i32) 
+    local.get $pwcs
+    local.set $op
+    local.get $s
+    local.set $ip
+    block $1$
+    loop $2$
+    local.get $ip
+    i32.load8_u offset=0 align=1
+    if (result i32)
+    local.get $n
+    i32.const 0
+    i32.gt_u
+    else
+    i32.const 0
+    end
+    if
+    local.get $ip
+    i32.load8_u offset=0 align=1
+    i32.const 128
+    i32.and
+    if
+    local.get $op
+    local.get $ip
+    local.get $n
+    call $stdlib:mbtowc
+    local.tee $size
+    i32.const -1
+    i32.eq
+    if
+    local.get $ip
+    local.get $ip
+    i32.const 1
+    i32.add
+    local.set $ip
+    drop
+    local.get $n
+    local.get $n
+    i32.const 1
+    i32.sub
+    local.set $n
+    drop
+    else
+    local.get $op
+    local.get $op
+    i32.const 1
+    i32.const 4
+    i32.mul
+    i32.add
+    local.set $op
+    drop
+    local.get $ip
+    local.get $size
+    i32.add
+    local.set $ip
+    local.get $n
+    local.get $size
+    i32.sub
+    local.set $n
+    end
+    else
+    local.get $op
+    local.get $op
+    i32.const 1
+    i32.const 4
+    i32.mul
+    i32.add
+    local.set $op
+    local.tee $i1$
+    local.get $ip
+    local.get $ip
+    i32.const 1
+    i32.add
+    local.set $ip
+    i32.load8_u offset=0 align=1
+    i32.store offset=0 align=4
+    local.get $i1$
+    local.get $n
+    local.get $n
+    i32.const 1
+    i32.sub
+    local.set $n
+    drop
+    end
+    br $2$
+    end
+    end $2$
+    end $1$
+    local.get $op
+    local.get $pwcs
+    i32.sub
+    i32.const 4
+    i32.div_s
+    return
+  )
+  (func $stdlib:wcstombs (export "wcstombs")
+    (param $s i32) (param $pwcs i32) (param $maxlen i32) (result i32) 
+    (local $ip i32) (local $op i32) (local $size i32) (local $i1$ i32) 
+    local.get $pwcs
+    local.set $ip
+    local.get $s
+    local.set $op
+    block $1$
+    loop $2$
+    local.get $ip
+    i32.load offset=0 align=4
+    if (result i32)
+    local.get $maxlen
+    i32.const 0
+    i32.gt_u
+    else
+    i32.const 0
+    end
+    if
+    local.get $ip
+    i32.load offset=0 align=4
+    i32.const 127
+    i32.gt_s
+    if
+    local.get $op
+    local.get $ip
+    i32.load offset=0 align=4
+    local.get $maxlen
+    call $stdlib:wctomb_chk
+    local.tee $size
+    i32.const -1
+    i32.eq
+    if
+    local.get $maxlen
+    local.get $maxlen
+    i32.const 1
+    i32.sub
+    local.set $maxlen
+    drop
+    else
+    local.get $op
+    local.get $size
+    i32.add
+    local.set $op
+    local.get $maxlen
+    local.get $size
+    i32.sub
+    local.set $maxlen
+    end
+    else
+    local.get $op
+    local.get $op
+    i32.const 1
+    i32.add
+    local.set $op
+    local.tee $i1$
+    local.get $ip
+    i32.load offset=0 align=4
+    i32.const 255
+    i32.and
+    i32.store8 offset=0 align=1
+    local.get $i1$
+    end
+    local.get $ip
+    local.get $ip
+    i32.const 1
+    i32.const 4
+    i32.mul
+    i32.add
+    local.set $ip
+    drop
+    br $2$
+    end
+    end $2$
+    end $1$
+    local.get $op
+    local.get $s
+    i32.sub
+    return
+  )
+)

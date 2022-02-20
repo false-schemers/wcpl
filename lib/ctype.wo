@@ -1,0 +1,182 @@
+(module $ctype
+  (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
+  (import "env" "__linear_memory" (memory $env:__linear_memory 0))
+  (func $ctype:isupper (export "isupper")
+    (param $c i32) (result i32) 
+    local.get $c
+    i32.const 65
+    i32.ge_s
+    if (result i32)
+    local.get $c
+    i32.const 90
+    i32.le_s
+    else
+    i32.const 0
+    end
+    return
+  )
+  (func $ctype:islower (export "islower")
+    (param $c i32) (result i32) 
+    local.get $c
+    i32.const 97
+    i32.ge_s
+    if (result i32)
+    local.get $c
+    i32.const 122
+    i32.le_s
+    else
+    i32.const 0
+    end
+    return
+  )
+  (func $ctype:isalpha (export "isalpha")
+    (param $c i32) (result i32) 
+    local.get $c
+    call $ctype:islower
+    if (result i32)
+    i32.const 1
+    else
+    local.get $c
+    call $ctype:isupper
+    end
+    return
+  )
+  (func $ctype:isdigit (export "isdigit")
+    (param $c i32) (result i32) 
+    local.get $c
+    i32.const 48
+    i32.sub
+    i32.const 9
+    i32.le_u
+    return
+  )
+  (func $ctype:isalnum (export "isalnum")
+    (param $c i32) (result i32) 
+    local.get $c
+    call $ctype:isalpha
+    if (result i32)
+    i32.const 1
+    else
+    local.get $c
+    call $ctype:isdigit
+    end
+    return
+  )
+  (func $ctype:isascii (export "isascii")
+    (param $c i32) (result i32) 
+    local.get $c
+    i32.const -128
+    i32.and
+    i32.eqz
+    return
+  )
+  (func $ctype:isblank (export "isblank")
+    (param $c i32) (result i32) 
+    local.get $c
+    i32.const 9
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $c
+    i32.const 32
+    i32.eq
+    end
+    return
+  )
+  (func $ctype:iscntrl (export "iscntrl")
+    (param $c i32) (result i32) 
+    local.get $c
+    i32.const 32
+    i32.lt_s
+    return
+  )
+  (func $ctype:isspace (export "isspace")
+    (param $c i32) (result i32) 
+    local.get $c
+    i32.const 32
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $c
+    i32.const 10
+    i32.eq
+    end
+    if (result i32)
+    i32.const 1
+    else
+    local.get $c
+    i32.const 9
+    i32.eq
+    end
+    if (result i32)
+    i32.const 1
+    else
+    local.get $c
+    i32.const 13
+    i32.eq
+    end
+    return
+  )
+  (func $ctype:isxdigit (export "isxdigit")
+    (param $c i32) (result i32) 
+    local.get $c
+    call $ctype:isdigit
+    if (result i32)
+    i32.const 1
+    else
+    local.get $c
+    i32.const 97
+    i32.ge_s
+    if (result i32)
+    local.get $c
+    i32.const 102
+    i32.le_s
+    else
+    i32.const 0
+    end
+    end
+    if (result i32)
+    i32.const 1
+    else
+    local.get $c
+    i32.const 65
+    i32.ge_s
+    if (result i32)
+    local.get $c
+    i32.const 70
+    i32.le_s
+    else
+    i32.const 0
+    end
+    end
+    return
+  )
+  (func $ctype:toupper (export "toupper")
+    (param $c i32) (result i32) 
+    local.get $c
+    call $ctype:islower
+    if (result i32)
+    local.get $c
+    i32.const -33
+    i32.and
+    else
+    local.get $c
+    end
+    return
+  )
+  (func $ctype:tolower (export "tolower")
+    (param $c i32) (result i32) 
+    local.get $c
+    call $ctype:isupper
+    if (result i32)
+    local.get $c
+    i32.const 32
+    i32.or
+    else
+    local.get $c
+    end
+    return
+  )
+)
