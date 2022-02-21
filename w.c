@@ -3045,8 +3045,8 @@ size_t watify_wat_module(wat_module_t* pm)
           if (n > 0) bufresize(&dseg, buflen(&dseg) + (align-n));
           chbcat(&dseg, &pe->data);
           pe->addr = addr;
-          bufqsort(&dsmap, dsme_cmp);
           curaddr = addr + buflen(&pe->data);
+          bufqsort(&dsmap, dsme_cmp);
         } else {
           addr = pe->addr;
         }
@@ -3090,6 +3090,7 @@ size_t watify_wat_module(wat_module_t* pm)
       pme = bufnewbk(&dpmap);
       pme->mod = pd->mod; pme->id = pd->id;
       pme->address = addr;
+      vverbosef("  addr = %u\n", (unsigned)addr);
       watiefini(pd); bufrem(&pm->exports, i);
     } else {
       ++i;
@@ -3099,7 +3100,7 @@ size_t watify_wat_module(wat_module_t* pm)
   /* prepare dpmap for binary search */
   bufqsort(&dpmap, modid_cmp);
   
-  /* convert our IN_REF_DATA to IN_I32_CONST, patch memory export */
+  /* patch IN_REF_DATAs, memory export, zero globals */
   for (i = 0; i < watieblen(&pm->exports); ++i) {
     watie_t *pe = watiebref(&pm->exports, i);
     if (pe->iek == IEK_FUNC) {
@@ -3116,7 +3117,25 @@ size_t watify_wat_module(wat_module_t* pm)
           pic->arg.i = (long long)pdpme->address + pic->arg.i;
         }
       }
-    } 
+    } else if (pe->iek == IEK_GLOBAL) {
+      if (pe->ic.in == 0) {
+        pe->ic.arg.u = 0; /* whole union gets zeroed */
+        switch (pe->vt) {
+          case VT_F64: pe->ic.in = IN_F64_CONST; break;
+          case VT_F32: pe->ic.in = IN_F32_CONST; break;
+          case VT_I64: pe->ic.in = IN_I64_CONST; break;
+          case VT_I32: pe->ic.in = IN_I32_CONST; break;
+        }
+      } else if (pe->ic.in == IN_REF_DATA) {
+        modid_t mi; dpme_t *pdpme; 
+        mi.mod = pe->ic.arg2.mod; mi.id = pe->ic.id;
+        pdpme = bufbsearch(&dpmap, &mi, modid_cmp);
+        if (!pdpme) exprintf("internal error: cannot patch ref.data $%s:%s", 
+          symname(mi.mod), symname(mi.id));
+        pe->ic.in = IN_I32_CONST;
+        pe->ic.arg.i = (long long)pdpme->address + pe->ic.arg.i;
+      }
+    }
   }
     
   /* add combined data segment */
