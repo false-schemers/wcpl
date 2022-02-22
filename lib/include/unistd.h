@@ -25,6 +25,8 @@ extern ssize_t pwrite(int fd, const void *buf, size_t nbyte, off_t offset);
 extern off_t lseek(int fd, off_t offset, int whence);
 extern int ftruncate(int fd, off_t length);
 extern int close(int fd);
+extern int isatty(int fd);
+extern void *sbrk(intptr_t inc); /* inc should be a multiple of 64K */
 
 /* NYI
 extern int fdatasync(int);

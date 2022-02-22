@@ -364,6 +364,8 @@ void init_symbols(void)
   intern_symbol("false", TT_ENUM_NAME, 0);
   intern_symbol("wchar_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_INT;
+  intern_symbol("wint_t", TT_TYPE_NAME, ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_INT;
   intern_symbol("int8_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_CHAR;
   intern_symbol("uint8_t", TT_TYPE_NAME, ndblen(&g_nodes));
@@ -384,12 +386,26 @@ void init_symbols(void)
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_ULONG;
   intern_symbol("ssize_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
+  intern_symbol("uintptr_t", TT_TYPE_NAME, ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_ULONG;
   intern_symbol("ptrdiff_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
   intern_symbol("intptr_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
   intern_symbol("va_arg_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_ULLONG;
+  intern_symbol("INTPTR_MIN", TT_MACRO_NAME, ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
+  pn->ts = TS_LONG; pn->val.i = LONG_MIN; /* wasm32 */
+  wrap_node(pn, NT_MACRODEF); pn->name = intern("INTPTR_MIN");
+  intern_symbol("INTPTR_MAX", TT_MACRO_NAME, ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
+  pn->ts = TS_LONG; pn->val.i = LONG_MAX; /* wasm32 */
+  wrap_node(pn, NT_MACRODEF); pn->name = intern("INTPTR_MAX");
+  intern_symbol("UINTPTR_MAX", TT_MACRO_NAME, ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
+  pn->ts = TS_ULONG; pn->val.u = ULONG_MAX; /* wasm32 */
+  wrap_node(pn, NT_MACRODEF); pn->name = intern("UINTPTR_MAX");
   intern_symbol("NULL", TT_MACRO_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_CAST, -1, -1);
   psn = ndnewbk(pn); ndsettype(psn, TS_PTR);
@@ -2459,6 +2475,25 @@ static void parse_unary_expr(pws_t *pw, node_t *pn)
   }
 }  
 
+static long long parse_asm_signed(pws_t *pw)
+{
+  node_t xnd = mknd(), lnd = mknd(); bool ok = false;
+  int startpos = peekpos(pw);
+  parse_primary_expr(pw, &xnd);
+  if (arithmetic_eval(&xnd, &lnd) && lnd.nt == NT_LITERAL) {
+    switch (lnd.ts) {
+      case TS_INT: case TS_LONG: case TS_LLONG: {
+        long long ll = lnd.val.i;
+        ndfini(&xnd), ndfini(&lnd);
+        return ll;
+      }
+    }
+  }
+  reprintf(pw, startpos, "signed argument expected");  
+  ndfini(&xnd), ndfini(&lnd);
+  return 0;
+}
+
 static unsigned long long parse_asm_unsigned(pws_t *pw)
 {
   node_t xnd = mknd(), lnd = mknd(); bool ok = false;
@@ -2567,7 +2602,7 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
           } 
           pic->id = getid(pw);
         } else {
-          pic->arg.u = parse_asm_unsigned(pw);
+          pic->arg.i = parse_asm_signed(pw);
         }
         break;
       case INSIG_X_Y:  case INSIG_MEMARG:

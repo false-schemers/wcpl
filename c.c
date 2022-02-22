@@ -2299,7 +2299,7 @@ static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan
   } else { 
     /* fixme: 'if'-'else' block is needed */
     unsigned bt = ts_to_blocktype(pctn->ts); 
-    assert(bt >= VT_F64 && bt <= VT_I32);
+    assert(bt == BT_VOID || (bt >= VT_F64 && bt <= VT_I32));
     acode_swapin(pcn, pan1);
     acode_pushin_uarg(pcn, IN_IF, bt);
     acode_swapin(pcn, pan2);

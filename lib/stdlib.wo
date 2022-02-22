@@ -1590,7 +1590,7 @@
     (param $s i32) (param $wc i32) (result i32) 
     local.get $s
     local.get $wc
-    i32.const 6
+    i32.const 4
     call $stdlib:wctomb_chk
     return
   )

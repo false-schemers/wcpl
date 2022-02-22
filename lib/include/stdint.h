@@ -2,6 +2,21 @@
 
 #pragma once
 
+/* intptr_t is built-in */
+/* uintptr_t is built-in */
+/* INTPTR_MIN is built-in */
+/* INTPTR_MAX is built-in */
+/* UINTPTR_MAX is built-in */
+
+#define PTRDIFF_MIN INTPTR_MIN
+#define PTRDIFF_MAX INTPTR_MAX
+#define SIZE_MAX UINTPTR_MAX
+
+#define WCHAR_MIN (-1-0x7fffffff) /* utf-32 */
+#define WCHAR_MAX (0x7fffffff) /* utf-32 */
+#define WINT_MIN WCHAR_MIN
+#define WINT_MAX WCHAR_MAX
+
 typedef int8_t int_fast8_t;
 typedef int64_t int_fast64_t;
 
@@ -21,9 +36,6 @@ typedef uint64_t uint_least64_t;
 typedef int64_t intmax_t;
 typedef uint64_t uintmax_t;
 
-/* intptr_t is built-in */
-typedef size_t uintptr_t;
-
 #define INT8_MIN   (-1-0x7f)
 #define INT16_MIN  (-1-0x7fff)
 #define INT32_MIN  (-1-0x7fffffff)
@@ -41,11 +53,8 @@ typedef size_t uintptr_t;
 
 #define INTMAX_MIN INT64_MIN
 #define INTMAX_MAX INT64_MAX
-#define INTPTR_MIN PTRDIFF_MIN
-#define INTPTR_MAX PTRDIFF_MAX
 
 #define UINTMAX_MAX UINT64_MAX
-#define UINTPTR_MAX SIZE_MAX
 
 #define INT_FAST8_MIN   INT8_MIN
 #define INT_FAST64_MIN  INT64_MIN

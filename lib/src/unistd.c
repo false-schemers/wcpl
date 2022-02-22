@@ -1,4 +1,6 @@
 #include <wasi/api.h>
+#include <assert.h>
+#include <stdint.h>
 #include <errno.h>
 #include <unistd.h>
 
@@ -117,3 +119,30 @@ int close(int fd)
   }
   return 0;
 }
+
+int isatty(int fd)
+{
+  fdstat_t statbuf;
+  int r = fd_fdstat_get(fd, &statbuf);
+  if (r != 0) {
+    errno = r;
+    return 0;
+  }
+  if (statbuf.fs_filetype != FILETYPE_CHARACTER_DEVICE ||
+     (statbuf.fs_rights_base & (RIGHTS_FD_SEEK | RIGHTS_FD_TELL)) != 0) {
+    errno = (int)ERRNO_NOTTY;
+    return 0;
+  }
+  return 1;
+}
+
+void *sbrk(intptr_t inc) /* inc should be a multiple of 64K */
+{
+  assert(inc >= 0 && (inc & 0xFFFF) == 0);
+  if (!inc) return (void *)asm(memory.size, i32.const 16, i32.shl);
+  size_t new = (size_t)inc >> 16;
+  size_t old = (size_t)asm(i32.const 0, local.get new, memory.grow);
+  if (old == SIZE_MAX) { errno = ENOMEM; return (void *)-1; }
+  return (void *)(old << 16);
+}
+

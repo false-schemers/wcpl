@@ -8,12 +8,12 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - `#pragma once` in headers
 - `static_assert(expr);`, `static_assert(expr, "message");` on top level in headers and module files
 - `sizeof(type)`, `alignof(type)`, and `offsetof(type, field)` are supported
-- limited static evaluation of expressions (numerics only)
+- static evaluation of expressions (numerics only in general, numerics+static pointers in top-level initializers)
 - limited macros: `#define FOO 1234`, `#define FOO (expr)`, `#define FOO do {...} while (0)` as well as 
   corresponding parameterized forms (`#define FOO(a, b) ...`)   
 - `const` and `volatile` specifiers are allowed but ignored
 - labels can only label starts/ends of sub-blocks; `goto` can only target labels in the same block or its parent blocks
-- assignment of structures/unions (and possibly same-type arrays?)
+- assignment of structures/unions (and same-type arrays as well)
 - vararg macros and stdarg.h
 - object modules can have the following extensions: `.o`, `.wo`
 - system object modules are looked up in library directories given via `-L` option and `WCPL_LIBRARY_PATH` environment variable
@@ -27,8 +27,8 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 
 # C features not yet supported
 
-- taking address of a global var (needs 'auto' transformation, should be allowed for statics)
-- `{}` initializers for locals and globals
+- taking address of a global scalar var (?)
+- `{}` initializers for locals
 - `static` variables in function scope
 - taking address of a function, indirect calls
 
@@ -57,6 +57,7 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - `<stddef.h>` (header only)
 - `<stdint.h>` (header only)
 - `<inttypes.h>` (header only)
+- `<limits.h>` (header only)
  
 # Libaries to be implemented
 
@@ -88,6 +89,31 @@ systems/compilers are similar:
 ```
 gcc -o wcpl [wcpl].c 
 ```
+
+
+# Use
+
+There are two modes of operation: compiling a single file to object file and
+compiling and linking a set of source and/or object files into an executable
+file.
+
+## Single-file compilation
+
+```
+wcpl -c infile.c -o infile.wo
+```
+
+If `-o` option is not specified, output goes to standard output.
+
+## Compilation and Linking
+
+```
+wcpl -o out.wat infile1.c infile2.c infile3.wo ...
+```
+
+A mix of source and object files can be given; one of the input files should
+contain implementation of main() procedure. Library dependences are automatically
+loaded and used.
 
 
 

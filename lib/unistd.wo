@@ -438,4 +438,107 @@
     i32.const 0
     return
   )
+  (func $unistd:isatty (export "isatty")
+    (param $fd i32) (result i32) 
+    (local $r i32) (local $fp$ i32) 
+    global.get $env:__stack_pointer
+    global.get $env:__stack_pointer
+    i32.const 32
+    i32.sub
+    global.set $env:__stack_pointer
+    local.set $fp$
+    local.get $fd
+    local.get $fp$
+    call $wasi_snapshot_preview1:fd_fdstat_get
+    local.tee $r
+    i32.const 0
+    i32.ne
+    if
+    local.get $r
+    global.set $errno:errno
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const 0
+    return
+    end
+    local.get $fp$
+    i32.load8_u offset=0 align=1
+    i32.const 2
+    i32.ne
+    if (result i32)
+    i32.const 1
+    else
+    local.get $fp$
+    i32.const 8
+    i32.add
+    i64.load offset=0 align=8
+    i64.const 36
+    i64.and
+    i32.const 0
+    i64.extend_i32_s
+    i64.ne
+    end
+    if
+    i32.const 59
+    global.set $errno:errno
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const 0
+    return
+    end
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const 1
+    return
+  )
+  (func $unistd:sbrk (export "sbrk")
+    (param $inc i32) (result i32) 
+    (local $new i32) (local $old i32) 
+    local.get $inc
+    i32.const 0
+    i32.ge_s
+    if (result i32)
+    local.get $inc
+    i32.const 65535
+    i32.and
+    i32.const 0
+    i32.eq
+    else
+    i32.const 0
+    end
+    if
+    i32.const 0
+    drop
+    else
+    unreachable
+    end
+    local.get $inc
+    i32.eqz
+    if
+    memory.size
+    i32.const 16
+    i32.shl
+    return
+    end
+    local.get $inc
+    i32.const 16
+    i32.shr_u
+    local.set $new
+    i32.const 0
+    local.get $new
+    memory.grow
+    local.tee $old
+    i32.const -1
+    i32.eq
+    if
+    i32.const 48
+    global.set $errno:errno
+    i32.const -1
+    return
+    end
+    local.get $old
+    i32.const 16
+    i32.shl
+    return
+  )
 )
