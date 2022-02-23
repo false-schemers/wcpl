@@ -1479,14 +1479,12 @@
     end $4$
     end $5$
     end $3$
+    i32.const 1
+    local.get $swapped
     local.get $gap
     i32.const 1
     i32.gt_u
-    if (result i32)
-    i32.const 1
-    else
-    local.get $swapped
-    end
+    select
     br_if $1$
     end $1$
     end $2$
@@ -1815,13 +1813,11 @@
     local.tee $t
     drop
     loop $1$
+    local.get $maxlen
+    i32.const 0
     local.get $t
     i32.load offset=0 align=4
-    if (result i32)
-    local.get $maxlen
-    else
-    i32.const 0
-    end
+    select
     i32.eqz
     br_if $2$
     block $3$

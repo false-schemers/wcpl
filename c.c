@@ -2294,12 +2294,11 @@ static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan
   else neprintf(prn, "incompatible types of ?: operator branches");
   pan1 = compile_booltest(prn, pan1); /* add !=0 if not i32 */
   ndcpy(ndnewbk(pcn), pctn);
-  /* fixme: select code is faulty!! */
-  if (false && acode_simple_noeff(pan2) && acode_simple_noeff(pan3)) {
+  if (acode_simple_noeff(pan2) && acode_simple_noeff(pan3)) {
     /* both branches can be computed cheaply with no effects; use SELECT */
-    acode_swapin(pcn, pan1); 
     acode_swapin(pcn, pan2); 
     acode_swapin(pcn, pan3);
+    acode_swapin(pcn, pan1); 
     acode_pushin(pcn, IN_SELECT);
   } else { 
     /* fixme: 'if'-'else' block is needed */
@@ -3110,7 +3109,6 @@ repeat:
           icbrem(picb, i-1);
           ++nmods; nexti = i-1;
         } else if (IN_I32_LOAD <= pprevi->in && pprevi->in <= IN_I64_LOAD32_U) {
-          icbrem(picb, i-1);
           icbrem(picb, i-1);
           ++nmods; nexti = i-1;
         }

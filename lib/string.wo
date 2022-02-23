@@ -1093,14 +1093,12 @@
     call $string:strlen
     local.tee $sl
     drop
+    local.get $sl
+    local.get $n
     local.get $n
     local.get $sl
     i32.gt_u
-    if (result i32)
-    local.get $sl
-    else
-    local.get $n
-    end
+    select
     i32.const 1
     i32.add
     local.tee $l
@@ -1448,13 +1446,11 @@
     local.set $i1$
     local.get $i1$
     local.get $s
+    global.get $string:strtok_holder
+    local.get $s
     i32.const 0
     i32.ne
-    if (result i32)
-    local.get $s
-    else
-    global.get $string:strtok_holder
-    end
+    select
     i32.store offset=0 align=4
     local.get $i1$
     i32.load offset=0 align=4
