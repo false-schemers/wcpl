@@ -30,12 +30,12 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - taking address of a global scalar var (?)
 - `{}` initializers for locals
 - `static` variables in function scope
-- taking address of a function, indirect calls
 
 # C features that won't be supported
 
 - features beyond C90/ANSI-C other than the ones explicitly mentioned above
 - `#if`-category directives for conditional compilation
+- token-based macros (expression-based macros work as described above)
 - bit fields
 - structures/unions as parameters and return values
 - free-form `switch`: nothing but cases in curly braces after test will be supported
