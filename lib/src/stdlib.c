@@ -271,6 +271,51 @@ char *getenv(const char *name)
 
 /* system() is absent */
 
+void *bsearch(const void *key, const void *base, size_t nmemb,
+  size_t size, int (*cmp)(const void *, const void *))
+{
+  while (nmemb) {
+    size_t mididx = nmemb / 2;
+    const void *midobj = (const char *)base + mididx * size;
+    int diff = (*cmp)(key, midobj);
+    if (diff == 0) return (void *)midobj;
+    if (diff > 0) {
+      base = (const char *)midobj + size;
+      nmemb -= mididx + 1;
+    } else
+      nmemb = mididx;
+  }
+  return NULL;
+}
+
+/* qsort -- This is actually combsort.  It's an O(n log n) algorithm with
+ * simplicity/small code size being its main virtue. */
+static size_t newgap(size_t gap)
+{
+  gap = (gap * 10) / 13;
+  if (gap == 9 || gap == 10) gap = 11;
+  if (gap < 1) gap = 1;
+  return gap;
+}
+
+void qsort(void *base, size_t nmemb, size_t size, int (*cmp)(const void *, const void *))
+{ /* combsort, O(n log n) */
+  size_t gap = nmemb, i, j;
+  char *p1, *p2; int swapped;
+  if (!nmemb) return;
+  do {
+    gap = newgap(gap);
+    swapped = 0;
+    for (i = 0, p1 = base; i < nmemb - gap; i++, p1 += size) {
+      j = i + gap;
+      if ((*cmp)(p1, p2 = (char *)base + j * size) > 0) {
+        memswap(p1, p2, size);
+        swapped = 1;
+      }
+    }
+  } while (gap > 1 || swapped);
+}
+
 
 int abs(int n)
 {

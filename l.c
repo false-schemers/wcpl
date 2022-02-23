@@ -913,6 +913,14 @@ void chbinsc(chbuf_t* pcb, size_t n, int c)
   char *pc = bufins(pcb, n); *pc = c;
 }
 
+void chbinss(chbuf_t* pcb, size_t n, const char *s)
+{
+  while (*s) {
+    char *pc = bufins(pcb, n); *pc = *s;
+    ++n; ++s;  
+  }
+}
+
 char* chbset(chbuf_t* pb, const char *s, size_t n)
 {
   bufclear(pb);

@@ -19,9 +19,11 @@
     (param $dst i32) (param $src i32) (param $c i32) (param $n i32) (result i32) 
     (local $q i32) (local $p i32) (local $ch i32) (local $i1$ i32) 
     local.get $dst
-    local.set $q
+    local.tee $q
+    drop
     local.get $src
-    local.set $p
+    local.tee $p
+    drop
     block $1$
     loop $2$
     local.get $n
@@ -35,7 +37,8 @@
     i32.const 1
     i32.add
     local.set $q
-    local.tee $i1$
+    local.set $i1$
+    local.get $i1$
     local.get $p
     local.get $p
     i32.const 1
@@ -50,6 +53,8 @@
     local.tee $ch
     i32.store8 offset=0 align=1
     local.get $i1$
+    i32.load8_s offset=0 align=1
+    drop
     local.get $ch
     i32.const 24
     i32.shl
@@ -78,7 +83,8 @@
     (param $s i32) (param $c i32) (param $n i32) (result i32) 
     (local $sp i32) 
     local.get $s
-    local.set $sp
+    local.tee $sp
+    drop
     block $1$
     loop $2$
     local.get $n
@@ -117,11 +123,14 @@
     (param $s1 i32) (param $s2 i32) (param $n i32) (result i32) 
     (local $c1 i32) (local $c2 i32) (local $d i32) 
     local.get $s1
-    local.set $c1
+    local.tee $c1
+    drop
     local.get $s2
-    local.set $c2
+    local.tee $c2
+    drop
     i32.const 0
-    local.set $d
+    local.tee $d
+    drop
     block $1$
     loop $2$
     local.get $n
@@ -148,6 +157,8 @@
     i32.and
     i32.sub
     local.tee $d
+    drop
+    local.get $d
     br_if $1$
     br $2$
     end
@@ -160,9 +171,11 @@
     (param $dst i32) (param $src i32) (param $n i32) (result i32) 
     (local $p i32) (local $q i32) (local $i1$ i32) 
     local.get $src
-    local.set $p
+    local.tee $p
+    drop
     local.get $dst
-    local.set $q
+    local.tee $q
+    drop
     block $1$
     loop $2$
     local.get $n
@@ -176,7 +189,8 @@
     i32.const 1
     i32.add
     local.set $q
-    local.tee $i1$
+    local.set $i1$
+    local.get $i1$
     local.get $p
     local.get $p
     i32.const 1
@@ -185,6 +199,8 @@
     i32.load8_s offset=0 align=1
     i32.store8 offset=0 align=1
     local.get $i1$
+    i32.load8_s offset=0 align=1
+    drop
     br $2$
     end
     end $2$
@@ -196,9 +212,11 @@
     (param $haystack i32) (param $n i32) (param $needle i32) (param $m i32) (result i32) 
     (local $y i32) (local $x i32) (local $j i32) (local $k i32) (local $l i32) 
     local.get $haystack
-    local.set $y
+    local.tee $y
+    drop
     local.get $needle
-    local.set $x
+    local.tee $x
+    drop
     local.get $m
     local.get $n
     i32.gt_u
@@ -233,17 +251,22 @@
     i32.eq
     if
     i32.const 2
-    local.set $k
+    local.tee $k
+    drop
     i32.const 1
-    local.set $l
+    local.tee $l
+    drop
     else
     i32.const 1
-    local.set $k
+    local.tee $k
+    drop
     i32.const 2
-    local.set $l
+    local.tee $l
+    drop
     end
     i32.const 0
-    local.set $j
+    local.tee $j
+    drop
     block $1$
     loop $2$
     local.get $j
@@ -267,7 +290,8 @@
     local.get $j
     local.get $k
     i32.add
-    local.set $j
+    local.tee $j
+    drop
     else
     local.get $x
     i32.const 2
@@ -304,7 +328,8 @@
     local.get $j
     local.get $l
     i32.add
-    local.set $j
+    local.tee $j
+    drop
     end
     br $2$
     end
@@ -345,9 +370,12 @@
     (param $dst i32) (param $src i32) (param $n i32) (result i32) 
     (local $p i32) (local $q i32) (local $i1$ i32) (local $i2$ i32) 
     local.get $src
-    local.set $p
+    local.tee $p
+    drop
     local.get $dst
     local.tee $q
+    drop
+    local.get $q
     local.get $p
     i32.lt_u
     if
@@ -364,7 +392,8 @@
     i32.const 1
     i32.add
     local.set $q
-    local.tee $i1$
+    local.set $i1$
+    local.get $i1$
     local.get $p
     local.get $p
     i32.const 1
@@ -373,6 +402,8 @@
     i32.load8_s offset=0 align=1
     i32.store8 offset=0 align=1
     local.get $i1$
+    i32.load8_s offset=0 align=1
+    drop
     br $2$
     end
     end $2$
@@ -381,11 +412,13 @@
     local.get $p
     local.get $n
     i32.add
-    local.set $p
+    local.tee $p
+    drop
     local.get $q
     local.get $n
     i32.add
-    local.set $q
+    local.tee $q
+    drop
     block $3$
     loop $4$
     local.get $n
@@ -398,7 +431,8 @@
     i32.const 1
     i32.sub
     local.tee $q
-    local.tee $i2$
+    local.set $i2$
+    local.get $i2$
     local.get $p
     i32.const 1
     i32.sub
@@ -406,6 +440,8 @@
     i32.load8_s offset=0 align=1
     i32.store8 offset=0 align=1
     local.get $i2$
+    i32.load8_s offset=0 align=1
+    drop
     br $4$
     end
     end $4$
@@ -418,7 +454,8 @@
     (param $dst i32) (param $c i32) (param $n i32) (result i32) 
     (local $q i32) (local $i1$ i32) 
     local.get $dst
-    local.set $q
+    local.tee $q
+    drop
     block $1$
     loop $2$
     local.get $n
@@ -432,10 +469,13 @@
     i32.const 1
     i32.add
     local.set $q
-    local.tee $i1$
+    local.set $i1$
+    local.get $i1$
     local.get $c
     i32.store8 offset=0 align=1
     local.get $i1$
+    i32.load8_s offset=0 align=1
+    drop
     br $2$
     end
     end $2$
@@ -447,9 +487,11 @@
     (param $m1 i32) (param $m2 i32) (param $n i32) 
     (local $p i32) (local $q i32) (local $tmp i32) (local $i1$ i32) (local $i2$ i32) 
     local.get $m1
-    local.set $p
+    local.tee $p
+    drop
     local.get $m2
-    local.set $q
+    local.tee $q
+    drop
     block $1$
     loop $2$
     local.get $n
@@ -460,18 +502,25 @@
     if
     local.get $p
     i32.load8_s offset=0 align=1
-    local.set $tmp
+    local.tee $tmp
+    drop
     local.get $p
-    local.tee $i1$
+    local.set $i1$
+    local.get $i1$
     local.get $q
     i32.load8_s offset=0 align=1
     i32.store8 offset=0 align=1
     local.get $i1$
+    i32.load8_s offset=0 align=1
+    drop
     local.get $q
-    local.tee $i2$
+    local.set $i2$
+    local.get $i2$
     local.get $tmp
     i32.store8 offset=0 align=1
     local.get $i2$
+    i32.load8_s offset=0 align=1
+    drop
     local.get $p
     local.get $p
     i32.const 1
@@ -493,11 +542,14 @@
     (param $s1 i32) (param $s2 i32) (result i32) 
     (local $c1 i32) (local $c2 i32) (local $ch i32) (local $d i32) 
     local.get $s1
-    local.set $c1
+    local.tee $c1
+    drop
     local.get $s2
-    local.set $c2
+    local.tee $c2
+    drop
     i32.const 0
-    local.set $d
+    local.tee $d
+    drop
     block $1$
     loop $2$
     i32.const 1
@@ -521,6 +573,8 @@
     call $ctype:tolower
     i32.sub
     local.tee $d
+    drop
+    local.get $d
     if (result i32)
     i32.const 1
     else
@@ -586,11 +640,14 @@
     (param $s1 i32) (param $s2 i32) (result i32) 
     (local $c1 i32) (local $c2 i32) (local $ch i32) (local $d i32) 
     local.get $s1
-    local.set $c1
+    local.tee $c1
+    drop
     local.get $s2
-    local.set $c2
+    local.tee $c2
+    drop
     i32.const 0
-    local.set $d
+    local.tee $d
+    drop
     block $1$
     loop $2$
     i32.const 1
@@ -612,6 +669,8 @@
     i32.load8_u offset=0 align=1
     i32.sub
     local.tee $d
+    drop
+    local.get $d
     if (result i32)
     i32.const 1
     else
@@ -632,9 +691,11 @@
     (param $dst i32) (param $src i32) (result i32) 
     (local $q i32) (local $ch i32) (local $p i32) (local $i1$ i32) 
     local.get $dst
-    local.set $q
+    local.tee $q
+    drop
     local.get $src
-    local.set $p
+    local.tee $p
+    drop
     block $2$
     loop $1$
     block $3$
@@ -643,7 +704,8 @@
     i32.const 1
     i32.add
     local.set $q
-    local.tee $i1$
+    local.set $i1$
+    local.get $i1$
     local.get $p
     local.get $p
     i32.const 1
@@ -658,6 +720,8 @@
     local.tee $ch
     i32.store8 offset=0 align=1
     local.get $i1$
+    i32.load8_s offset=0 align=1
+    drop
     end $3$
     local.get $ch
     i32.const 24
@@ -677,7 +741,8 @@
     (param $s1 i32) (param $s2 i32) (result i32) 
     (local $s i32) (local $c i32) 
     local.get $s1
-    local.set $s
+    local.tee $s
+    drop
     block $1$
     loop $2$
     local.get $s1
@@ -685,7 +750,8 @@
     if
     block $4$
     local.get $s2
-    local.set $c
+    local.tee $c
+    drop
     loop $3$
     local.get $c
     i32.load8_s offset=0 align=1
@@ -734,8 +800,12 @@
     i32.const 1
     i32.add
     local.tee $l
+    drop
+    local.get $l
     call $stdlib:malloc
     local.tee $d
+    drop
+    local.get $d
     i32.const 0
     i32.ne
     if
@@ -752,7 +822,8 @@
     (param $s i32) (result i32) 
     (local $ss i32) 
     local.get $s
-    local.set $ss
+    local.tee $ss
+    drop
     block $1$
     loop $2$
     local.get $ss
@@ -777,11 +848,14 @@
     (param $s1 i32) (param $s2 i32) (param $n i32) (result i32) 
     (local $c1 i32) (local $c2 i32) (local $ch i32) (local $d i32) 
     local.get $s1
-    local.set $c1
+    local.tee $c1
+    drop
     local.get $s2
-    local.set $c2
+    local.tee $c2
+    drop
     i32.const 0
-    local.set $d
+    local.tee $d
+    drop
     block $1$
     loop $2$
     local.get $n
@@ -809,6 +883,8 @@
     call $ctype:toupper
     i32.sub
     local.tee $d
+    drop
+    local.get $d
     if (result i32)
     i32.const 1
     else
@@ -831,9 +907,11 @@
     local.get $dst
     i32.const 0
     call $string:strchr
-    local.set $q
+    local.tee $q
+    drop
     local.get $src
-    local.set $p
+    local.tee $p
+    drop
     block $1$
     loop $2$
     local.get $n
@@ -847,7 +925,8 @@
     i32.const 1
     i32.add
     local.set $q
-    local.tee $i1$
+    local.set $i1$
+    local.get $i1$
     local.get $p
     local.get $p
     i32.const 1
@@ -862,6 +941,8 @@
     local.tee $ch
     i32.store8 offset=0 align=1
     local.get $i1$
+    i32.load8_s offset=0 align=1
+    drop
     local.get $ch
     i32.const 24
     i32.shl
@@ -878,10 +959,13 @@
     end $2$
     end $1$
     local.get $q
-    local.tee $i2$
+    local.set $i2$
+    local.get $i2$
     i32.const 0
     i32.store8 offset=0 align=1
     local.get $i2$
+    i32.load8_s offset=0 align=1
+    drop
     local.get $dst
     return
   )
@@ -889,11 +973,14 @@
     (param $s1 i32) (param $s2 i32) (param $n i32) (result i32) 
     (local $c1 i32) (local $c2 i32) (local $ch i32) (local $d i32) 
     local.get $s1
-    local.set $c1
+    local.tee $c1
+    drop
     local.get $s2
-    local.set $c2
+    local.tee $c2
+    drop
     i32.const 0
-    local.set $d
+    local.tee $d
+    drop
     block $1$
     loop $2$
     local.get $n
@@ -919,6 +1006,8 @@
     i32.load8_u offset=0 align=1
     i32.sub
     local.tee $d
+    drop
+    local.get $d
     if (result i32)
     i32.const 1
     else
@@ -939,9 +1028,11 @@
     (param $dst i32) (param $src i32) (param $n i32) (result i32) 
     (local $ch i32) (local $q i32) (local $p i32) (local $i1$ i32) 
     local.get $dst
-    local.set $q
+    local.tee $q
+    drop
     local.get $src
-    local.set $p
+    local.tee $p
+    drop
     block $1$
     loop $2$
     local.get $n
@@ -957,7 +1048,8 @@
     i32.const 1
     i32.add
     local.set $q
-    local.tee $i1$
+    local.set $i1$
+    local.get $i1$
     local.get $p
     local.get $p
     i32.const 1
@@ -972,6 +1064,8 @@
     local.tee $ch
     i32.store8 offset=0 align=1
     local.get $i1$
+    i32.load8_s offset=0 align=1
+    drop
     local.get $ch
     i32.const 24
     i32.shl
@@ -997,18 +1091,25 @@
     (local $sl i32) (local $l i32) (local $d i32) (local $i1$ i32) 
     local.get $s
     call $string:strlen
-    local.set $sl
+    local.tee $sl
+    drop
     local.get $n
     local.get $sl
     i32.gt_u
+    if (result i32)
     local.get $sl
+    else
     local.get $n
-    select
+    end
     i32.const 1
     i32.add
     local.tee $l
+    drop
+    local.get $l
     call $stdlib:malloc
     local.tee $d
+    drop
+    local.get $d
     i32.eqz
     if
     i32.const 0
@@ -1022,10 +1123,13 @@
     local.get $d
     local.get $n
     i32.add
-    local.tee $i1$
+    local.set $i1$
+    local.get $i1$
     i32.const 0
     i32.store8 offset=0 align=1
     local.get $i1$
+    i32.load8_s offset=0 align=1
+    drop
     local.get $d
     return
   )
@@ -1033,7 +1137,8 @@
     (param $s i32) (param $maxlen i32) (result i32) 
     (local $ss i32) 
     local.get $s
-    local.set $ss
+    local.tee $ss
+    drop
     block $1$
     loop $2$
     local.get $maxlen
@@ -1071,7 +1176,8 @@
     (param $s1 i32) (param $s2 i32) (result i32) 
     (local $c i32) 
     local.get $s2
-    local.set $c
+    local.tee $c
+    drop
     local.get $s1
     i32.load8_s offset=0 align=1
     i32.eqz
@@ -1086,7 +1192,8 @@
     if
     block $4$
     local.get $s2
-    local.set $c
+    local.tee $c
+    drop
     loop $3$
     local.get $c
     i32.load8_s offset=0 align=1
@@ -1128,7 +1235,8 @@
     i32.eq
     if
     i32.const 0
-    local.set $s1
+    local.tee $s1
+    drop
     end
     local.get $s1
     return
@@ -1137,7 +1245,8 @@
     (param $s i32) (param $c i32) (result i32) 
     (local $found i32) 
     i32.const 0
-    local.set $found
+    local.tee $found
+    drop
     block $1$
     loop $2$
     local.get $s
@@ -1154,7 +1263,8 @@
     i32.eq
     if
     local.get $s
-    local.set $found
+    local.tee $found
+    drop
     end
     local.get $s
     local.get $s
@@ -1173,7 +1283,8 @@
     (param $s1 i32) (param $s2 i32) (result i32) 
     (local $s i32) (local $c i32) 
     local.get $s1
-    local.set $s
+    local.tee $s
+    drop
     block $1$
     loop $2$
     local.get $s1
@@ -1181,7 +1292,8 @@
     if
     block $4$
     local.get $s2
-    local.set $c
+    local.tee $c
+    drop
     loop $3$
     local.get $c
     i32.load8_s offset=0 align=1
@@ -1241,6 +1353,8 @@
     local.get $stringp
     i32.load offset=0 align=4
     local.tee $s
+    drop
+    local.get $s
     i32.eqz
     if
     i32.const 0
@@ -1250,6 +1364,8 @@
     local.get $delim
     call $string:strpbrk
     local.tee $e
+    drop
+    local.get $e
     i32.const 0
     i32.ne
     if
@@ -1258,16 +1374,22 @@
     i32.const 1
     i32.add
     local.set $e
-    local.tee $i1$
+    local.set $i1$
+    local.get $i1$
     i32.const 0
     i32.store8 offset=0 align=1
     local.get $i1$
+    i32.load8_s offset=0 align=1
+    drop
     end
     local.get $stringp
-    local.tee $i2$
+    local.set $i2$
+    local.get $i2$
     local.get $e
     i32.store offset=0 align=4
     local.get $i2$
+    i32.load offset=0 align=4
+    drop
     local.get $s
     return
   )
@@ -1279,10 +1401,13 @@
     i32.ne
     if
     local.get $holder
-    local.tee $i1$
+    local.set $i1$
+    local.get $i1$
     local.get $s
     i32.store offset=0 align=4
     local.get $i1$
+    i32.load offset=0 align=4
+    drop
     end
     block $2$
     loop $1$
@@ -1290,7 +1415,8 @@
     local.get $holder
     local.get $delim
     call $string:strsep
-    local.set $s
+    local.tee $s
+    drop
     end $3$
     local.get $s
     i32.const 0
@@ -1317,22 +1443,30 @@
     i32.sub
     global.set $env:__stack_pointer
     local.tee $fp$
-    local.tee $i1$
+    drop
+    local.get $fp$
+    local.set $i1$
+    local.get $i1$
     local.get $s
     i32.const 0
     i32.ne
+    if (result i32)
     local.get $s
+    else
     global.get $string:strtok_holder
-    select
+    end
     i32.store offset=0 align=4
     local.get $i1$
+    i32.load offset=0 align=4
+    drop
     block $2$
     loop $1$
     block $3$
     local.get $fp$
     local.get $delim
     call $string:strsep
-    local.set $s
+    local.tee $s
+    drop
     end $3$
     local.get $s
     i32.const 0
@@ -1350,6 +1484,8 @@
     local.get $fp$
     i32.load offset=0 align=4
     global.set $string:strtok_holder
+    global.get $string:strtok_holder
+    drop
     local.get $fp$
     global.set $env:__stack_pointer
     local.get $s

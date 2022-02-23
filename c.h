@@ -4,16 +4,19 @@
 #define _C_H_INCLUDED
 
 /* globals */
-extern long   g_optlvl;   /* -O arg */
-extern buf_t *g_ibases;   /* module include search bases */
-extern buf_t *g_lbases;   /* module object module search bases */
-extern sym_t  g_env_mod;  /* environment module */
-extern sym_t  g_wasi_mod; /* module for wasi */
-extern sym_t  g_lm_id;    /* id for linear memory */
-extern sym_t  g_sp_id;    /* id for stack pointer global */
-extern size_t g_sdbaddr;  /* static data allocation start */
-extern size_t g_stacksz;  /* stack size in bytes */
+extern long    g_optlvl;   /* -O arg */
+extern buf_t  *g_ibases;   /* module include search bases */
+extern buf_t  *g_lbases;   /* module object module search bases */
+extern fsbuf_t g_funcsigs; /* unique function signatures */
+extern sym_t   g_env_mod;  /* environment module */
+extern sym_t   g_wasi_mod; /* module for wasi */
+extern sym_t   g_lm_id;    /* id for linear memory */
+extern sym_t   g_sp_id;    /* id for stack pointer global */
+extern size_t  g_sdbaddr;  /* static data allocation start */
+extern size_t  g_stacksz;  /* stack size in bytes */
 
+/* convert function type to a function signature */
+extern funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs);
 /* calc size/align for ptn; prn is NULL or reference node for errors, use 0 for lvl */
 extern void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl);
 /* calc offset for ptn.fld; prn is NULL or reference node for errors */

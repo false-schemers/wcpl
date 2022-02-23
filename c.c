@@ -15,15 +15,17 @@
 #include "c.h"
 
 /* wcpl globals */
-long   g_optlvl;   /* -O arg */
-buf_t *g_ibases;   /* module include search bases */
-buf_t *g_lbases;   /* module object module search bases */
-sym_t  g_env_mod;  /* environment module */
-sym_t  g_wasi_mod; /* module for wasi */
-sym_t  g_lm_id;    /* id for linear memory */
-sym_t  g_sp_id;    /* id for stack pointer global */
-size_t g_sdbaddr;  /* static data allocation start */
-size_t g_stacksz;  /* stack size in bytes */
+long    g_optlvl;   /* -O arg */
+buf_t  *g_ibases;   /* module include search bases */
+buf_t  *g_lbases;   /* module object module search bases */
+fsbuf_t g_funcsigs; /* unique function signatures */
+sym_t   g_env_mod;  /* environment module */
+sym_t   g_wasi_mod; /* module for wasi */
+sym_t   g_lm_id;    /* id for linear memory */
+sym_t   g_sp_id;    /* id for stack pointer global */
+size_t  g_sdbaddr;  /* static data allocation start */
+size_t  g_stacksz;  /* stack size in bytes */
+
 
 void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl)
 {
@@ -41,6 +43,7 @@ void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl)
     *(sym_t*)bufnewbk(g_lbases) = intern(*pds);
     *(sym_t*)bufnewbk(g_ibases) = internf("%sinclude%c", *pds, sepchar);
   }
+  fsbinit(&g_funcsigs);
   g_wasi_mod = intern("wasi_snapshot_preview1");
   g_env_mod = intern("env");
   g_lm_id = intern("__linear_memory");
@@ -53,6 +56,7 @@ void fini_wcpl(void)
 {
   freebuf(g_ibases);
   freebuf(g_lbases);
+  fsbfini(&g_funcsigs);
   g_wasi_mod = g_env_mod = 0;
   g_lm_id = g_sp_id = 0;
 }
@@ -2290,7 +2294,8 @@ static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan
   else neprintf(prn, "incompatible types of ?: operator branches");
   pan1 = compile_booltest(prn, pan1); /* add !=0 if not i32 */
   ndcpy(ndnewbk(pcn), pctn);
-  if (acode_simple_noeff(pan2) && acode_simple_noeff(pan3)) {
+  /* fixme: select code is faulty!! */
+  if (false && acode_simple_noeff(pan2) && acode_simple_noeff(pan3)) {
     /* both branches can be computed cheaply with no effects; use SELECT */
     acode_swapin(pcn, pan1); 
     acode_swapin(pcn, pan2); 
@@ -2319,6 +2324,10 @@ static node_t *compile_ataddr(node_t *prn, node_t *pan)
   else neprintf(prn, "cannot dereference non-pointer expression");  
   if (ts_bulk(petn->ts)) {
     /* {bulk_t* | x} => {bulk_t | x} */
+    lift_arg0(patn);
+    return pan;
+  } if (petn->ts == TS_FUNCTION) {
+    /* {func_t* | x} => {func_t | x} */
     lift_arg0(patn);
     return pan;
   } else { 
@@ -2368,6 +2377,9 @@ static node_t *compile_addrof(node_t *prn, node_t *pan)
   if (ts_bulk(patn->ts)) { 
     /* {bulk_t | x} => {bulk_t* | x} */
     wrap_type_pointer(patn); 
+  } else if (patn->ts == TS_FUNCTION) { 
+    /* {func_t | x} => {func_t* | x} */
+    wrap_type_pointer(patn);
   } else {
     /* {IP(scalar_t) | {scalar_t* | x} fetch} => {scalar_t* | x} */
     if (ndlen(pan) == 2 && icblen(&pan->data) == 2 && acode_rval_load(pan)) {
@@ -2503,8 +2515,11 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     assert(ic.in == IN_REF_FUNC); 
     cic.in = IN_CALL; cic.id = ic.id; cic.arg2 = ic.arg2; /* mod */
   } else {
-    n2eprintf(ndref(prn, 0), prn, 
-      "non-global-identifier function expressions are not yet supported");
+    funcsig_t fs; fsinit(&fs);
+    cic.in = IN_CALL_INDIRECT;
+    cic.arg.u = fsintern(&g_funcsigs, ftn2fsig(pftn, &fs));
+    cic.id = 0; cic.arg2.u = 0;
+    fsfini(&fs);
   }
   for (i = 0; i < buflen(pab) && (!etc || i < ndlen(pftn)-2); ++i) {
     node_t **ppani = bufref(pab, i), *pani = *ppani;
@@ -2541,11 +2556,13 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     }
     acode_pushin_id(pcn, IN_LOCAL_GET, pname); 
     /* put the call instruction followed by sp restore */
+    if (cic.in == IN_CALL_INDIRECT) acode_swapin(pcn, pfn); /* func on stack */ 
     asm_pushbk(&pcn->data, &cic);
     acode_pushin_id(pcn, IN_LOCAL_GET, pname);
     acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_env_mod); 
   } else {
-    /* just put the call instruction */
+    /* put the call instruction */
+    if (cic.in == IN_CALL_INDIRECT) acode_swapin(pcn, pfn); /* func on stack */ 
     asm_pushbk(&pcn->data, &cic);
   }
   return pcn;
@@ -3073,7 +3090,7 @@ static node_t *fundef_flatten(node_t *pdn)
   return pcn;
 }
 
-/* simple peephole optimization */
+/* fixme: simple peephole optimization */
 static void fundef_peephole(node_t *pcn, int optlvl)
 {
   icbuf_t *picb = &pcn->data; size_t i, nmods;
@@ -3127,7 +3144,7 @@ static void tn2vt(node_t *ptn, vtbuf_t *pvtb)
 }
 
 /* convert function type to a function signature */
-static funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
+funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
 {
   size_t i; node_t *ptni;
   assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);

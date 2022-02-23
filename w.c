@@ -1082,7 +1082,7 @@ insig_t instr_sig(instr_t in)
     case IN_CALL:          case IN_RETURN_CALL:
       return INSIG_XG;
     case IN_CALL_INDIRECT: case IN_RETURN_CALL_INDIRECT:
-      return INSIG_X_Y;
+      return INSIG_CI;
     case IN_SELECT_T:
       return INSIG_T;  
     case IN_LOCAL_GET:     case IN_LOCAL_SET:    case IN_LOCAL_TEE: 
@@ -1121,7 +1121,7 @@ insig_t instr_sig(instr_t in)
   return INSIG_NONE;
 }
 
-const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
+char *format_inscode(inscode_t *pic, chbuf_t *pcb)
 {
   chbclear(pcb);
   if (pic->in == IN_REGDECL) {
@@ -1162,6 +1162,20 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       chbputf(pcb, " %lld", pic->arg.i); 
       if (pic->id) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
       break;
+    case INSIG_CI: /* should be dumped fancily if types are available */
+      if (pic->id) chbputf(pcb, " (type $%s)", symname(pic->id)); 
+      else {
+        size_t n = (size_t)pic->arg.u;
+        if (n < fsblen(&g_funcsigs)) { /* ref to global fsig */
+          chbuf_t cb = mkchb();
+          format_funcsig(fsbref(&g_funcsigs, n), &cb);
+          chbputf(pcb, " %s", chbdata(&cb));
+          chbfini(&cb);  
+        } else { /* assume fsigs are dumped separately */
+          chbputf(pcb, " (type %u)", (unsigned)pic->arg.u); 
+        }
+      }
+      break;
     case INSIG_X_Y:
       if (pic->id) chbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
       else chbputf(pcb, " %lld %u", pic->arg.i, pic->arg2.u); 
@@ -1195,6 +1209,19 @@ const char *format_inscode(inscode_t *pic, chbuf_t *pcb)
   return chbdata(pcb);
 }
 
+char *format_funcsig(funcsig_t *pfs, chbuf_t *pcb)
+{
+  size_t i;
+  chbclear(pcb);
+  chbputs("(param", pcb);
+  for (i = 0; i < vtblen(&pfs->partypes); ++i)
+    chbputf(pcb, " %s", valtype_name(*vtbref(&pfs->partypes, i)));
+  chbputs(") (result", pcb);
+  for (i = 0; i < vtblen(&pfs->restypes); ++i)
+    chbputf(pcb, " %s", valtype_name(*vtbref(&pfs->restypes, i)));
+  chbputs(")", pcb);
+  return chbdata(pcb);
+}
 
 /* wat text representations */
 
@@ -1204,6 +1231,7 @@ watie_t* watieinit(watie_t* pie, iekind_t iek)
   bufinit(&pie->data, sizeof(char));
   fsinit(&pie->fs);
   icbinit(&pie->code);
+  bufinit(&pie->table, sizeof(dpme_t));
   pie->iek = iek;
   return pie;
 }
@@ -1213,6 +1241,7 @@ void watiefini(watie_t* pie)
   buffini(&pie->data);
   fsfini(&pie->fs);
   icbfini(&pie->code);
+  buffini(&pie->table);
 }
 
 void watiebfini(watiebuf_t* pb)
@@ -1436,6 +1465,26 @@ static void wat_export_datas(watiebuf_t *pdb)
   }
 }
 
+static void wat_export_tables(watiebuf_t *pfb)
+{
+  size_t i, j;
+  for (i = 0; i < watieblen(pfb); ++i) {
+    watie_t *pt = watiebref(pfb, i);
+    size_t tlen;
+    if (pt->iek != IEK_TABLE) continue;
+    tlen = buflen(&pt->table) + 1; /* elem 0 is reserved */
+    chbsetf(g_watbuf, "(table %d %d funcref)", (int)tlen, (int)tlen);
+    wat_line(chbdata(g_watbuf));
+    chbsetf(g_watbuf, "(elem (i32.const 1)");
+    for (j = 0; j < buflen(&pt->table); ++j) {
+      dpme_t *pe = bufref(&pt->table, j);
+      chbputf(g_watbuf, " $%s:%s", symname(pe->mod), symname(pe->id));
+    }
+    chbputf(g_watbuf, ")");
+    wat_line(chbdata(g_watbuf));
+  }
+}
+
 static void wat_export_funcs(watiebuf_t *pfb)
 {
   size_t i, j, k;
@@ -1479,7 +1528,7 @@ static void wat_export_funcs(watiebuf_t *pfb)
         }
         wat_line(chbdata(g_watbuf));
         j += n; /* account for n aditional inscodes */
-      } else { /* taksed single inscode */
+      } else { /* takes single inscode */
         wat_line(format_inscode(pic, g_watbuf));
       }
     }
@@ -1500,6 +1549,7 @@ void write_wat_module(wat_module_t* pm, FILE *pf)
   wat_export_mems(&pm->exports);
   wat_export_globals(&pm->exports);
   wat_export_datas(&pm->exports);
+  wat_export_tables(&pm->exports);
   wat_export_funcs(&pm->exports);
   wat_writeln(")");
   g_watout = NULL;
@@ -2416,7 +2466,19 @@ static valtype_t parse_blocktype(sws_t *pw)
     expect(pw, ")");
   }
   return vt;
-} 
+}
+
+static void parse_funcsig(sws_t *pw, funcsig_t *pfs)
+{
+  expect(pw, "(");
+  expect(pw, "param");
+  while (!ahead(pw, ")")) *vtbnewbk(&pfs->partypes) = parse_valtype(pw);
+  expect(pw, ")");
+  expect(pw, "(");
+  expect(pw, "result");
+  while (!ahead(pw, ")")) *vtbnewbk(&pfs->restypes) = parse_valtype(pw);
+  expect(pw, ")");
+}
 
 static unsigned parse_uint(sws_t *pw)
 {
@@ -2506,7 +2568,12 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
         pic->id = id; pic->arg2.mod = mod;
       } break;
       /* fixme: case INSIG_XT: table.xxx */
-      /* fixme: case INSIG_X_Y: call_indirect, return_call_indirect */
+      case INSIG_CI: { /* call_indirect, return_call_indirect */
+        funcsig_t fs; fsinit(&fs);
+        parse_funcsig(pw, &fs);
+        pic->arg.u = fsintern(&g_funcsigs, &fs);
+        fsfini(&fs);
+      } break;
       case INSIG_T: { /* select */
         pic->arg.u = parse_valtype(pw);
       } break;
@@ -2934,7 +3001,8 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
         inscode_t *pic = icbref(&pf->code, i);
         switch (pic->in) {
           case IN_GLOBAL_GET: case IN_GLOBAL_SET:
-          case IN_CALL: case IN_RETURN_CALL: {
+          case IN_CALL: case IN_RETURN_CALL: 
+          case IN_REF_FUNC: {
             mi.mod = pic->arg2.mod; mi.id = pic->id;
             mi.iek = (pic->in == IN_GLOBAL_GET || pic->in == IN_GLOBAL_SET) ? IEK_GLOBAL : IEK_FUNC;
             assert(mi.mod != 0 && mi.id != 0); /* must be relocatable! */
@@ -3006,18 +3074,13 @@ int dsme_cmp(const void *p1, const void *p2)
   return 0;
 }
 
-/* data placement map */
-typedef struct dpmentry {
-  sym_t mod, id;  /* mod:id; used for sorting */
-  size_t address; /* absolute addr in data segment */  
-} dpme_t; 
-
 /* remove dependence on non-standard WAT features and instructions */
 size_t watify_wat_module(wat_module_t* pm)
 {
   size_t curaddr = g_sdbaddr;
   chbuf_t dseg = mkchb(); size_t i;
   buf_t dpmap = mkbuf(sizeof(dpme_t));
+  buf_t table = mkbuf(sizeof(dpme_t));
   dsmebuf_t dsmap; dsmebinit(&dsmap);
   
   /* reverse exports so leafs are processed before non-leafs */
@@ -3100,7 +3163,7 @@ size_t watify_wat_module(wat_module_t* pm)
   /* prepare dpmap for binary search */
   bufqsort(&dpmap, modid_cmp);
   
-  /* patch IN_REF_DATAs, memory export, zero globals */
+  /* patch IN_REF_{DATA,FUNC}s, memory export, zero globals */
   for (i = 0; i < watieblen(&pm->exports); ++i) {
     watie_t *pe = watiebref(&pm->exports, i);
     if (pe->iek == IEK_FUNC) {
@@ -3115,6 +3178,13 @@ size_t watify_wat_module(wat_module_t* pm)
             symname(mi.mod), symname(mi.id));
           pic->in = IN_I32_CONST;
           pic->arg.i = (long long)pdpme->address + pic->arg.i;
+        } else if (pic->in == IN_REF_FUNC) {
+          dpme_t e, *pe;
+          e.mod = pic->arg2.mod; e.id = pic->id;
+          pe = bufsearch(&table, &e, modid_cmp);
+          if (!pe) { pe = bufnewbk(&table); *pe = e; }
+          pic->in = IN_I32_CONST;
+          pic->arg.i = (long long)bufoff(&table, pe) + 1; /* elem #0 reserved */
         }
       }
     } else if (pe->iek == IEK_GLOBAL) {
@@ -3147,9 +3217,16 @@ size_t watify_wat_module(wat_module_t* pm)
     pd->ic.arg.u = g_sdbaddr;
   }
   
+  /* add table if needed */
+  if (buflen(&table) > 0) {
+    watie_t *pt = watiebnewbk(&pm->exports, IEK_TABLE);
+    memswap(&pt->table, &table, sizeof(buf_t));
+  }
+  
   chbfini(&dseg);
   dsmebfini(&dsmap);
   buffini(&dpmap);
+  buffini(&table);
   
   /* return absolute address of dseg's end */
   return curaddr;

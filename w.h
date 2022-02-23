@@ -302,7 +302,7 @@ typedef enum insig {
   INSIG_NONE = 0, 
   INSIG_BT, INSIG_L, INSIG_LS_L,
   INSIG_XL, INSIG_XG, INSIG_XT,
-  INSIG_X_Y, INSIG_T,
+  INSIG_X_Y, INSIG_T, INSIG_CI,
   INSIG_I32, INSIG_I64,
   INSIG_F32, INSIG_F64, 
   INSIG_MEMARG, 
@@ -444,7 +444,8 @@ extern const char *instr_name(instr_t in);
 extern const char *valtype_name(valtype_t vt);
 extern instr_t name_instr(const char *name);
 extern insig_t instr_sig(instr_t in);
-extern const char *format_inscode(inscode_t *pic, chbuf_t *pcb);
+extern char *format_funcsig(funcsig_t *pfs, chbuf_t *pcb);
+extern char *format_inscode(inscode_t *pic, chbuf_t *pcb);
 
 
 /* wat text representations */
@@ -452,8 +453,14 @@ extern const char *format_inscode(inscode_t *pic, chbuf_t *pcb);
 
 /* import/export field kind */
 typedef enum iekind {
-  IEK_UNKN = 0, IEK_MEM, IEK_DATA, IEK_GLOBAL, IEK_FUNC
+  IEK_UNKN = 0, IEK_MEM, IEK_DATA, IEK_GLOBAL, IEK_FUNC, IEK_TABLE
 } iekind_t;
+
+/* data placement entry (data/elem) */
+typedef struct dpmentry {
+  sym_t mod, id;  /* mod:id; used for sorting */
+  size_t address; /* absaddr or index */  
+} dpme_t; 
 
 /* import/export field */
 typedef struct watie {
@@ -470,6 +477,7 @@ typedef struct watie {
   int align;      /* DATA: alignment in bytes: 1,2,4,8,16 */
   buf_t data;     /* DATA: bytes (export only) */
   icbuf_t code;   /* FUNC: code (export only) */
+  buf_t table;    /* TABLE: dpme_t */
 } watie_t;
 
 extern watie_t* watieinit(watie_t* pie, iekind_t iek);
