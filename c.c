@@ -3118,6 +3118,12 @@ repeat:
           icbrem(picb, i);
           ++nmods; nexti = i;
         }
+      } else if (pthisi->in == IN_I32_ADD) {
+        if (pprevi->in == IN_I32_CONST && pprevi->arg.i == 0) {
+          icbrem(picb, i-1);
+          icbrem(picb, i-1);
+          ++nmods; nexti = i-1;
+        }
       }
     }
     i = nexti;
