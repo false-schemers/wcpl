@@ -806,18 +806,14 @@
     end
     if (result i32)
     local.get $nptr
-    i32.const 1
-    i32.add
-    i32.load8_s offset=0 align=1
+    i32.load8_s offset=1 align=1
     i32.const 120
     i32.eq
     if (result i32)
     i32.const 1
     else
     local.get $nptr
-    i32.const 1
-    i32.add
-    i32.load8_s offset=0 align=1
+    i32.load8_s offset=1 align=1
     i32.const 88
     i32.eq
     end
@@ -885,18 +881,14 @@
     end
     if (result i32)
     local.get $nptr
-    i32.const 1
-    i32.add
-    i32.load8_s offset=0 align=1
+    i32.load8_s offset=1 align=1
     i32.const 120
     i32.eq
     if (result i32)
     i32.const 1
     else
     local.get $nptr
-    i32.const 1
-    i32.add
-    i32.load8_s offset=0 align=1
+    i32.load8_s offset=1 align=1
     i32.const 88
     i32.eq
     end
@@ -1048,20 +1040,12 @@
     (param $xsubi i32) (result i32) 
     (local $x i64) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) 
     local.get $xsubi
-    i32.const 0
-    i32.const 2
-    i32.mul
-    i32.add
     i32.load16_u offset=0 align=2
     i32.const 65535
     i32.and
     i64.extend_i32_u
     local.get $xsubi
-    i32.const 1
-    i32.const 2
-    i32.mul
-    i32.add
-    i32.load16_u offset=0 align=2
+    i32.load16_u offset=2 align=2
     i32.const 65535
     i32.and
     i64.extend_i32_u
@@ -1070,11 +1054,7 @@
     i64.shl
     i64.add
     local.get $xsubi
-    i32.const 2
-    i32.const 2
-    i32.mul
-    i32.add
-    i32.load16_u offset=0 align=2
+    i32.load16_u offset=4 align=2
     i32.const 65535
     i32.and
     i64.extend_i32_u
@@ -1091,10 +1071,6 @@
     i64.add
     local.set $x
     local.get $xsubi
-    i32.const 0
-    i32.const 2
-    i32.mul
-    i32.add
     local.tee $i1$
     local.get $x
     i32.wrap_i64
@@ -1102,9 +1078,7 @@
     i32.and
     i32.store16 offset=0 align=2
     local.get $xsubi
-    i32.const 1
     i32.const 2
-    i32.mul
     i32.add
     local.tee $i2$
     local.get $x
@@ -1116,9 +1090,7 @@
     i32.and
     i32.store16 offset=0 align=2
     local.get $xsubi
-    i32.const 2
-    i32.const 2
-    i32.mul
+    i32.const 4
     i32.add
     local.tee $i3$
     local.get $x
@@ -1148,17 +1120,11 @@
     (param $seedval i32) 
     (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) 
     ref.data $stdlib:rand48_seed
-    i32.const 0
-    i32.const 2
-    i32.mul
-    i32.add
     local.tee $i1$
     i32.const 13070
     i32.store16 offset=0 align=2
     ref.data $stdlib:rand48_seed
-    i32.const 1
     i32.const 2
-    i32.mul
     i32.add
     local.tee $i2$
     local.get $seedval
@@ -1166,9 +1132,7 @@
     i32.and
     i32.store16 offset=0 align=2
     ref.data $stdlib:rand48_seed
-    i32.const 2
-    i32.const 2
-    i32.mul
+    i32.const 4
     i32.add
     local.tee $i3$
     local.get $seedval
@@ -1546,22 +1510,16 @@
     i32.load offset=0 align=4
     i32.and
     local.get $t
-    i32.const 4
-    i32.add
-    i32.load offset=0 align=4
+    i32.load offset=4 align=4
     i32.eq
     if
     local.get $l
     local.get $t
-    i32.const 12
-    i32.add
-    i32.load offset=0 align=4
+    i32.load offset=12 align=4
     i32.and
     local.tee $l
     local.get $t
-    i32.const 16
-    i32.add
-    i32.load offset=0 align=4
+    i32.load offset=16 align=4
     i32.lt_s
     br_if $ilseq
     local.get $p
@@ -1600,9 +1558,7 @@
     end $3$
     local.get $t
     local.get $t
-    i32.const 1
     i32.const 20
-    i32.mul
     i32.add
     local.set $t
     drop
@@ -1649,22 +1605,16 @@
     drop
     local.get $l
     local.get $t
-    i32.const 12
-    i32.add
-    i32.load offset=0 align=4
+    i32.load offset=12 align=4
     i32.le_s
     if
     local.get $t
-    i32.const 8
-    i32.add
-    i32.load offset=0 align=4
+    i32.load offset=8 align=4
     local.set $c
     local.get $s
     local.tee $i1$
     local.get $t
-    i32.const 4
-    i32.add
-    i32.load offset=0 align=4
+    i32.load offset=4 align=4
     local.get $l
     local.get $c
     i32.shr_s
@@ -1710,9 +1660,7 @@
     end $3$
     local.get $t
     local.get $t
-    i32.const 1
     i32.const 20
-    i32.mul
     i32.add
     local.set $t
     drop
@@ -1783,9 +1731,7 @@
     else
     local.get $op
     local.get $op
-    i32.const 1
     i32.const 4
-    i32.mul
     i32.add
     local.set $op
     drop
@@ -1801,9 +1747,7 @@
     else
     local.get $op
     local.get $op
-    i32.const 1
     i32.const 4
-    i32.mul
     i32.add
     local.set $op
     local.tee $i1$
@@ -1896,9 +1840,7 @@
     end
     local.get $ip
     local.get $ip
-    i32.const 1
     i32.const 4
-    i32.mul
     i32.add
     local.set $ip
     drop

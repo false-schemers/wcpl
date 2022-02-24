@@ -223,9 +223,7 @@
     local.get $x
     i32.load8_u offset=0 align=1
     local.get $x
-    i32.const 1
-    i32.add
-    i32.load8_u offset=0 align=1
+    i32.load8_u offset=1 align=1
     i32.eq
     if
     i32.const 2
@@ -249,9 +247,7 @@
     i32.le_u
     if
     local.get $x
-    i32.const 1
-    i32.add
-    i32.load8_u offset=0 align=1
+    i32.load8_u offset=1 align=1
     local.get $y
     local.get $j
     i32.const 1

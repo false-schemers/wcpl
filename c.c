@@ -3126,6 +3126,32 @@ repeat:
         }
       }
     }
+    if (i >= icblen(picb)) break;
+    if (i > 1) {
+      inscode_t *ppprei = icbref(picb, i-2);
+      inscode_t *pprevi = icbref(picb, i-1);
+      inscode_t *pthisi = icbref(picb, i);
+      if (pthisi->in == IN_I32_MUL) {
+        if (pprevi->in == IN_I32_CONST && ppprei->in == IN_I32_CONST) {
+          unsigned long long n1 = ppprei->arg.u, n2 = pprevi->arg.u;
+          ppprei->arg.u = (n1 * n2) & 0xFFFFFFFF;
+          icbrem(picb, i-1);
+          icbrem(picb, i-1);
+          ++nmods; nexti = i-1; 
+        }
+      } else if (IN_I32_LOAD <= pthisi->in && pthisi->in <= IN_I64_LOAD32_U) {
+        if (pprevi->in == IN_I32_ADD && ppprei->in == IN_I32_CONST) {
+          unsigned long long n = pthisi->arg.u;
+          long long off = ppprei->arg.i;
+          if (off >= 0 && (n + (unsigned long long)off) < 0xFFFFFFFF) { 
+            pthisi->arg.u += (unsigned long long)off;
+            icbrem(picb, i-2);
+            icbrem(picb, i-2);
+            ++nmods; nexti = i-2;
+          }  
+        }
+      }
+    }
     i = nexti;
   }
   if (nmods > 0 && --optlvl > 0) goto repeat;
@@ -3483,7 +3509,7 @@ int main(int argc, char **argv)
   const char *ifile_arg = "-";
   const char *ofile_arg = NULL;
   bool c_opt = false;
-  long lvl_arg = 2;
+  long lvl_arg = 3;
   const char *path;
   dsbuf_t incv, libv; 
   
