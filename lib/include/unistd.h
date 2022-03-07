@@ -23,18 +23,15 @@ extern int ftruncate(int fd, off_t length);
 extern int close(int fd);
 extern int isatty(int fd);
 extern void *sbrk(intptr_t inc); /* inc should be a multiple of 64K */
-
-/* NYI
-extern int fdatasync(int);
-extern int fsync(int);
-extern void _exit(int);
-extern int link(const char *, const char *);
-extern int linkat(int, const char *, int, const char *, int);
-extern ssize_t readlink(const char *restrict, char *restrict, size_t);
-extern ssize_t readlinkat(int, const char *restrict, char *restrict, size_t);
-extern int unlink(const char *);
-extern int unlinkat(int, const char *, int);
-extern int symlink(const char *, const char *);
-extern int symlinkat(const char *, int, const char *);
-extern int access(const char *, int);
-*/
+extern int access(const char *path, int amode);
+extern int unlinkat(int fd, const char *path, int atflag);
+extern int unlink(const char *path);
+extern int linkat(int oldfd, const char *oldpath, int newfd, const char *newpath, int atflag);
+extern int link(const char *oldpath, const char *newpath);
+extern int symlinkat(const char *tgtpath, int fd, const char *lnkpath);
+extern int symlink(const char *tgtpath, const char *lnkpath);
+extern ssize_t readlinkat(int fd, const char *path, char *buf, size_t bufsize);
+extern ssize_t readlink(const char *path, char *buf, size_t bufsize);
+extern int fdatasync(int fd);
+extern int fsync(int fd);
+extern void _exit(int status);

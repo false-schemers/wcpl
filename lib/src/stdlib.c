@@ -252,14 +252,26 @@ void abort(void)
   proc_exit((exitcode_t)EXIT_FAILURE);
 }
 
-int atexit(void (*func)(void))
+typedef void (*atexit_func_t)(void);
+static atexit_func_t atexit_funcs[32];
+static size_t atexit_count;
+
+int atexit(atexit_func_t fn)
 {
-  /* fake */
+  if (atexit_count < 32) {
+    atexit_funcs[atexit_count++] = fn;
+    return 0;
+  } 
   return -1;
 }
 
 void exit(int status)
 {
+  size_t i;
+  for (i = 0; i < atexit_count; ++i) {
+    atexit_func_t fn = atexit_funcs[i];
+    (*fn)();
+  }
   proc_exit((exitcode_t)status);
 }
 

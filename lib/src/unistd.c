@@ -1,8 +1,16 @@
 #include <wasi/api.h>
 #include <assert.h>
 #include <stdint.h>
+#include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
+
+static_assert(SEEK_SET == WHENCE_SET);
+static_assert(SEEK_CUR == WHENCE_CUR);
+static_assert(SEEK_END == WHENCE_END);
+static_assert(sizeof(off_t) == sizeof(filesize_t));
+static_assert(sizeof(off_t) == sizeof(filedelta_t));
 
 ssize_t read(int fd, void *buf, size_t nbyte) 
 {
@@ -78,12 +86,6 @@ ssize_t pwrite(int fd, const void *buf, size_t nbyte, off_t offset)
   return (ssize_t)bytes_written;
 }
 
-static_assert(SEEK_SET == WHENCE_SET);
-static_assert(SEEK_CUR == WHENCE_CUR);
-static_assert(SEEK_END == WHENCE_END);
-static_assert(sizeof(off_t) == sizeof(filesize_t));
-static_assert(sizeof(off_t) == sizeof(filedelta_t));
-
 off_t lseek(int fd, off_t offset, int whence) 
 {
   filesize_t new_offset;
@@ -146,3 +148,168 @@ void *sbrk(intptr_t inc) /* inc should be a multiple of 64K */
   return (void *)(old << 16);
 }
 
+int faccessat(int fd, const char *path, int amode, int atflag) 
+{
+  if ((amode & ~(F_OK | R_OK | W_OK | X_OK)) != 0 ||
+      (atflag & ~AT_EACCESS) != 0) {
+    errno = EINVAL;
+    return -1;
+  }
+  lookupflags_t lookup_flags = LOOKUPFLAGS_SYMLINK_FOLLOW;
+  filestat_t file;
+  errno_t error = path_filestat_get(fd, lookup_flags, path, strlen(path), &file);
+  if (error != 0) {
+    errno = (int)error;
+    return -1;
+  }
+  if (amode != 0) {
+    fdstat_t directory;
+    error = fd_fdstat_get(fd, &directory);
+    if (error != 0) {
+      errno = (int)error;
+      return -1;
+    }
+    rights_t min = 0;
+    if ((amode & R_OK) != 0)
+      min |= file.filetype == FILETYPE_DIRECTORY ? RIGHTS_FD_READDIR : RIGHTS_FD_READ;
+    if ((amode & W_OK) != 0)
+      min |= RIGHTS_FD_WRITE;
+    if ((min & directory.fs_rights_inheriting) != min) {
+      errno = EACCES;
+      return -1;
+    }
+  }
+  return 0;
+}
+
+int access(const char *path, int amode)
+{
+  char *relpath;
+  int dirfd = find_relpath(path, &relpath);
+  if (dirfd == -1) {
+    errno = ENOTCAPABLE;
+    return -1;
+  }
+  return faccessat(dirfd, relpath, amode, 0);
+}
+
+int unlinkat(int fd, const char *path, int atflag) 
+{
+  errno_t error;
+  if ((atflag & AT_REMOVEDIR) != 0)
+    error = path_remove_directory(fd, path, strlen(path));
+  else 
+    error = path_unlink_file(fd, path, strlen(path));
+  if (error != 0) {
+      errno = (int)error;
+      return -1;
+  }
+  return 0;
+}
+
+int unlink(const char *path) 
+{
+  char *relpath;
+  int dirfd = find_relpath(path, &relpath);
+  if (dirfd == -1) {
+    errno = ENOTCAPABLE;
+    return -1;
+  }
+  return unlinkat(dirfd, relpath, 0);
+}
+
+int linkat(int oldfd, const char *oldpath, int newfd, const char *newpath, int atflag) 
+{
+  lookupflags_t lookup_flags = 0;
+  if ((atflag & AT_SYMLINK_FOLLOW) != 0)
+    lookup_flags |= LOOKUPFLAGS_SYMLINK_FOLLOW;
+  errno_t error = path_link(oldfd, lookup_flags, 
+    oldpath, strlen(oldpath), newfd, newpath, strlen(newpath));
+  if (error != 0) {
+    errno = (int)error;
+    return -1;
+  }
+  return 0;
+}
+
+int link(const char *oldpath, const char *newpath) 
+{
+  char *oldrelpath;
+  int olddirfd = find_relpath(oldpath, &oldrelpath);
+  if (olddirfd != -1) {
+    char *newrelpath;
+    int newdirfd = find_relpath(newpath, &newrelpath);
+    if (newdirfd != -1)
+      return linkat(olddirfd, oldrelpath, newdirfd, newrelpath, 0);
+  }
+  errno = ENOTCAPABLE;
+  return -1;
+}
+
+int symlinkat(const char *tgtpath, int fd, const char *lnkpath) 
+{
+  errno_t error = path_symlink(tgtpath, strlen(tgtpath), fd, lnkpath, strlen(lnkpath));
+  if (error != 0) {
+    errno = (int)error;
+    return -1;
+  }
+  return 0;
+}
+
+int symlink(const char *tgtpath, const char *lnkpath) 
+{
+  char *relpath;
+  int dirfd = find_relpath(lnkpath, &relpath);
+  if (dirfd == -1) {
+    errno = ENOTCAPABLE;
+    return -1;
+  }
+  return symlinkat(tgtpath, dirfd, relpath);
+}
+
+ssize_t readlinkat(int fd, const char *path, char *buf, size_t bufsize) 
+{
+  size_t bufused;
+  errno_t error = path_readlink(fd, path, strlen(path), (uint8_t*)buf, bufsize, &bufused);
+  if (error != 0) {
+    errno = (int)error;
+    return -1;
+  }
+  return (ssize_t)bufused;
+}
+
+ssize_t readlink(const char *path, char *buf, size_t bufsize)
+{
+  char *relpath;
+  int dirfd = find_relpath(path, &relpath);
+  if (dirfd == -1) {
+    errno = ENOTCAPABLE;
+    return -1;
+  }
+  return readlinkat(dirfd, relpath, buf, bufsize);
+}
+
+int fdatasync(int fd)
+{
+  errno_t error = fd_datasync(fd);
+  if (error != 0) {
+    errno = (error == ERRNO_NOTCAPABLE) ? EBADF : (int)error;
+    return -1;
+  }
+  return 0;
+}
+
+int fsync(int fd) 
+{
+  errno_t error = fd_sync(fd);
+  if (error != 0) {
+    errno = (error == ERRNO_NOTCAPABLE) ? EINVAL : (int)error;
+    return -1;
+  }
+  return 0;
+}
+
+void _exit(int status) 
+{
+  proc_exit(status);
+}
