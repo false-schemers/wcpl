@@ -1182,6 +1182,28 @@ int case_cmp(const void *p1, const void *p2)
   return i1 < i2 ? -1 : 1;
 }
 
+#if 0 /* NYI */
+/* convert init display to a bunch of assignments */
+static void init_wasmify(node_t *pvn, node_t *ptn, node_t *pdn, size_t i, node_t *pbn)
+{
+  /* input assertion: elements pdn[i]... fill bulk type ptn */
+  if (ptn->ts == TS_ARRAY) {
+    int count = 0; node_t *petn, *pcn; assert(ndlen(ptn) == 2);
+    petn = ndref(ptn, 0); pcn = ndref(ptn, 1); 
+    if (!arithmetic_eval_to_int(pcn, &count) || count <= 0)
+       n2eprintf(pcn, ptn, "can't init arrays of nonconstant/nonpositive size");
+    while (count > 0) {
+      if (i < 
+    }
+    
+  } else if (ptn->ts == TS_STRUCT) {
+  } else if (ptn->ts == TS_UNION) {
+  } else {
+    n2eprintf(pvn, pdn, "invalid type for {} initializer");
+  }
+}
+#endif
+
 /* convert node wasm conventions, simplify operators and control */
 static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
 {
@@ -1226,9 +1248,6 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
         } break;
       }
     } break;
-    case NT_TYPE: {
-      /* nothing of interest in here */
-    } break;
     case NT_POSTFIX: {
       assert(ndlen(pn) == 1);
       expr_wasmify(ndref(pn, 0), pvib, plib);
@@ -1239,6 +1258,23 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
         pn->op = TT_DOT;
       } 
     } break;
+#if 0 /* NYI */
+    case NT_ASSIGN: {
+      node_t *pln, *prn;
+      assert(ndlen(pn) == 2);
+      pln = ndref(pn, 0), prn = ndref(pn, 1);
+      if (pn->op == TT_ASN && pln->nt == NT_IDENTIFIER && prn->nt == NT_DISPLAY) {
+        node_t nd = mknd(); ndset(&nd, NT_BLOCK, pn->pwsid, pn->startpos);
+        assert(ndlen(prn) >= 1 && ndref(prn, 0)->nt == NT_TYPE);
+        init_wasmify(pln, ndref(prn, 0), prn, 1, &nd);
+        ndswap(pn, &nd); ndfini(&nd);
+        expr_wasmify(pn, pvib, plib);
+      } else {
+        expr_wasmify(pln, pvib, plib);
+        expr_wasmify(prn, pvib, plib);
+      }
+    } break;
+#endif
     case NT_WHILE: {
       /* while (x) s => {{cl: if (x) {s; goto cl;}} bl:} */
       sym_t bl = rpalloc_label(), cl = rpalloc_label();
@@ -1394,6 +1430,9 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
       if (pn->name) {
         bufpopbk(plib);
       }
+    } break;
+    case NT_TYPE: {
+      /* nothing of interest in here */
     } break;
     default: {
       size_t i;

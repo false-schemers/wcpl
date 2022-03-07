@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <ctype.h>
 #include <math.h>
+#include <unistd.h>
 #include <wasi/api.h>
 
 double atof(const char *s)
@@ -244,8 +245,6 @@ void srand(unsigned seedval)
 }
 
 
-/* malloc & friends is missing */
-
 /* system */
 
 void abort(void)
@@ -264,10 +263,7 @@ void exit(int status)
   proc_exit((exitcode_t)status);
 }
 
-char *getenv(const char *name)
-{
-  /* fake; TODO: use WASI environ_get */
-}
+/* char *getenv(const char *name) */
 
 /* system() is absent */
 
@@ -316,6 +312,139 @@ void qsort(void *base, size_t nmemb, size_t size, int (*cmp)(const void *, const
   } while (gap > 1 || swapped);
 }
 
+
+/* memory allocator (after k&R) */
+
+#define WASMPAGESIZE 65536
+
+typedef union header {
+  struct {
+    union header *next;
+    size_t size;
+  } s;
+  char a[16];
+} header_t;
+
+static_assert(sizeof(header_t) == 16, "header is not 16 bytes long");
+#define NALLOC (WASMPAGESIZE/sizeof(header_t)) 
+
+static header_t g_base;
+static header_t *g_freep;
+
+static header_t *morecore(size_t nunits)
+{
+  assert(nunits > 0);
+  nunits = ((nunits + NALLOC - 1) / NALLOC) * NALLOC;
+
+  void *freemem = sbrk(WASMPAGESIZE);
+  if (freemem == (void *)-1) return NULL;
+
+  header_t *insertp = (header_t *)freemem;
+  insertp->s.size = nunits;
+
+  free((void *)(insertp + 1));
+
+  return g_freep;
+}
+
+void *malloc(size_t nbytes)
+{
+  header_t *currp, *prevp;
+  /* each unit is a chunk of sizeof(header_t) bytes */
+  size_t nunits = ((nbytes + sizeof(header_t) - 1) / sizeof(header_t)) + 1; 
+
+  if (g_freep == NULL) {
+    g_base.s.next = &g_base;
+    g_base.s.size = 0;
+    g_freep = &g_base;
+  }
+
+  prevp = g_freep;
+  currp = prevp->s.next;
+
+  for (;; prevp = currp, currp = currp->s.next) {
+    if (currp->s.size >= nunits) {
+      if (currp->s.size == nunits) {
+        prevp->s.next = currp->s.next;
+      } else {
+        currp->s.size -= nunits;
+        currp += currp->s.size;
+        currp->s.size = nunits;
+      }
+      g_freep = prevp;
+      return (void *)(currp + 1);
+    }
+
+    if (currp == g_freep) {
+      if ((currp = morecore(nunits)) == NULL) {
+        errno = ENOMEM;
+        return NULL;
+      }
+    } 
+  }
+  
+  return NULL;
+}
+
+void free(void *ptr)
+{
+  if (!ptr) return;
+
+  header_t *currp, *insertp = ((header_t *)ptr) - 1;
+
+  for (currp = g_freep; !((currp < insertp) && (insertp < currp->s.next)); currp = currp->s.next) {
+    if ((currp >= currp->s.next) && ((currp < insertp) || (insertp < currp->s.next))) break;
+  }
+
+  if ((insertp + insertp->s.size) == currp->s.next) {
+    insertp->s.size += currp->s.next->s.size;
+    insertp->s.next = currp->s.next->s.next;
+  } else {
+    insertp->s.next = currp->s.next;
+  }
+
+  if ((currp + currp->s.size) == insertp) {
+    currp->s.size += insertp->s.size;
+    currp->s.next = insertp->s.next;
+  } else {
+    currp->s.next = insertp;
+  }
+
+  g_freep = currp;
+}
+
+void *calloc(size_t nels, size_t esz)
+{
+  size_t nbytes = nels * esz;
+  void *ptr = malloc(nbytes);
+  if (ptr) memset(ptr, 0, nbytes);
+  return ptr;
+}
+
+void *realloc(void *ptr, size_t nbytes)
+{
+  if (!ptr) return malloc(nbytes);
+  if (!nbytes) {
+    free(ptr);
+    return NULL;
+  }
+
+  header_t *currp = ((header_t *)ptr) - 1;
+  size_t nunits = ((nbytes + sizeof(header_t) - 1) / sizeof(header_t)) + 1;
+  if (currp->s.size <= nunits) return ptr;
+  size_t currnb = currp->s.size * sizeof(header_t);
+
+  /* todo: try to merge with next free block if possible */
+  void *newptr = malloc(nbytes);
+  if (!newptr) return NULL;
+
+  memcpy(newptr, ptr, currnb < nbytes ? currnb : nbytes);
+  free(ptr);
+  return newptr;
+}
+
+
+/* misc */
 
 int abs(int n)
 {

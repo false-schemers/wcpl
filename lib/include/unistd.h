@@ -1,11 +1,7 @@
 /* standard symbolic constants and types (abridged) */
 
 #pragma once
-
-/* size_t is built-in */
-/* ssize_t is built-in */
-/* intptr_t is built-in */
-typedef int64_t off_t; /* = WASI filedelta_t */
+#include <sys/types.h>
 
 #define STDIN_FILENO  (0)
 #define STDOUT_FILENO (1)

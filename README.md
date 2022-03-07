@@ -1,7 +1,7 @@
 WCPL
 ====
 
-Compiler for a subset of C targeting Webassembly (not yet functional)
+Compiler/linker/libc for a subset of C targeting Webassembly (partly functional)
 
 # C features supported
 
@@ -12,6 +12,7 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - limited macros: `#define FOO 1234`, `#define FOO (expr)`, `#define FOO do {...} while (0)` as well as 
   corresponding parameterized forms (`#define FOO(a, b) ...`)   
 - `const` and `volatile` specifiers are allowed but ignored
+- variables can be declared at any top-level position in a block
 - labels can only label starts/ends of sub-blocks; `goto` can only target labels in the same block or its parent blocks
 - assignment of structures/unions (and same-type arrays as well)
 - vararg macros and stdarg.h
@@ -30,14 +31,16 @@ Compiler for a subset of C targeting Webassembly (not yet functional)
 - taking address of a global scalar var (?)
 - `{}` initializers for locals
 - `static` variables in function scope
+- structures/unions as parameters
+- instrumenting implicit return paths from a non-void function
+- fixme: NULL is not a constant for global init?
 
 # C features that won't be supported
 
-- features beyond C90/ANSI-C other than the ones explicitly mentioned above
+- features beyond C90/ANSI-C other than the ones explicitly listed as supported
 - `#if`-category directives for conditional compilation
 - token-based macros (expression-based macros work as described above)
 - bit fields
-- structures/unions as parameters and return values
 - free-form `switch`: nothing but cases in curly braces after test will be supported
 - free-form labels and `goto`
 - `setjmp`/`longjmp` (not in WASM model)

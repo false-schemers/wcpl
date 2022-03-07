@@ -1,4 +1,5 @@
 /* WASI API: https://github.com/WebAssembly/WASI/ */
+/* NB: this is 'real' WASI API (see __wasilibc_real.c) */
 
 #pragma module "wasi_snapshot_preview1"
 #pragma once
@@ -784,7 +785,8 @@ extern errno_t fd_write(
 extern errno_t path_create_directory(
   fd_t fd,
   /* The path at which to create the directory. */
-  const char *path
+  const char *path,
+  size_t path_len /* e.g. strlen(path) */
 );
 
 /* Return the attributes of a file or directory.
@@ -797,6 +799,7 @@ extern errno_t path_filestat_get(
   lookupflags_t flags,
   /* The path of the file or directory to inspect. */
   const char *path,
+  size_t path_len, /* e.g. strlen(path) */
   filestat_t *retptr0
 );
 
@@ -808,6 +811,7 @@ extern errno_t path_filestat_set_times(
   lookupflags_t flags,
   /* The path of the file or directory to operate on. */
   const char *path,
+  size_t path_len, /* e.g. strlen(path) */
   /* The desired values of the data access timestamp. */
   timestamp_t atim,
   /* The desired values of the data modification timestamp. */
@@ -824,10 +828,12 @@ extern errno_t path_link(
   lookupflags_t old_flags,
   /* The source path from which to link. */
   const char *old_path,
+  size_t old_path_len, /* e.g. strlen(old_path) */
   /* The working directory at which the resolution of the new path starts. */
   fd_t new_fd,
   /* The destination path at which to create the hard link. */
-  const char *new_path
+  const char *new_path,
+  size_t new_path_len /* e.g. strlen(new_path) */
 );
 
 /* Open a file or directory.
@@ -846,6 +852,7 @@ extern errno_t path_open(
   /* The relative path of the file or directory to open, relative to the
    * `path_open::fd` directory. */
   const char *path,
+  size_t path_len, /* e.g. strlen(path) */
   /* The method by which to open the file. */
   oflags_t oflags,
   /* The initial rights of the newly created file descriptor. The
@@ -869,6 +876,7 @@ extern errno_t path_readlink(
   fd_t fd,
   /* The path of the symbolic link from which to read. */
   const char *path,
+  size_t path_len, /* e.g. strlen(path) */
   /* The buffer to which to write the contents of the symbolic link. */
   uint8_t *buf,
   size_t buf_len,
@@ -881,7 +889,8 @@ extern errno_t path_readlink(
 extern errno_t path_remove_directory(
   fd_t fd,
   /* The path to a directory to remove. */
-  const char *path
+  const char *path,
+  size_t path_len /* e.g. strlen(path) */
 );
 
 /* Rename a file or directory.
@@ -890,10 +899,12 @@ extern errno_t path_rename(
   fd_t fd,
   /* The source path of the file or directory to rename. */
   const char *old_path,
+  size_t old_path_len, /* e.g. strlen(old_path) */
   /* The working directory at which the resolution of the new path starts. */
   fd_t new_fd,
   /* The destination path to which to rename the file or directory. */
-  const char *new_path
+  const char *new_path,
+  size_t new_path_len /* e.g. strlen(new_path) */  
 );
 
 /* Create a symbolic link.
@@ -901,9 +912,11 @@ extern errno_t path_rename(
 extern errno_t path_symlink(
   /* The contents of the symbolic link. */
   const char *old_path,
+  size_t old_path_len, /* e.g. strlen(old_path) */
   fd_t fd,
   /* The destination path at which to create the symbolic link. */
-  const char *new_path
+  const char *new_path,
+  size_t new_path_len /* e.g. strlen(new_path) */
 );
 
 /* Unlink a file.
@@ -912,7 +925,8 @@ extern errno_t path_symlink(
 extern errno_t path_unlink_file(
   fd_t fd,
   /* The path to a file to unlink. */
-  const char *path
+  const char *path,
+  size_t path_len /* e.g. strlen(path) */
 );
 
 /* Concurrently poll for the occurrence of a set of events.
