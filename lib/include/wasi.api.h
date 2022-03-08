@@ -232,7 +232,7 @@ typedef uint8_t filetype_t;
 #define FILETYPE_SYMBOLIC_LINK 7 /* The file refers to a symbolic link inode. */
 
 /* A directory entry. */
-typedef struct dirent {
+typedef struct dirent_tag {
   dircookie_t d_next; /* The offset of the next directory entry stored in this directory. */
   inode_t d_ino; /* The serial number of the file referred to by this directory entry. */
   dirnamlen_t d_namlen; /* The length of the name of the directory entry. */

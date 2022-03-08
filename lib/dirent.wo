@@ -1,0 +1,947 @@
+(module $dirent
+  (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
+  (import "env" "__linear_memory" (memory $env:__linear_memory 0))
+  (import "wasi_snapshot_preview1" "fd_readdir" (func $wasi_snapshot_preview1:fd_readdir (param i32) (param i32) (param i32) (param i64) (param i32) (result i32)))
+  (import "string" "memcpy" (func $string:memcpy (param i32) (param i32) (param i32) (result i32)))
+  (import "string" "strcoll" (func $string:strcoll (param i32) (param i32) (result i32)))
+  (import "string" "memchr" (func $string:memchr (param i32) (param i32) (param i32) (result i32)))
+  (import "errno" "errno" (global $errno:errno i32))
+  (import "stdlib" "free" (func $stdlib:free (param i32)))
+  (import "stdlib" "malloc" (func $stdlib:malloc (param i32) (result i32)))
+  (import "stdlib" "realloc" (func $stdlib:realloc (param i32) (param i32) (result i32)))
+  (import "stdlib" "qsort" (func $stdlib:qsort (param i32) (param i32) (param i32) (param i32)))
+  (import "fcntl" "openat" (func $fcntl:openat (param i32) (param i32) (param i32) (result i32)))
+  (import "fcntl" "find_relpath" (func $fcntl:find_relpath (param i32) (param i32) (result i32)))
+  (import "unistd" "close" (func $unistd:close (param i32) (result i32)))
+  (func $dirent:fdopendir (export "fdopendir")
+    (param $fd i32) (result i32) 
+    (local $dirp i32) (local $error i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) 
+    i32.const 40
+    call $stdlib:malloc
+    local.tee $dirp
+    i32.const 0
+    i32.eq
+    if
+    i32.const 0
+    return
+    end
+    local.get $dirp
+    i32.const 16
+    i32.add
+    local.tee $i1$
+    i32.const 4096
+    call $stdlib:malloc
+    i32.store offset=0 align=4
+    local.get $dirp
+    i32.load offset=16 align=4
+    i32.const 0
+    i32.eq
+    if
+    local.get $dirp
+    call $stdlib:free
+    i32.const 0
+    return
+    end
+    local.get $fd
+    local.get $dirp
+    i32.load offset=16 align=4
+    i32.const 4096
+    i32.const 0
+    i64.extend_i32_u
+    local.get $dirp
+    i32.const 28
+    i32.add
+    call $wasi_snapshot_preview1:fd_readdir
+    local.tee $error
+    i32.const 65535
+    i32.and
+    i32.const 0
+    i32.ne
+    if
+    local.get $dirp
+    i32.load offset=16 align=4
+    call $stdlib:free
+    local.get $dirp
+    call $stdlib:free
+    local.get $error
+    i32.const 65535
+    i32.and
+    global.set $errno:errno
+    i32.const 0
+    return
+    end
+    local.get $dirp
+    local.tee $i2$
+    local.get $fd
+    i32.store offset=0 align=4
+    local.get $dirp
+    i32.const 8
+    i32.add
+    local.tee $i3$
+    i32.const 0
+    i64.extend_i32_u
+    i64.store offset=0 align=8
+    local.get $dirp
+    i32.const 20
+    i32.add
+    local.tee $i4$
+    i32.const 0
+    i32.store offset=0 align=4
+    local.get $dirp
+    i32.const 24
+    i32.add
+    local.tee $i5$
+    i32.const 4096
+    i32.store offset=0 align=4
+    local.get $dirp
+    i32.const 32
+    i32.add
+    local.tee $i6$
+    i32.const 0
+    i32.store offset=0 align=4
+    local.get $dirp
+    i32.const 36
+    i32.add
+    local.tee $i7$
+    i32.const 1
+    i32.store offset=0 align=4
+    local.get $dirp
+    return
+  )
+  (func $dirent:fdclosedir (export "fdclosedir")
+    (param $dirp i32) (result i32) 
+    (local $fd i32) 
+    local.get $dirp
+    i32.load offset=0 align=4
+    local.set $fd
+    local.get $dirp
+    i32.load offset=16 align=4
+    call $stdlib:free
+    local.get $dirp
+    i32.load offset=32 align=4
+    call $stdlib:free
+    local.get $dirp
+    call $stdlib:free
+    local.get $fd
+    return
+  )
+  (func $dirent:opendirat (export "opendirat")
+    (param $dirfd i32) (param $dirname i32) (result i32) 
+    (local $fd i32) (local $result i32) 
+    local.get $dirfd
+    local.get $dirname
+    i32.const 67117060
+    call $fcntl:openat
+    local.tee $fd
+    i32.const -1
+    i32.eq
+    if
+    i32.const 0
+    return
+    end
+    local.get $fd
+    call $dirent:fdopendir
+    local.tee $result
+    i32.const 0
+    i32.eq
+    if
+    local.get $fd
+    call $unistd:close
+    drop
+    end
+    local.get $result
+    return
+  )
+  (func $dirent:opendir (export "opendir")
+    (param $dirname i32) (result i32) 
+    (local $dirfd i32) (local $fp$ i32) 
+    global.get $env:__stack_pointer
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    local.set $fp$
+    local.get $dirname
+    local.get $fp$
+    call $fcntl:find_relpath
+    local.tee $dirfd
+    i32.const -1
+    i32.eq
+    if
+    i32.const 76
+    global.set $errno:errno
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const 0
+    return
+    end
+    local.get $fp$
+    global.set $env:__stack_pointer
+    local.get $dirfd
+    local.get $fp$
+    i32.load offset=0 align=4
+    call $dirent:opendirat
+    return
+  )
+  (func $dirent:dirfd (export "dirfd")
+    (param $dirp i32) (result i32) 
+    local.get $dirp
+    i32.load offset=0 align=4
+    return
+  )
+  (func $dirent:closedir (export "closedir")
+    (param $dirp i32) (result i32) 
+    local.get $dirp
+    call $dirent:fdclosedir
+    call $unistd:close
+    return
+  )
+  (func $dirent:readdir (export "readdir")
+    (param $dirp i32) (result i32) 
+    (local $buffer_left i32) (local $entry_size i32) (local $new_size i32) (local $new_buffer i32) (local $name i32) (local $new_size i32) (local $new_buffer i32) (local $dirent i32) (local $error i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) (local $i10$ i32) (local $i11$ i32) (local $i13$ i32) (local $i12$ i32) (local $i14$ i32) 
+    global.get $env:__stack_pointer
+    global.get $env:__stack_pointer
+    i32.const 32
+    i32.sub
+    global.set $env:__stack_pointer
+    local.set $fp$
+    block $2$
+    loop $1$
+    i32.const 0
+    br_if $2$
+    block $3$
+    block $read_entries
+    local.get $dirp
+    i32.load offset=28 align=4
+    local.get $dirp
+    i32.load offset=20 align=4
+    i32.sub
+    local.tee $buffer_left
+    i32.const 24
+    i32.lt_u
+    if
+    local.get $dirp
+    i32.load offset=28 align=4
+    local.get $dirp
+    i32.load offset=24 align=4
+    i32.lt_u
+    if
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const 0
+    return
+    end
+    br $read_entries
+    end
+    local.get $fp$
+    local.get $dirp
+    i32.load offset=16 align=4
+    local.get $dirp
+    i32.load offset=20 align=4
+    i32.add
+    i32.const 24
+    call $string:memcpy
+    drop
+    i32.const 24
+    local.get $fp$
+    i32.load offset=16 align=4
+    i32.add
+    local.set $entry_size
+    local.get $fp$
+    i32.load offset=16 align=4
+    i32.const 0
+    i32.eq
+    if
+    local.get $dirp
+    i32.const 20
+    i32.add
+    local.tee $i1$
+    local.get $i1$
+    i32.load offset=0 align=4
+    local.get $entry_size
+    i32.add
+    i32.store offset=0 align=4
+    br $3$
+    end
+    local.get $buffer_left
+    local.get $entry_size
+    i32.lt_u
+    if
+    local.get $dirp
+    i32.load offset=24 align=4
+    local.get $entry_size
+    i32.lt_u
+    if
+    local.get $dirp
+    i32.load offset=24 align=4
+    local.set $new_size
+    block $4$
+    loop $5$
+    local.get $new_size
+    local.get $entry_size
+    i32.lt_u
+    if
+    local.get $new_size
+    i32.const 2
+    i32.mul
+    local.set $new_size
+    br $5$
+    end
+    end $5$
+    end $4$
+    local.get $dirp
+    i32.load offset=16 align=4
+    local.get $new_size
+    call $stdlib:realloc
+    local.tee $new_buffer
+    i32.const 0
+    i32.eq
+    if
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const 0
+    return
+    end
+    local.get $dirp
+    i32.const 16
+    i32.add
+    local.tee $i2$
+    local.get $new_buffer
+    i32.store offset=0 align=4
+    local.get $dirp
+    i32.const 24
+    i32.add
+    local.tee $i3$
+    local.get $new_size
+    i32.store offset=0 align=4
+    end
+    br $read_entries
+    end
+    local.get $dirp
+    i32.load offset=16 align=4
+    local.get $dirp
+    i32.load offset=20 align=4
+    i32.add
+    i32.const 24
+    i32.add
+    local.tee $name
+    i32.const 0
+    local.get $fp$
+    i32.load offset=16 align=4
+    call $string:memchr
+    i32.const 0
+    i32.ne
+    if
+    local.get $dirp
+    i32.const 20
+    i32.add
+    local.tee $i4$
+    local.get $i4$
+    i32.load offset=0 align=4
+    local.get $entry_size
+    i32.add
+    i32.store offset=0 align=4
+    br $3$
+    end
+    local.get $dirp
+    i32.load offset=36 align=4
+    i32.const 9
+    local.get $fp$
+    i32.load offset=16 align=4
+    i32.add
+    i32.const 1
+    i32.add
+    i32.lt_u
+    if
+    local.get $dirp
+    i32.load offset=36 align=4
+    local.set $new_size
+    block $6$
+    loop $7$
+    local.get $new_size
+    i32.const 9
+    local.get $fp$
+    i32.load offset=16 align=4
+    i32.add
+    i32.const 1
+    i32.add
+    i32.lt_u
+    if
+    local.get $new_size
+    i32.const 2
+    i32.mul
+    local.set $new_size
+    br $7$
+    end
+    end $7$
+    end $6$
+    local.get $dirp
+    i32.load offset=32 align=4
+    local.get $new_size
+    call $stdlib:realloc
+    local.tee $new_buffer
+    i32.const 0
+    i32.eq
+    if
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const 0
+    return
+    end
+    local.get $dirp
+    i32.const 32
+    i32.add
+    local.tee $i5$
+    local.get $new_buffer
+    i32.store offset=0 align=4
+    local.get $dirp
+    i32.const 36
+    i32.add
+    local.tee $i6$
+    local.get $new_size
+    i32.store offset=0 align=4
+    end
+    local.get $dirp
+    i32.load offset=32 align=4
+    local.tee $dirent
+    local.tee $i7$
+    local.get $fp$
+    i64.load offset=8 align=8
+    i64.store offset=0 align=8
+    local.get $dirent
+    i32.const 8
+    i32.add
+    local.tee $i8$
+    local.get $fp$
+    i32.load8_u offset=20 align=1
+    i32.store8 offset=0 align=1
+    local.get $dirent
+    i32.const 9
+    i32.add
+    local.get $name
+    local.get $fp$
+    i32.load offset=16 align=4
+    call $string:memcpy
+    drop
+    local.get $dirent
+    i32.const 9
+    i32.add
+    local.get $fp$
+    i32.load offset=16 align=4
+    i32.add
+    local.tee $i9$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    local.get $dirp
+    i32.const 8
+    i32.add
+    local.tee $i10$
+    local.get $fp$
+    i64.load offset=0 align=8
+    i64.store offset=0 align=8
+    local.get $dirp
+    i32.const 20
+    i32.add
+    local.tee $i11$
+    local.get $i11$
+    i32.load offset=0 align=4
+    local.get $entry_size
+    i32.add
+    i32.store offset=0 align=4
+    local.get $fp$
+    global.set $env:__stack_pointer
+    local.get $dirent
+    return
+    end $read_entries
+    local.get $dirp
+    i32.const 28
+    i32.add
+    local.tee $i13$
+    local.get $dirp
+    i32.const 20
+    i32.add
+    local.tee $i12$
+    local.get $dirp
+    i32.load offset=24 align=4
+    i32.store offset=0 align=4
+    local.get $i12$
+    i32.load offset=0 align=4
+    i32.store offset=0 align=4
+    local.get $dirp
+    i32.load offset=0 align=4
+    local.get $dirp
+    i32.load offset=16 align=4
+    local.get $dirp
+    i32.load offset=24 align=4
+    local.get $dirp
+    i64.load offset=8 align=8
+    local.get $dirp
+    i32.const 28
+    i32.add
+    call $wasi_snapshot_preview1:fd_readdir
+    local.tee $error
+    i32.const 65535
+    i32.and
+    i32.const 0
+    i32.ne
+    if
+    local.get $error
+    i32.const 65535
+    i32.and
+    global.set $errno:errno
+    br $2$
+    end
+    local.get $dirp
+    i32.const 20
+    i32.add
+    local.tee $i14$
+    i32.const 0
+    i32.store offset=0 align=4
+    end $3$
+    br $1$
+    end $1$
+    end $2$
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const 0
+    return
+  )
+  (func $dirent:rewinddir (export "rewinddir")
+    (param $dirp i32) 
+    (local $i1$ i32) (local $i3$ i32) (local $i2$ i32) 
+    local.get $dirp
+    i32.const 8
+    i32.add
+    local.tee $i1$
+    i32.const 0
+    i64.extend_i32_u
+    i64.store offset=0 align=8
+    local.get $dirp
+    i32.const 28
+    i32.add
+    local.tee $i3$
+    local.get $dirp
+    i32.const 20
+    i32.add
+    local.tee $i2$
+    local.get $dirp
+    i32.load offset=24 align=4
+    i32.store offset=0 align=4
+    local.get $i2$
+    i32.load offset=0 align=4
+    i32.store offset=0 align=4
+  )
+  (func $dirent:seekdir (export "seekdir")
+    (param $dirp i32) (param $loc i32) 
+    (local $i1$ i32) (local $i3$ i32) (local $i2$ i32) 
+    local.get $dirp
+    i32.const 8
+    i32.add
+    local.tee $i1$
+    local.get $loc
+    i64.extend_i32_u
+    i64.store offset=0 align=8
+    local.get $dirp
+    i32.const 28
+    i32.add
+    local.tee $i3$
+    local.get $dirp
+    i32.const 20
+    i32.add
+    local.tee $i2$
+    local.get $dirp
+    i32.load offset=24 align=4
+    i32.store offset=0 align=4
+    local.get $i2$
+    i32.load offset=0 align=4
+    i32.store offset=0 align=4
+  )
+  (func $dirent:telldir (export "telldir")
+    (param $dirp i32) (result i32) 
+    local.get $dirp
+    i64.load offset=8 align=8
+    i32.wrap_i64
+    return
+  )
+  (func $dirent:sel_true
+    (param $de i32) (result i32) 
+    i32.const 1
+    return
+  )
+  (func $dirent:scandirat (export "scandirat")
+    (param $dirfd i32) (param $dir i32) (param $namelist i32) (param $sel i32) (param $compar i32) (result i32) 
+    (local $fd i32) (local $buffer_size i32) (local $buffer i32) (local $buffer_processed i32) (local $dirents i32) (local $dirents_size i32) (local $dirents_used i32) (local $cookie i64) (local $buffer_left i32) (local $entry_size i32) (local $new_buffer i32) (local $name i32) (local $dirent i32) (local $new_dirents i32) (local $error i32) (local $i i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) 
+    global.get $env:__stack_pointer
+    global.get $env:__stack_pointer
+    i32.const 32
+    i32.sub
+    global.set $env:__stack_pointer
+    local.set $fp$
+    local.get $sel
+    i32.const 0
+    i32.eq
+    if
+    ref.func $dirent:sel_true
+    local.set $sel
+    end
+    local.get $dirfd
+    local.get $dir
+    i32.const 67117060
+    call $fcntl:openat
+    local.tee $fd
+    i32.const -1
+    i32.eq
+    if
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const -1
+    return
+    end
+    i32.const 4096
+    local.tee $buffer_size
+    call $stdlib:malloc
+    local.tee $buffer
+    i32.const 0
+    i32.eq
+    if
+    local.get $fd
+    call $unistd:close
+    drop
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const -1
+    return
+    end
+    block $bad
+    local.get $buffer_size
+    local.set $buffer_processed
+    local.get $fp$
+    local.tee $i1$
+    local.get $buffer_size
+    i32.store offset=0 align=4
+    i32.const 0
+    local.set $dirents
+    i32.const 0
+    local.set $dirents_size
+    i32.const 0
+    local.set $dirents_used
+    i32.const 0
+    i64.extend_i32_u
+    local.set $cookie
+    block $2$
+    loop $1$
+    i32.const 0
+    br_if $2$
+    block $3$
+    block $read_entries
+    local.get $fp$
+    i32.load offset=0 align=4
+    local.get $buffer_processed
+    i32.sub
+    local.tee $buffer_left
+    i32.const 24
+    i32.lt_u
+    if
+    local.get $fp$
+    i32.load offset=0 align=4
+    local.get $buffer_size
+    i32.lt_u
+    br_if $2$
+    br $read_entries
+    end
+    local.get $fp$
+    i32.const 8
+    i32.add
+    local.get $buffer
+    local.get $buffer_processed
+    i32.add
+    i32.const 24
+    call $string:memcpy
+    drop
+    i32.const 24
+    local.get $fp$
+    i32.load offset=24 align=4
+    i32.add
+    local.set $entry_size
+    local.get $fp$
+    i32.load offset=24 align=4
+    i32.const 0
+    i32.eq
+    if
+    local.get $buffer_processed
+    local.get $entry_size
+    i32.add
+    local.set $buffer_processed
+    br $3$
+    end
+    local.get $buffer_left
+    local.get $entry_size
+    i32.lt_u
+    if
+    block $4$
+    loop $5$
+    local.get $buffer_size
+    local.get $entry_size
+    i32.lt_u
+    if
+    local.get $buffer_size
+    i32.const 2
+    i32.mul
+    local.set $buffer_size
+    br $5$
+    end
+    end $5$
+    end $4$
+    local.get $buffer
+    local.get $buffer_size
+    call $stdlib:realloc
+    local.tee $new_buffer
+    i32.const 0
+    i32.eq
+    br_if $bad
+    local.get $new_buffer
+    local.set $buffer
+    br $read_entries
+    end
+    local.get $buffer
+    local.get $buffer_processed
+    i32.add
+    i32.const 24
+    i32.add
+    local.set $name
+    local.get $buffer_processed
+    local.get $entry_size
+    i32.add
+    local.set $buffer_processed
+    local.get $name
+    i32.const 0
+    local.get $fp$
+    i32.load offset=24 align=4
+    call $string:memchr
+    i32.const 0
+    i32.ne
+    br_if $3$
+    i32.const 9
+    local.get $fp$
+    i32.load offset=24 align=4
+    i32.add
+    i32.const 1
+    i32.add
+    call $stdlib:malloc
+    local.tee $dirent
+    i32.const 0
+    i32.eq
+    br_if $bad
+    local.get $dirent
+    local.tee $i2$
+    local.get $fp$
+    i64.load offset=16 align=8
+    i64.store offset=0 align=8
+    local.get $dirent
+    i32.const 8
+    i32.add
+    local.tee $i3$
+    local.get $fp$
+    i32.load8_u offset=28 align=1
+    i32.store8 offset=0 align=1
+    local.get $dirent
+    i32.const 9
+    i32.add
+    local.get $name
+    local.get $fp$
+    i32.load offset=24 align=4
+    call $string:memcpy
+    drop
+    local.get $dirent
+    i32.const 9
+    i32.add
+    local.get $fp$
+    i32.load offset=24 align=4
+    i32.add
+    local.tee $i4$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i64.load offset=8 align=8
+    local.set $cookie
+    local.get $dirent
+    local.get $sel
+    call_indirect (param i32) (result i32)
+    if
+    local.get $dirents_used
+    local.get $dirents_size
+    i32.eq
+    if
+    local.get $dirents_size
+    i32.const 8
+    i32.lt_u
+    if (result i32)
+    i32.const 8
+    else
+    local.get $dirents_size
+    i32.const 2
+    i32.mul
+    end
+    local.set $dirents_size
+    local.get $dirents
+    local.get $dirents_size
+    i32.const 4
+    i32.mul
+    call $stdlib:realloc
+    local.tee $new_dirents
+    i32.const 0
+    i32.eq
+    if
+    local.get $dirent
+    call $stdlib:free
+    br $bad
+    end
+    local.get $new_dirents
+    local.set $dirents
+    end
+    local.get $dirents
+    local.get $dirents_used
+    local.get $dirents_used
+    i32.const 1
+    i32.add
+    local.set $dirents_used
+    i32.const 4
+    i32.mul
+    i32.add
+    local.tee $i5$
+    local.get $dirent
+    i32.store offset=0 align=4
+    else
+    local.get $dirent
+    call $stdlib:free
+    end
+    br $3$
+    end $read_entries
+    local.get $fd
+    local.get $buffer
+    local.get $buffer_size
+    local.get $cookie
+    local.get $fp$
+    call $wasi_snapshot_preview1:fd_readdir
+    local.tee $error
+    i32.const 65535
+    i32.and
+    i32.const 0
+    i32.ne
+    if
+    local.get $error
+    i32.const 65535
+    i32.and
+    global.set $errno:errno
+    br $bad
+    end
+    i32.const 0
+    local.set $buffer_processed
+    end $3$
+    br $1$
+    end $1$
+    end $2$
+    local.get $buffer
+    call $stdlib:free
+    local.get $fd
+    call $unistd:close
+    drop
+    local.get $dirents
+    local.get $dirents_used
+    i32.const 4
+    local.get $compar
+    call $stdlib:qsort
+    local.get $namelist
+    local.tee $i6$
+    local.get $dirents
+    i32.store offset=0 align=4
+    local.get $fp$
+    global.set $env:__stack_pointer
+    local.get $dirents_used
+    return
+    end $bad
+    block $7$
+    i32.const 0
+    local.set $i
+    loop $6$
+    local.get $i
+    local.get $dirents_used
+    i32.lt_u
+    i32.eqz
+    br_if $7$
+    block $8$
+    local.get $dirents
+    local.get $i
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    call $stdlib:free
+    end $8$
+    local.get $i
+    i32.const 1
+    i32.add
+    local.set $i
+    br $6$
+    end $6$
+    end $7$
+    local.get $dirents
+    call $stdlib:free
+    local.get $buffer
+    call $stdlib:free
+    local.get $fd
+    call $unistd:close
+    drop
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const -1
+    return
+  )
+  (func $dirent:scandir (export "scandir")
+    (param $dir i32) (param $namelist i32) (param $filter i32) (param $compar i32) (result i32) 
+    (local $dirfd i32) (local $fp$ i32) 
+    global.get $env:__stack_pointer
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    local.set $fp$
+    local.get $dir
+    local.get $fp$
+    call $fcntl:find_relpath
+    local.tee $dirfd
+    i32.const -1
+    i32.eq
+    if
+    i32.const 76
+    global.set $errno:errno
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const -1
+    return
+    end
+    local.get $fp$
+    global.set $env:__stack_pointer
+    local.get $dirfd
+    local.get $fp$
+    i32.load offset=0 align=4
+    local.get $namelist
+    local.get $filter
+    local.get $compar
+    call $dirent:scandirat
+    return
+  )
+  (func $dirent:alphasort (export "alphasort")
+    (param $a i32) (param $b i32) (result i32) 
+    local.get $a
+    i32.load offset=0 align=4
+    i32.const 9
+    i32.add
+    local.get $b
+    i32.load offset=0 align=4
+    i32.const 9
+    i32.add
+    call $string:strcoll
+    return
+  )
+)
