@@ -977,6 +977,61 @@
     call $unistd:readlinkat
     return
   )
+  (func $unistd:rmdirat (export "rmdirat")
+    (param $fd i32) (param $path i32) (result i32) 
+    (local $error i32) 
+    local.get $fd
+    local.get $path
+    local.get $path
+    call $string:strlen
+    call $wasi_snapshot_preview1:path_remove_directory
+    local.tee $error
+    i32.const 65535
+    i32.and
+    i32.const 0
+    i32.ne
+    if
+    local.get $error
+    i32.const 65535
+    i32.and
+    global.set $errno:errno
+    i32.const -1
+    return
+    end
+    i32.const 0
+    return
+  )
+  (func $unistd:rmdir (export "rmdir")
+    (param $path i32) (result i32) 
+    (local $dirfd i32) (local $fp$ i32) 
+    global.get $env:__stack_pointer
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    local.set $fp$
+    local.get $path
+    local.get $fp$
+    call $fcntl:find_relpath
+    local.tee $dirfd
+    i32.const -1
+    i32.eq
+    if
+    i32.const 76
+    global.set $errno:errno
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const -1
+    return
+    end
+    local.get $fp$
+    global.set $env:__stack_pointer
+    local.get $dirfd
+    local.get $fp$
+    i32.load offset=0 align=4
+    call $unistd:rmdirat
+    return
+  )
   (func $unistd:fdatasync (export "fdatasync")
     (param $fd i32) (result i32) 
     (local $error i32) 

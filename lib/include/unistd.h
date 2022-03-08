@@ -2,13 +2,11 @@
 
 #pragma once
 #include <sys/types.h>
+#include <sys/defs.h>
 
 #define STDIN_FILENO  (0)
 #define STDOUT_FILENO (1)
 #define STDERR_FILENO (2)
-#define SEEK_SET (0) /* = WASI WHENCE_SET */
-#define SEEK_CUR (1) /* = WASI WHENCE_CUR */
-#define SEEK_END (2) /* = WASI WHENCE_END */
 #define F_OK (0)
 #define X_OK (1)
 #define W_OK (2)
@@ -32,6 +30,8 @@ extern int symlinkat(const char *tgtpath, int fd, const char *lnkpath);
 extern int symlink(const char *tgtpath, const char *lnkpath);
 extern ssize_t readlinkat(int fd, const char *path, char *buf, size_t bufsize);
 extern ssize_t readlink(const char *path, char *buf, size_t bufsize);
+extern int rmdirat(int fd, const char *path);
+extern int int rmdir(const char *path);
 extern int fdatasync(int fd);
 extern int fsync(int fd);
 extern void _exit(int status);

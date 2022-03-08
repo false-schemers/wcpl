@@ -1,0 +1,146 @@
+(module $stdio
+  (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
+  (import "env" "__linear_memory" (memory $env:__linear_memory 0))
+  (import "wasi_snapshot_preview1" "path_rename" (func $wasi_snapshot_preview1:path_rename (param i32) (param i32) (param i32) (param i32) (param i32) (param i32) (result i32)))
+  (import "errno" "errno" (global $errno:errno i32))
+  (import "string" "strlen" (func $string:strlen (param i32) (result i32)))
+  (import "fcntl" "find_relpath" (func $fcntl:find_relpath (param i32) (param i32) (result i32)))
+  (import "unistd" "unlinkat" (func $unistd:unlinkat (param i32) (param i32) (param i32) (result i32)))
+  (import "unistd" "rmdirat" (func $unistd:rmdirat (param i32) (param i32) (result i32)))
+  (func $stdio:renameat (export "renameat")
+    (param $oldfd i32) (param $oldpath i32) (param $newfd i32) (param $newpath i32) (result i32) 
+    (local $error i32) 
+    local.get $oldfd
+    local.get $oldpath
+    local.get $oldpath
+    call $string:strlen
+    local.get $newfd
+    local.get $newpath
+    local.get $newpath
+    call $string:strlen
+    call $wasi_snapshot_preview1:path_rename
+    local.tee $error
+    i32.const 65535
+    i32.and
+    i32.const 0
+    i32.ne
+    if
+    local.get $error
+    i32.const 65535
+    i32.and
+    global.set $errno:errno
+    i32.const -1
+    return
+    end
+    i32.const 0
+    return
+  )
+  (func $stdio:rename (export "rename")
+    (param $oldpath i32) (param $newpath i32) (result i32) 
+    (local $olddirfd i32) (local $newdirfd i32) (local $fp$ i32) 
+    global.get $env:__stack_pointer
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    local.set $fp$
+    local.get $oldpath
+    local.get $fp$
+    call $fcntl:find_relpath
+    local.tee $olddirfd
+    i32.const -1
+    i32.ne
+    if
+    local.get $newpath
+    local.get $fp$
+    i32.const 4
+    i32.add
+    call $fcntl:find_relpath
+    local.tee $newdirfd
+    i32.const -1
+    i32.ne
+    if
+    local.get $fp$
+    global.set $env:__stack_pointer
+    local.get $olddirfd
+    local.get $fp$
+    i32.load offset=0 align=4
+    local.get $newdirfd
+    local.get $fp$
+    i32.load offset=4 align=4
+    call $stdio:renameat
+    return
+    end
+    end
+    i32.const 76
+    global.set $errno:errno
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const -1
+    return
+  )
+  (func $stdio:remove (export "remove")
+    (param $path i32) (result i32) 
+    (local $dirfd i32) (local $r i32) (local $fp$ i32) 
+    global.get $env:__stack_pointer
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    local.set $fp$
+    local.get $path
+    local.get $fp$
+    call $fcntl:find_relpath
+    local.tee $dirfd
+    i32.const -1
+    i32.eq
+    if
+    i32.const 76
+    global.set $errno:errno
+    local.get $fp$
+    global.set $env:__stack_pointer
+    i32.const -1
+    return
+    end
+    local.get $dirfd
+    local.get $fp$
+    i32.load offset=0 align=4
+    i32.const 0
+    call $unistd:unlinkat
+    local.tee $r
+    i32.const 0
+    i32.ne
+    if (result i32)
+    global.get $errno:errno
+    i32.const 31
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    global.get $errno:errno
+    i32.const 76
+    i32.eq
+    end
+    else
+    i32.const 0
+    end
+    if
+    local.get $dirfd
+    local.get $fp$
+    i32.load offset=0 align=4
+    call $unistd:rmdirat
+    local.set $r
+    global.get $errno:errno
+    i32.const 54
+    i32.eq
+    if
+    i32.const 76
+    global.set $errno:errno
+    end
+    end
+    local.get $fp$
+    global.set $env:__stack_pointer
+    local.get $r
+    return
+  )
+)

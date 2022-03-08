@@ -2,6 +2,7 @@
 
 #pragma once
 #include <stdarg.h>
+#include <sys/defs.h>
 
 #define EOF (-1)
 #define BUFSIZ 1024
@@ -33,10 +34,6 @@ extern FILE _iob[FOPEN_MAX];
 #define stdin  (&_iob[0])
 #define stdout (&_iob[1])
 #define stderr (&_iob[2])
-
-#define SEEK_CUR  1
-#define SEEK_END  2
-#define SEEK_SET  0
 
 extern FILE *fopen(const char *filename, const char *mode);
 extern FILE *freopen(const char *filename, const char *mode, FILE *stream);
@@ -83,3 +80,6 @@ extern int fgetpos(FILE *stream, fpos_t *ptr);
 extern int fsetpos(FILE *stream, const fpos_t *ptr);
 
 extern void perror(const char *s);
+
+/* *at variants */
+extern int renameat(int oldfd, const char *oldpath, int newfd, const char *newpath);

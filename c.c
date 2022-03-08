@@ -2855,8 +2855,10 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
         case INTR_VAARG: assert(false); /* wasmified */
         case INTR_SASSERT: {
           check_static_assert(pn);
-          pcn = ndsettype(npnewcode(pn), TS_VOID);
+          pcn = npnewcode(pn);
+          ndsettype(ndnewbk(pcn), TS_VOID);
         } break;
+        default: assert(false);
       }
     } break;
     case NT_CAST: {

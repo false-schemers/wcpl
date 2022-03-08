@@ -2,6 +2,7 @@
 
 #pragma once
 #include <sys/types.h>
+#include <sys/defs.h>
 
 #define O_APPEND    (0x00000001)  /* = WASI FDFLAGS_APPEND */
 #define O_DSYNC     (0x00000002)  /* = WASI FDFLAGS_DSYNC */
@@ -39,7 +40,7 @@
 #define AT_SYMLINK_FOLLOW   (0x2)
 #define AT_REMOVEDIR        (0x4)
 
-#define AT_FDCWD (-2)
+/* #define AT_FDCWD (-2)  -- related *at functionality still missing */
 
 extern int open(const char *path, int oflags);
 extern int openat(int fd, const char *path, int oflags);

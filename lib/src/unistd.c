@@ -289,6 +289,27 @@ ssize_t readlink(const char *path, char *buf, size_t bufsize)
   return readlinkat(dirfd, relpath, buf, bufsize);
 }
 
+int rmdirat(int fd, const char *path) 
+{
+  errno_t error = path_remove_directory(fd, path, strlen(path));
+  if (error != 0) {
+   errno = (int)error;
+   return -1;
+  }
+  return 0;
+}
+
+int rmdir(const char *path) 
+{
+  char *relpath;
+  int dirfd = find_relpath(path, &relpath);
+  if (dirfd == -1) {
+    errno = ENOTCAPABLE;
+    return -1;
+  }
+  return rmdirat(dirfd, relpath);
+}
+
 int fdatasync(int fd)
 {
   errno_t error = fd_datasync(fd);
