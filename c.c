@@ -423,7 +423,7 @@ void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int l
   *psize = *palign = 0;
   switch (ptn->ts) {
     case TS_VOID: 
-      n2eprintf(ptn, prn, "can't allocate void type");
+      n2eprintf(ptn, prn, "can't allocate/measure void type");
       break;
     case TS_ETC: 
       n2eprintf(ptn, prn, "can't allocate data for ... yet");
@@ -453,7 +453,7 @@ void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int l
       size_t size, align, i, n;
       if (ptn->name && !ndlen(ptn)) {
         node_t *pftn = (node_t *)lookup_eus_type(TS_UNION, ptn->name);
-        if (!pftn) n2eprintf(ptn, prn, "can't allocate incomplete union type");
+        if (!pftn) n2eprintf(ptn, prn, "can't allocate/measure incomplete union type");
         else ptn = pftn;
       }
       for (i = 0; i < ndlen(ptn); ++i) {
@@ -464,7 +464,7 @@ void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int l
         if (align > *palign) *palign = align;         
       }
       if (!*psize || !*palign) 
-        n2eprintf(ptn, prn, "can't allocate empty or incomplete union");
+        n2eprintf(ptn, prn, "can't allocate/measure empty or incomplete union");
       /* round size up so it is multiple of align */
       if ((n = *psize % *palign) > 0) *psize += *palign - n; 
     } break;
@@ -472,7 +472,7 @@ void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int l
       size_t size, align, i, n;
       if (ptn->name && !ndlen(ptn)) {
         node_t *pftn = (node_t *)lookup_eus_type(TS_STRUCT, ptn->name);
-        if (!pftn) n2eprintf(ptn, prn, "can't allocate incomplete struct type");
+        if (!pftn) n2eprintf(ptn, prn, "can't allocate/measure incomplete struct type");
         else ptn = pftn;
       }
       for (i = 0; i < ndlen(ptn); ++i) {
@@ -484,7 +484,7 @@ void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int l
         *psize += size; if (align > *palign) *palign = align;         
       }
       if (!*psize || !*palign) 
-        n2eprintf(ptn, prn, "can't allocate empty or incomplete struct");
+        n2eprintf(ptn, prn, "can't allocate/measure empty or incomplete struct");
       /* round size up so it is multiple of align */
       if ((n = *psize % *palign) > 0) *psize += *palign - n; 
     } break;
@@ -493,21 +493,21 @@ void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int l
         node_t *petn = ndref(ptn, 0), *pcn = ndref(ptn, 1); 
         int count = 0;
         if (!arithmetic_eval_to_int(pcn, &count) || count <= 0)
-          n2eprintf(pcn, prn, "can't allocate data for arrays of nonconstant/nonpositive size");
+          n2eprintf(pcn, prn, "can't allocate/measure data for arrays of nonconstant/nonpositive size");
         measure_type(petn, prn, psize, palign, lvl+1);
         *psize *= count;
       } else {
-        n2eprintf(ptn, prn, "can't allocate data for arrays of unspecified size");
+        n2eprintf(ptn, prn, "can't allocate/measure data for arrays of unspecified size");
       }
     } break;
     case TS_FUNCTION:
-      n2eprintf(ptn, prn, "can't allocate data for function");
+      n2eprintf(ptn, prn, "can't allocate/measure data for function");
       break;
     default:
       assert(false);
   }
   if (!*psize || !*palign) 
-    n2eprintf(ptn, prn, "can't allocate type");
+    n2eprintf(ptn, prn, "can't allocate/measure type");
 }
 
 /* calc offset for ptn.fld; prn is NULL or reference node for errors */
@@ -529,7 +529,7 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld, node_t **ppftn)
           return 0;
         }
       }
-      n2eprintf(ptn, prn, "can't find field %s in union", symname(fld));
+      n2eprintf(ptn, prn, "can't find field .%s in union", symname(fld));
     } break;
     case TS_STRUCT: {
       size_t size, align, i, n, cursize = 0;
@@ -550,10 +550,10 @@ size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld, node_t **ppftn)
         }
         cursize += size;
       }
-      n2eprintf(ptn, prn, "can't find field %s in struct", symname(fld));
+      n2eprintf(ptn, prn, "can't find field .%s in struct", symname(fld));
     } break;
   }
-  n2eprintf(ptn, prn, "can't find field %s in type", symname(fld));
+  n2eprintf(ptn, prn, "can't find field .%s in type", symname(fld));
   return 0; /* won't happen */
 }
 
@@ -579,7 +579,7 @@ static sym_t intern_strlit(node_t *pn)
 typedef struct seval {
   ts_t ts;      /* TS_PTR or ts_numerical */
   numval_t val; /* ts_numerical */
-  sym_t id;     /* TS_PTR */
+  sym_t id;     /* TS_PTR (can be 0 if val is 0) */
 } seval_t; 
 
 /* evaluate pn expression statically, putting result into pr */
@@ -688,7 +688,12 @@ bool static_eval(node_t *pn, seval_t *pr)
       if (ts_numerical(tc) && static_eval(ndref(pn, 1), &rx) && ts_numerical(rx.ts)) {
         numval_t vc = rx.val; numval_convert(tc, rx.ts, &vc);
         pr->ts = tc; pr->val = vc; ok = true;
-      }
+      } else if (tc == TS_PTR && ndlen(ndref(pn, 0)) == 1 && ndref(ndref(pn, 0), 0)->ts == TS_VOID) {
+        int ri; /* see if this is NULL pointer, i.e. (void*)0 */ 
+        if (arithmetic_eval_to_int(ndref(pn, 1), &ri) && ri == 0) {
+          pr->ts = TS_PTR; pr->val.i = 0; pr->id = 0; ok = true;
+        }
+      } 
       return ok;
     } break;
   }
@@ -850,7 +855,7 @@ static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *
         else initialize_bulk_data(pdidx, pd, off+offi, petn, ndref(pdn, j));
         offi += size;
       }
-      if (offi < asize) neprintf(pdn, "too few initializers for array");
+      if (offi < asize) nwprintf(pdn, "warning: too few initializers for array");
     } else { /* struct or union */
       size_t i, j, offi;
       if (ptn->name && !ndlen(ptn)) {
@@ -875,7 +880,7 @@ static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *
   } else if (ts_numerical(ptn->ts)) {
     seval_t r; buf_t cb = mkchb();
     if (!static_eval(pdn, &r) || !ts_numerical(r.ts)) 
-      neprintf(pdn, "non-constant initializer");
+      neprintf(pdn, "non-numerical-constant initializer");
     pd = watiebref(&g_curpwm->exports, pdidx); /* re-fetch after static_eval */
     switch (r.ts) {
       case TS_CHAR:   binchar((int)r.val.i, &cb); break;
@@ -895,27 +900,35 @@ static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *
     memcpy(chbdata(&pd->data) + off, chbdata(&cb), chblen(&cb));
     chbfini(&cb);
   } else if (ptn->ts == TS_PTR) {
-    seval_t r; const node_t *pin, *pitn;
+    seval_t r;
     if (!static_eval(pdn, &r) || r.ts != TS_PTR) 
       neprintf(pdn, "constant address initializer expected");
     pd = watiebref(&g_curpwm->exports, pdidx); /* re-fetch after static_eval */
-    assert(r.id); pin = lookup_global(r.id);
-    if (!pin) neprintf(pdn, "unknown name in address initializer");
-    assert(pin->nt == NT_IMPORT && ndlen(pin) == 1 && ndcref(pin, 0)->nt == NT_TYPE);
-    pitn = ndcref(pin, 0);
-    if (ts_bulk(pitn->ts) || pitn->ts == TS_PTR) {
-      inscode_t *pic = icbnewbk(&pd->code);
-      pic->in = IN_REF_DATA; pic->id = r.id; pic->arg2.mod = pin->name;
-      pic->arg.i = r.val.i; /* 0 or numerical offset in 'elements' */
-      if (r.val.i != 0) { /* have to use scale factor to get byte offset */
-        /* got to make sure that static_eval allows things like &intarray[4] */
-        neprintf(pdn, "NYI: offset in address initializer");
-      }
-      pic = icbnewbk(&pd->code);
-      pic->in = IN_DATA_PUT_REF;
-      pic->arg.u = off;      
+    if (!r.id) { /* NULL */
+      buf_t cb = mkchb();
+      if (r.val.i != 0) neprintf(pdn, "NULL initializer expected");
+      binint(0, &cb); /* wasm32 */
+      memcpy(chbdata(&pd->data) + off, chbdata(&cb), chblen(&cb));
+      chbfini(&cb);
     } else {
-      neprintf(pdn, "address initializer should be a reference to a nonscalar type");
+      const node_t *pitn, *pin = lookup_global(r.id);
+      if (!pin) neprintf(pdn, "unknown name in address initializer");
+      assert(pin->nt == NT_IMPORT && ndlen(pin) == 1 && ndcref(pin, 0)->nt == NT_TYPE);
+      pitn = ndcref(pin, 0);
+      if (ts_bulk(pitn->ts) || pitn->ts == TS_PTR) {
+        inscode_t *pic = icbnewbk(&pd->code);
+        pic->in = IN_REF_DATA; pic->id = r.id; pic->arg2.mod = pin->name;
+        pic->arg.i = r.val.i; /* 0 or numerical offset in 'elements' */
+        if (r.val.i != 0) { /* have to use scale factor to get byte offset */
+          /* got to make sure that static_eval allows things like &intarray[4] */
+          neprintf(pdn, "NYI: offset in address initializer");
+        }
+        pic = icbnewbk(&pd->code);
+        pic->in = IN_DATA_PUT_REF;
+        pic->arg.u = off;      
+      } else {
+        neprintf(pdn, "address initializer should be a reference to a nonscalar type");
+      }
     }
   }
 }

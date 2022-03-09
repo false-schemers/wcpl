@@ -13,12 +13,13 @@
 typedef long long fpos_t;
 
 typedef struct _iobuf {
-  ssize_t cnt; /* characters left */
-  char *ptr;   /* next character position */
-  char *base;  /* location of buffer */
-  int flags;   /* mode of file access */
-  int fd;      /* file descriptor (= WASI fd_t) */
-  char uc;     /* 1-char buffer */
+  ssize_t cnt;         /* characters left */
+  unsigned char *base; /* location of buffer */
+  unsigned char *ptr;  /* next character position */
+  unsigned char *end;  /* end of buffer */
+  int flags;           /* set of _IOXXX flags */
+  int fd;              /* file descriptor (= WASI fd_t) */
+  char sbuf[SBFSIZ];   /* 1-mbchar buffer */
 } FILE;
 
 #define _IOFBF   0000
@@ -29,6 +30,7 @@ typedef struct _iobuf {
 #define _IOERR   0040
 #define _IOLBF   0100
 #define _IORW    0200
+#define _IOMYBUF 0400
 
 extern FILE _iob[FOPEN_MAX];
 #define stdin  (&_iob[0])
@@ -37,24 +39,7 @@ extern FILE _iob[FOPEN_MAX];
 
 extern FILE *fopen(const char *filename, const char *mode);
 extern FILE *freopen(const char *filename, const char *mode, FILE *stream);
-extern int fflush(FILE *stream);
 extern int int fclose(FILE *stream);
-extern int int remove(const char *filename);
-extern int rename(const char *oldname, const char *newname);
-/* extern FILE *tmpfile(void); -- not in WASI? */
-/* extern char *tmpnam(char s[L_tmpnam]); -- not in WASI? */
-extern int setvbuf(FILE *stream, char *buf, int mode, size_t size);
-extern void setbuf(FILE *stream, char *buf);
-extern int fprintf(FILE *stream, const char *format, ...);
-extern int printf(const char *format, ...);
-extern int sprintf(char *s, const char *format, ...);
-extern int vprintf(const char *format, va_list arg);
-extern int vfprintf(FILE *stream, const char *format, va_list arg);
-extern int vsprintf(char *s, const char *format, va_list arg);
-extern int fscanf(FILE *stream, const char *format, ...);
-extern int int scanf(const char *format, ...);
-extern int sscanf(const char *s, const char *format, ...);
-
 #define getc(p) (--(p)->cnt >= 0 ? (unsigned char)*(p)->ptr++ : _fillbuf(p))
 #define putc(x, p) (--(p)->cnt >= 0 ? *(p)->ptr++ = (x) : _flushbuf((x), p))
 #define getchar() (getc(stdin))
@@ -78,7 +63,24 @@ extern long ftell(FILE *stream);
 extern void rewind(FILE *stream);
 extern int fgetpos(FILE *stream, fpos_t *ptr);
 extern int fsetpos(FILE *stream, const fpos_t *ptr);
+extern int fflush(FILE *stream);
+extern int setvbuf(FILE *stream, char *buf, int mode, size_t size);
+extern void setbuf(FILE *stream, char *buf);
 
+extern int fprintf(FILE *stream, const char *format, ...);
+extern int printf(const char *format, ...);
+extern int sprintf(char *s, const char *format, ...);
+extern int vprintf(const char *format, va_list arg);
+extern int vfprintf(FILE *stream, const char *format, va_list arg);
+extern int vsprintf(char *s, const char *format, va_list arg);
+extern int fscanf(FILE *stream, const char *format, ...);
+extern int int scanf(const char *format, ...);
+extern int sscanf(const char *s, const char *format, ...);
+
+/* extern FILE *tmpfile(void); -- not in WASI? */
+/* extern char *tmpnam(char s[L_tmpnam]); -- not in WASI? */
+extern int int remove(const char *filename);
+extern int rename(const char *oldname, const char *newname);
 extern void perror(const char *s);
 
 /* *at variants */

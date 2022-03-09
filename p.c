@@ -2331,6 +2331,10 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
         patch_macro_template(&ids, &pars, pn);
         buffini(&ids); ndbfini(&pars); 
       } else assert(false);
+      if (pn->startpos == -1) {
+        /* built-in macro; use current loc info */
+        pn->pwsid = pw->id; pn->startpos = startpos;
+      }
     } break;
     case TT_INTR_NAME: {
       /* intrinsic application */
@@ -3549,15 +3553,17 @@ void n2eprintf(const node_t *pn, const node_t *pn2, const char *fmt, ...)
 /* report node warning, possibly printing location information */
 void nwprintf(const node_t *pn, const char *fmt, ...)
 {
-  pws_t *pw = NULL; int startpos = -1;
-  va_list args;
-  va_start(args, fmt); 
-  if (pn && pn->pwsid >= 0 && pn->pwsid < (int)buflen(&g_pwsbuf)) {
-    pw = *(pws_t**)bufref(&g_pwsbuf, (size_t)pn->pwsid);
-    startpos = pn->startpos;
+  if (getwlevel() < 1) {
+    pws_t *pw = NULL; int startpos = -1;
+    va_list args;
+    va_start(args, fmt); 
+    if (pn && pn->pwsid >= 0 && pn->pwsid < (int)buflen(&g_pwsbuf)) {
+      pw = *(pws_t**)bufref(&g_pwsbuf, (size_t)pn->pwsid);
+      startpos = pn->startpos;
+    }
+    vrprintf(pw, startpos, fmt, args); 
+    va_end(args); 
   }
-  vrprintf(pw, startpos, fmt, args); 
-  va_end(args); 
 }
 
 
