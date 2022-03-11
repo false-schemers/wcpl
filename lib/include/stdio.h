@@ -74,6 +74,7 @@ extern int sprintf(char *s, const char *format, ...);
 extern int vprintf(const char *format, va_list arg);
 extern int vfprintf(FILE *stream, const char *format, va_list arg);
 extern int vsprintf(char *s, const char *format, va_list arg);
+extern int vsnprintf(char *s, size_t count, const char* format, va_list arg);
 extern int fscanf(FILE *stream, const char *format, ...);
 extern int int scanf(const char *format, ...);
 extern int sscanf(const char *s, const char *format, ...);

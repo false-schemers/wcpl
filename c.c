@@ -947,7 +947,7 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
   /* check variable type for legality */
   assert(pdn->nt == NT_VARDECL); assert(ndlen(pdn) == 1);
   ptn = ndref(pdn, 0); assert(ptn->nt == NT_TYPE);
-  vardef_check_type(ptn); /* evals array sizes */
+  if (ptn->ts != TS_FUNCTION) vardef_check_type(ptn); /* evals array sizes */
   /* post it for later use */
   final = true; hide = (pdn->sc == SC_STATIC);
   /* if it is just function declared, allow definition to come later */
@@ -2592,11 +2592,18 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
   for (i = 0; i < buflen(pab) && (!etc || i < ndlen(pftn)-2); ++i) {
     node_t **ppani = bufref(pab, i), *pani = *ppani;
     node_t *ptni = acode_type(pani), *pftni = ndref(pftn, i+1);
+    node_t nd; bool nd_inited = false;
     if (pftni->nt == NT_VARDECL) pftni = ndref(pftni, 0);
+    /* see if we need to promote param type */
+    if (ts_numerical(pftni->ts) && pftni->ts < TS_INT) {
+      ndicpy(&nd, pftni); nd_inited = true;
+      pftni = &nd; pftni->ts = ts_integral_promote(pftni->ts);
+    }
     if (!assign_compatible(pftni, ptni))
       n2eprintf(pani, prn, "can't pass argument[%d]: unexpected type", i);
     if (!same_type(pftni, ptni)) pani = compile_cast(prn, pftni, pani);
     acode_swapin(pcn, pani); /* leaves arg on stack */
+    if (nd_inited) ndfini(&nd);
   }
   if (etc && i < buflen(pab)) {
     /* collect remaining arguments into a stack array of va_arg_t */
@@ -2791,7 +2798,6 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
     ndfini(&nd);
   }
   switch (pn->nt) {
-
     /* expressions */
     case NT_LITERAL: {
       if (ret && getwlevel() < 1) nwprintf(pn, "warning: literal value is not used");
@@ -3001,7 +3007,6 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
     case NT_ACODE: {
       pcn = pn;
     } break;
-
     /* statements */
     case NT_BLOCK: {
       size_t i; bool end = false; assert(ret);
@@ -3056,6 +3061,9 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
     } break;
     case NT_BREAK:
     case NT_CONTINUE: assert(false); break; /* dewasmified */
+    case NT_NULL: { /* empty statement */
+      pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_VOID);
+    } break;
   }
 
   if (!pcn) neprintf(pn, "failed to compile expression");
