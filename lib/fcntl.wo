@@ -200,6 +200,7 @@
     return
     end
     i32.const 1
+    i32.extend8_s
     global.set $fcntl:preopens_populated
     block $2$
     i32.const 3
@@ -329,6 +330,7 @@
     end
     if
     i32.const 1
+    i32.extend8_s
     return
     end
     local.get $path
@@ -339,6 +341,7 @@
     i32.ne
     if
     i32.const 0
+    i32.extend8_s
     return
     end
     local.get $prefix_len

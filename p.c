@@ -360,8 +360,16 @@ void init_symbols(void)
   intern_symbol("while", TT_WHILE_KW, -1);
   intern_symbol("bool", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_CHAR;
-  intern_symbol("true", TT_ENUM_NAME, 1);
-  intern_symbol("false", TT_ENUM_NAME, 0);
+  //intern_symbol("true", TT_ENUM_NAME, 1);
+  //intern_symbol("false", TT_ENUM_NAME, 0);
+  intern_symbol("true", TT_MACRO_NAME, ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
+  pn->ts = TS_CHAR; pn->val.i = 1; 
+  wrap_node(pn, NT_MACRODEF); pn->name = intern("true");
+  intern_symbol("false", TT_MACRO_NAME, ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
+  pn->ts = TS_CHAR; pn->val.i = 0; 
+  wrap_node(pn, NT_MACRODEF); pn->name = intern("false");
   intern_symbol("wchar_t", TT_TYPE_NAME, ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_INT;
   intern_symbol("wint_t", TT_TYPE_NAME, ndblen(&g_nodes));
@@ -3448,11 +3456,12 @@ static void parse_include_directive(pws_t *pw, node_t *pn, int startpos)
     pn->name = intern(chbdata(&cb));
     pn->op = TT_STRING;
   } else {
+    tt_t tt;
     expect(pw, TT_LT, "<");
     while (peekt(pw) != TT_GT) {
       if (peekt(pw) == TT_DOT) {
         dropt(pw); gotdot = true;
-      } else if (!gotdot && peekt(pw) == TT_IDENTIFIER) {
+      } else if (!gotdot && ((tt = peekt(pw)) == TT_IDENTIFIER || tt >= TT_ASM_KW)) {
         chbputs(pw->tokstr, &cb); dropt(pw);
       } else if (!gotdot && peekt(pw) == TT_SLASH) {
         chbputc('.', &cb); dropt(pw);
@@ -3462,6 +3471,9 @@ static void parse_include_directive(pws_t *pw, node_t *pn, int startpos)
         dropt(pw); break;
       } else if (gotdot) {
         reprintf(pw, peekpos(pw), "unsupported file extension in include directive");
+        break;
+      } else {
+        reprintf(pw, peekpos(pw), "invalid include directive");
         break;
       }
     }
@@ -3772,11 +3784,11 @@ static void dump(node_t *pn, FILE* fp, int indent)
         case TS_DOUBLE:
           fprintf(fp, "%.17g", pn->val.d);
           break;
-        case TS_INT: case TS_LONG: case TS_LLONG:
+        case TS_CHAR: case TS_SHORT: case TS_INT: case TS_LONG: case TS_LLONG:
           chbputll(pn->val.i, &cb);
           fputs(chbdata(&cb), fp);
           break;          
-        case TS_UINT: case TS_ULONG: case TS_ULLONG:
+        case TS_UCHAR: case TS_USHORT: case TS_UINT: case TS_ULONG: case TS_ULLONG:
           chbputllu(pn->val.u, &cb);
           fputs(chbdata(&cb), fp);
           break;

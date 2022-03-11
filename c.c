@@ -398,8 +398,10 @@ ts_t numval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t 
 static void asm_numerical_const(ts_t ts, numval_t *pval, inscode_t *pic)
 {
   switch (ts) {
-    case TS_INT: case TS_UINT:
-    case TS_LONG: case TS_ULONG: /* wasm32 model (will be different under wasm64) */
+    case TS_CHAR:  case TS_UCHAR:
+    case TS_SHORT: case TS_USHORT:
+    case TS_INT:   case TS_UINT:
+    case TS_LONG:  case TS_ULONG: /* wasm32 model (will be different under wasm64) */
       pic->in = IN_I32_CONST; pic->arg.u = pval->u;
       break;
     case TS_LLONG: case TS_ULLONG: 

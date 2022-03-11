@@ -258,6 +258,10 @@ static size_t atexit_count;
 
 int atexit(atexit_func_t fn)
 {
+  size_t i;
+  for (i = 0; i < atexit_count; ++i) {
+    if (atexit_funcs[i] == fn) return 0;
+  }
   if (atexit_count < 32) {
     atexit_funcs[atexit_count++] = fn;
     return 0;

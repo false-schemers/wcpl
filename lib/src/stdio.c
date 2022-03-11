@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <float.h>
 #include <stdio.h>
 
 /* stream i/o after K&R TCPL */
@@ -22,6 +23,17 @@ static FILE *findfp(void)
     if ((fp->flags & (_IOREAD|_IOWRT|_IORW)) == 0)
       return fp; /* found free slot */
   return NULL;
+}
+
+/* atexit() handler */
+static bool closeall_set = false;
+static void closeall(void)
+{
+  FILE *fpi;
+  for (fpi = &_iob[0]; fpi < &_iob[FOPEN_MAX]; ++fpi) {
+    if (fpi->flags & (_IOREAD|_IOWRT|_IORW)) 
+      fclose(fpi);
+  }
 }
 
 FILE *freopen(const char *filename, const char *mode, FILE *fp)
@@ -42,12 +54,34 @@ FILE *freopen(const char *filename, const char *mode, FILE *fp)
   if ((oflags & O_APPEND) && !(oflags & O_RDWR) && lseek(fd, 0L, SEEK_END) < 0) {
     fclose(fp); fp = NULL;
   }
+  if (!closeall_set) { atexit(&closeall); closeall_set = true; }
   return fp;
 }
 
-FILE *fopen(char *name, char *mode)
+FILE *fopen(const char *name, const char *mode)
 {
   return freopen(name, mode, NULL);
+}
+
+FILE *fdopen(int fd, const char *mode)
+{
+	FILE *fp = findfp();
+	if (fp == NULL) return NULL;
+	fp->fd = fd;
+	fp->cnt = 0;fp->flags = 0;
+  fp->base = fp->ptr = fp->end = NULL;
+	switch (*mode) {
+		case 'r': fp->flags |= _IOREAD; break;
+		case 'a': lseek(fd, 0L, 2); /* fall thru */
+		case 'w':	fp->flags |= _IOWRT; break;
+		default: return NULL;
+	}
+	if (mode[1] == '+') {
+		fp->flags &= ~(_IOREAD|_IOWRT);
+		fp->flags |= _IORW;
+	}
+  if (!closeall_set) { atexit(&closeall); closeall_set = true; }
+	return fp;
 }
 
 int fclose(FILE *fp)
@@ -153,8 +187,13 @@ static int wrtchk(FILE *fp)
     if (!(fp->flags & (_IOWRT|_IORW))) return EOF; /* read-only */
     fp->flags &= ~_IOEOF|_IOWRT; /* clear flags */
   }
-  if (fp->base == NULL) addbuf(fp);
-  if (fp->ptr == fp->base && !(fp->flags & (_IONBF | _IOLBF)) )  {
+  if (fp->base == NULL) {
+    /* first attempt to bufferize output */
+    addbuf(fp);
+    /* we will have to flush even if all we use is stdout/stderr */
+    if (!closeall_set) { atexit(&closeall); closeall_set = true; }
+  }
+  if (fp->ptr == fp->base && !(fp->flags & (_IONBF|_IOLBF)))  {
     fp->cnt = fp->end - fp->base; /* first write since seek--set cnt */
   }
   return 0;
@@ -167,7 +206,7 @@ int _flushbuf(int c, FILE *fp)
   do {
     /* check for linebuffered with write perm, but no EOF */
     if ((fp->flags & (_IOLBF|_IOWRT|_IOEOF)) == (_IOLBF|_IOWRT)) {
-      if (fp->ptr >= fp->end) break; /* flush buf add be done */
+      if (fp->ptr >= fp->end) break; /* flush buf and be done */
       if ((*fp->ptr++ = c) != '\n') return c;
       return writebuf(fp) == EOF ? EOF : c;
     }
@@ -463,6 +502,13 @@ void setbuf(FILE *fp, char *buf)
 {
   setvbuf(fp, buf, buf == NULL ? _IONBF : _IOFBF, BUFSIZ);
 }
+
+
+/* formatted output */
+/* derived from: https://github.com/mpaland/printf (c) Marco Paland (info@paland.com) */
+
+
+
 
 
 /* misc filesystem functions */
