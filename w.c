@@ -338,6 +338,7 @@ static void wasm_expr(icbuf_t *pcb)
       case INSIG_XL:  case INSIG_XG:
       case INSIG_XT:  case INSIG_T:
       case INSIG_I32: case INSIG_I64:
+      case INSIG_RF:
         wasm_unsigned(pic->arg.u); 
         break;
       case INSIG_X_Y: case INSIG_MEMARG:
@@ -1108,11 +1109,13 @@ insig_t instr_sig(instr_t in)
       return INSIG_F64;     
     case IN_REF_NULL:
       return INSIG_T;
-    case IN_REF_FUNC:      case IN_MEMORY_INIT:  case IN_DATA_DROP:    case IN_ELEM_DROP:
+    case IN_MEMORY_INIT:   case IN_DATA_DROP:    case IN_ELEM_DROP:
     case IN_TABLE_GROW:    case IN_TABLE_SIZE:   case IN_TABLE_FILL:   
       return INSIG_XT;
     case IN_TABLE_INIT:    case IN_TABLE_COPY:
       return INSIG_X_Y;
+    case IN_REF_FUNC:
+      return INSIG_RF;
     case IN_REF_DATA: /* not in WASM! */
       return INSIG_RD; 
     case IN_DATA_PUT_REF: /* not in WASM! */
@@ -1143,7 +1146,7 @@ char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
       if (vt != BT_VOID) chbputf(pcb, " (result %s)", valtype_name(vt)); 
     } break;
-    case INSIG_XL: case INSIG_XG: case INSIG_XT:
+    case INSIG_XL: case INSIG_XG: case INSIG_XT: case INSIG_RF:
       if (pic->id && pic->arg2.mod) 
         chbputf(pcb, " $%s:%s", symname(pic->arg2.mod), symname(pic->id)); 
       else if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
@@ -1467,7 +1470,7 @@ static void wat_export_datas(watiebuf_t *pdb)
 
 static void wat_export_tables(watiebuf_t *pfb)
 {
-  size_t i, j;
+  size_t i, j, tc = 0;
   for (i = 0; i < watieblen(pfb); ++i) {
     watie_t *pt = watiebref(pfb, i);
     size_t tlen;
@@ -2610,6 +2613,10 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
           seprintf(pw, "invalid floating-point literal %s", pw->tokstr);
         } 
       } break;
+      case INSIG_RF: { /* ref.func */
+        sym_t mod, id; parse_mod_id(pw, &mod, &id);
+        pic->id = id; pic->arg2.mod = mod;
+      } break;
       case INSIG_RD: { /* ref.data -- not in WASM! */
         sym_t mod, id; parse_mod_id(pw, &mod, &id);
         pic->id = id; pic->arg2.mod = mod;
@@ -3217,8 +3224,8 @@ size_t watify_wat_module(wat_module_t* pm)
     pd->ic.arg.u = g_sdbaddr;
   }
   
-  /* add table if needed */
-  if (buflen(&table) > 0) {
+  /* always add table, even if it is empty! */
+  if (true) {
     watie_t *pt = watiebnewbk(&pm->exports, IEK_TABLE);
     memswap(&pt->table, &table, sizeof(buf_t));
   }

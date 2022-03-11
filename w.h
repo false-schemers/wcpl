@@ -306,7 +306,7 @@ typedef enum insig {
   INSIG_I32, INSIG_I64,
   INSIG_F32, INSIG_F64, 
   INSIG_MEMARG, 
-  INSIG_RD, INSIG_PR /* for internal use */
+  INSIG_RF, INSIG_RD, INSIG_PR /* for internal use */
 } insig_t;
 
 

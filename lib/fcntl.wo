@@ -749,7 +749,7 @@
   )
   (func $fcntl:fcntl (export "fcntl")
     (param $fd i32) (param $cmd i32) (param $ap$ i32) (result i32) 
-    (local $error i32) (local $oflags i32) (local $ap i32) (local $flags i32) (local $fs_flags i32) (local $error i32) (local $fp$ i32) 
+    (local $error i32) (local $oflags i32) (local $ap i32) (local $flags i32) (local $fs_flags i32) (local $error#6 i32) (local $fp$ i32) 
     global.get $env:__stack_pointer
     global.get $env:__stack_pointer
     i32.const 32
@@ -870,13 +870,13 @@
     i32.const 65535
     i32.and
     call $wasi_snapshot_preview1:fd_fdstat_set_flags
-    local.tee $error
+    local.tee $error#6
     i32.const 65535
     i32.and
     i32.const 0
     i32.ne
     if
-    local.get $error
+    local.get $error#6
     i32.const 65535
     i32.and
     global.set $errno:errno

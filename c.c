@@ -1063,6 +1063,17 @@ static sym_t henv_lookup(sym_t oname, henv_t *phe, int *pupc)
   return 0;
 }
 
+/* see if this local name is already in use */
+static bool locals_lookup(sym_t name, ndbuf_t *plb)
+{
+  size_t i;
+  for (i = 0; i < ndblen(plb); ++i) {
+    node_t *pn = ndbref(plb, i); 
+    if (pn->name == name) return true;
+  }
+  return false;
+}
+
 /* hoist definitions of local vars to plb renaming them if needed;
  * also, mark local vars which addresses are taken as 'auto' */
 static void expr_hoist_locals(node_t *ptn, node_t *pn, henv_t *phe, ndbuf_t *plb)
@@ -1088,6 +1099,10 @@ static void expr_hoist_locals(node_t *ptn, node_t *pn, henv_t *phe, ndbuf_t *plb
             } else {
               n2eprintf(pni, pn, "duplicate variable declaration in the same scope"); 
             }
+          } else if (locals_lookup(nname, plb)) {
+            sym_t *pon = bufnewbk(&he.idmap);
+            nname = internf("%s#%d", symname(pni->name), (int)buflen(plb));
+            pon[0] = pni->name, pon[1] = nname;
           } else {
             sym_t *pon = bufnewbk(&he.idmap);
             pon[0] = pon[1] = nname; 

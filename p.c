@@ -2598,6 +2598,7 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
       case INSIG_BT:   case INSIG_L:    case INSIG_RD:
       case INSIG_XL:   case INSIG_XG:   case INSIG_XT:
       case INSIG_T:    case INSIG_I32:  case INSIG_I64:
+      case INSIG_RF:
         /* fixme: more specific parsing needed */
         if (peekt(pw) == TT_IDENTIFIER) {
           if (peekc(pw) == ':') { /* mod:id */
