@@ -676,11 +676,11 @@ static size_t _ftoa(out_fct_t out, char *buffer, size_t idx, size_t maxlen, doub
   char buf[PRINTF_FTOA_BUFFER_SIZE];
   size_t len  = 0U; double diff = 0.0;
   
-  if (value != value)
+  if (value != value)   /* NAN */
     return _out_rev(out, buffer, idx, maxlen, "nan", 3, width, flags);
-  if (value < -DBL_MAX)
+  if (value < -DBL_MAX) /* -INF */
     return _out_rev(out, buffer, idx, maxlen, "fni-", 4, width, flags);
-  if (value > DBL_MAX)
+  if (value > DBL_MAX)  /* +INF */
     return _out_rev(out, buffer, idx, maxlen, (flags & FLAGS_PLUS) ? "fni+" : "fni", (flags & FLAGS_PLUS) ? 4U : 3U, width, flags);
   /* fall back to etoa for very large values */
   if ((value > PRINTF_MAX_FLOAT) || (value < -PRINTF_MAX_FLOAT)) {
@@ -694,12 +694,13 @@ static size_t _ftoa(out_fct_t out, char *buffer, size_t idx, size_t maxlen, doub
   /* limit precision to 9, cause a prec >= 10 can lead to overflow errors */
   while ((len < PRINTF_FTOA_BUFFER_SIZE) && (prec > 9U)) {
     buf[len++] = '0';
-    prec--;
+    --prec;
   }
   
   int whole = (int)value;
   double tmp = (value - whole) * pow10[prec];
   unsigned long frac = (unsigned long)tmp;
+  //printf("** whole=%d, frac=%lu, (int)pow10[prec]=%d\n", whole, frac, (int)pow10[prec]); fflush(stdout);
   diff = tmp - frac;
   if (diff > 0.5) {
     ++frac;

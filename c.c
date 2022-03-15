@@ -857,7 +857,7 @@ static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *
         else initialize_bulk_data(pdidx, pd, off+offi, petn, ndref(pdn, j));
         offi += size;
       }
-      if (offi < asize) nwprintf(pdn, "warning: too few initializers for array");
+      /* if (offi < asize) nwprintf(pdn, "warning: too few initializers for array"); */
     } else { /* struct or union */
       size_t i, j, offi;
       if (ptn->name && !ndlen(ptn)) {
@@ -883,6 +883,9 @@ static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *
     seval_t r; buf_t cb = mkchb();
     if (!static_eval(pdn, &r) || !ts_numerical(r.ts)) 
       neprintf(pdn, "non-numerical-constant initializer");
+    if (ts_arith_common(ptn->ts, r.ts) == ptn->ts) { /* can be promoted up */
+      if (ptn->ts != r.ts) { numval_convert(ptn->ts, r.ts, &r.val); r.ts = ptn->ts; }
+    } else neprintf(pdn, "constant initializer cannot be promoted to expected type");
     pd = watiebref(&g_curpwm->exports, pdidx); /* re-fetch after static_eval */
     switch (r.ts) {
       case TS_CHAR:   binchar((int)r.val.i, &cb); break;
