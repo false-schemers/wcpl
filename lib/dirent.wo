@@ -1,6 +1,7 @@
 (module $dirent
   (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
   (import "env" "__linear_memory" (memory $env:__linear_memory 0))
+  (import "env" "__stack_pointer" (global $env:__stack_pointer i32))
   (import "wasi_snapshot_preview1" "fd_readdir" (func $wasi_snapshot_preview1:fd_readdir (param i32) (param i32) (param i32) (param i64) (param i32) (result i32)))
   (import "string" "memcpy" (func $string:memcpy (param i32) (param i32) (param i32) (result i32)))
   (import "string" "strcoll" (func $string:strcoll (param i32) (param i32) (result i32)))
@@ -154,12 +155,14 @@
   )
   (func $dirent:opendir (export "opendir")
     (param $dirname i32) (result i32) 
-    (local $dirfd i32) (local $fp$ i32) 
+    (local $dirfd i32) (local $bp$ i32) (local $fp$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     local.get $dirname
     local.get $fp$
@@ -170,17 +173,17 @@
     if
     i32.const 76
     global.set $errno:errno
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 0
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $dirfd
     local.get $fp$
     i32.load offset=0 align=4
     call $dirent:opendirat
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $dirent:dirfd (export "dirfd")
@@ -198,12 +201,14 @@
   )
   (func $dirent:readdir (export "readdir")
     (param $dirp i32) (result i32) 
-    (local $buffer_left i32) (local $entry_size i32) (local $new_size i32) (local $new_buffer i32) (local $name i32) (local $new_size#6 i32) (local $new_buffer#7 i32) (local $dirent i32) (local $error i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) (local $i10$ i32) (local $i11$ i32) (local $i13$ i32) (local $i12$ i32) (local $i14$ i32) 
+    (local $buffer_left i32) (local $entry_size i32) (local $new_size i32) (local $new_buffer i32) (local $name i32) (local $new_size#6 i32) (local $new_buffer#7 i32) (local $dirent i32) (local $error i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) (local $i10$ i32) (local $i11$ i32) (local $i13$ i32) (local $i12$ i32) (local $i14$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 32
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     block $2$
     loop $1$
@@ -226,9 +231,9 @@
     i32.load offset=24 align=4
     i32.lt_u
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 0
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     br $read_entries
@@ -297,9 +302,9 @@
     i32.const 0
     i32.eq
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 0
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $dirp
@@ -383,9 +388,9 @@
     i32.const 0
     i32.eq
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 0
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $dirp
@@ -448,9 +453,9 @@
     local.get $entry_size
     i32.add
     i32.store offset=0 align=4
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $dirent
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end $read_entries
     local.get $dirp
@@ -501,9 +506,9 @@
     br $1$
     end $1$
     end $2$
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 0
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $dirent:rewinddir (export "rewinddir")
@@ -530,6 +535,7 @@
     local.get $i2$
     i32.load offset=0 align=4
     i32.store offset=0 align=4
+    return
   )
   (func $dirent:seekdir (export "seekdir")
     (param $dirp i32) (param $loc i32) 
@@ -555,6 +561,7 @@
     local.get $i2$
     i32.load offset=0 align=4
     i32.store offset=0 align=4
+    return
   )
   (func $dirent:telldir (export "telldir")
     (param $dirp i32) (result i32) 
@@ -570,12 +577,14 @@
   )
   (func $dirent:scandirat (export "scandirat")
     (param $dirfd i32) (param $dir i32) (param $namelist i32) (param $sel i32) (param $compar i32) (result i32) 
-    (local $fd i32) (local $buffer_size i32) (local $buffer i32) (local $buffer_processed i32) (local $dirents i32) (local $dirents_size i32) (local $dirents_used i32) (local $cookie i64) (local $buffer_left i32) (local $entry_size i32) (local $new_buffer i32) (local $name i32) (local $dirent i32) (local $new_dirents i32) (local $error i32) (local $i i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) 
+    (local $fd i32) (local $buffer_size i32) (local $buffer i32) (local $buffer_processed i32) (local $dirents i32) (local $dirents_size i32) (local $dirents_used i32) (local $cookie i64) (local $buffer_left i32) (local $entry_size i32) (local $new_buffer i32) (local $name i32) (local $dirent i32) (local $new_dirents i32) (local $error i32) (local $i i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 32
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     local.get $sel
     i32.const 0
@@ -592,9 +601,9 @@
     i32.const -1
     i32.eq
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     i32.const 4096
@@ -607,9 +616,9 @@
     local.get $fd
     call $unistd:close
     drop
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     block $bad
@@ -855,9 +864,9 @@
     local.tee $i6$
     local.get $dirents
     i32.store offset=0 align=4
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $dirents_used
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end $bad
     block $7$
@@ -892,19 +901,21 @@
     local.get $fd
     call $unistd:close
     drop
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $dirent:scandir (export "scandir")
     (param $dir i32) (param $namelist i32) (param $filter i32) (param $compar i32) (result i32) 
-    (local $dirfd i32) (local $fp$ i32) 
+    (local $dirfd i32) (local $bp$ i32) (local $fp$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     local.get $dir
     local.get $fp$
@@ -915,13 +926,11 @@
     if
     i32.const 76
     global.set $errno:errno
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $dirfd
     local.get $fp$
     i32.load offset=0 align=4
@@ -929,6 +938,8 @@
     local.get $filter
     local.get $compar
     call $dirent:scandirat
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $dirent:alphasort (export "alphasort")

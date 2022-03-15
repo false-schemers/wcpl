@@ -71,6 +71,7 @@ extern void setbuf(FILE *stream, char *buf);
 extern int fprintf(FILE *stream, const char *format, ...);
 extern int printf(const char *format, ...);
 extern int sprintf(char *s, const char *format, ...);
+extern int snprintf(char *s, size_t count, const char *format, ...);
 extern int vprintf(const char *format, va_list arg);
 extern int vfprintf(FILE *stream, const char *format, va_list arg);
 extern int vsprintf(char *s, const char *format, va_list arg);

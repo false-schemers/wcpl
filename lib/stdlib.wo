@@ -1,6 +1,7 @@
 (module $stdlib
   (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
   (import "env" "__linear_memory" (memory $env:__linear_memory 0))
+  (import "env" "__stack_pointer" (global $env:__stack_pointer i32))
   (import "string" "memcpy" (func $string:memcpy (param i32) (param i32) (param i32) (result i32)))
   (import "string" "memset" (func $string:memset (param i32) (param i32) (param i32) (result i32)))
   (import "errno" "errno" (global $errno:errno i32))
@@ -1148,10 +1149,12 @@
     i32.const 65535
     i32.and
     i32.store16 offset=0 align=2
+    return
   )
   (func $stdlib:abort (export "abort")
     i32.const 1
     call $wasi_snapshot_preview1:proc_exit
+    return
   )
   (func $stdlib:atexit (export "atexit")
     (param $fn i32) (result i32) 
@@ -1239,6 +1242,7 @@
     end $2$
     local.get $status
     call $wasi_snapshot_preview1:proc_exit
+    return
   )
   (func $stdlib:bsearch (export "bsearch")
     (param $key i32) (param $base i32) (param $nmemb i32) (param $size i32) (param $cmp i32) (result i32) 
@@ -1403,6 +1407,7 @@
     br_if $1$
     end $1$
     end $2$
+    return
   )
   (func $stdlib:morecore
     (param $nunits i32) (result i32) 
@@ -1685,6 +1690,7 @@
     end
     local.get $currp
     global.set $stdlib:g_freep
+    return
   )
   (func $stdlib:calloc (export "calloc")
     (param $nels i32) (param $esz i32) (result i32) 
@@ -1819,12 +1825,14 @@
   )
   (func $stdlib:div (export "div")
     (param $rp$ i32) (param $num i32) (param $den i32) 
-    (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
+    (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     local.get $num
@@ -1843,20 +1851,20 @@
     local.get $fp$
     i32.const 8
     memory.copy
-    local.get $fp$
+    local.get $bp$
     global.set $env:__stack_pointer
     return
-    local.get $fp$
-    global.set $env:__stack_pointer
   )
   (func $stdlib:ldiv (export "ldiv")
     (param $rp$ i32) (param $num i32) (param $den i32) 
-    (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
+    (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     local.get $num
@@ -1875,20 +1883,20 @@
     local.get $fp$
     i32.const 8
     memory.copy
-    local.get $fp$
+    local.get $bp$
     global.set $env:__stack_pointer
     return
-    local.get $fp$
-    global.set $env:__stack_pointer
   )
   (func $stdlib:lldiv (export "lldiv")
     (param $rp$ i32) (param $num i64) (param $den i64) 
-    (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
+    (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     local.get $num
@@ -1907,11 +1915,9 @@
     local.get $fp$
     i32.const 16
     memory.copy
-    local.get $fp$
+    local.get $bp$
     global.set $env:__stack_pointer
     return
-    local.get $fp$
-    global.set $env:__stack_pointer
   )
   (func $stdlib:mblen (export "mblen")
     (param $s i32) (param $n i32) (result i32) 

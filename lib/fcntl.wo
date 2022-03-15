@@ -1,6 +1,7 @@
 (module $fcntl
   (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
   (import "env" "__linear_memory" (memory $env:__linear_memory 0))
+  (import "env" "__stack_pointer" (global $env:__stack_pointer i32))
   (import "wasi_snapshot_preview1" "fd_advise" (func $wasi_snapshot_preview1:fd_advise (param i32) (param i64) (param i64) (param i32) (result i32)))
   (import "wasi_snapshot_preview1" "fd_allocate" (func $wasi_snapshot_preview1:fd_allocate (param i32) (param i64) (param i64) (result i32)))
   (import "wasi_snapshot_preview1" "fd_fdstat_get" (func $wasi_snapshot_preview1:fd_fdstat_get (param i32) (param i32) (result i32)))
@@ -185,18 +186,20 @@
   )
   (func $fcntl:populate_preopens
     (result i32) 
-    (local $fd i32) (local $ret i32) (local $prefix i32) (local $fp$ i32) (local $i1$ i32) 
+    (local $fd i32) (local $ret i32) (local $prefix i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     global.get $fcntl:preopens_populated
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 0
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     i32.const 1
@@ -227,9 +230,9 @@
     i32.const 0
     i32.ne
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $fp$
@@ -245,9 +248,9 @@
     local.tee $prefix
     i32.eqz
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 2
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $fd
@@ -261,9 +264,9 @@
     i32.const 0
     i32.ne
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 3
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $prefix
@@ -309,9 +312,9 @@
     br $1$
     end $1$
     end $2$
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 0
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $fcntl:prefix_matches
@@ -462,6 +465,7 @@
     local.get $len
     local.get $path
     call $fcntl:prefix_matches
+    i32.extend8_s
     else
     i32.const 0
     end
@@ -529,12 +533,14 @@
   )
   (func $fcntl:find_relpath (export "find_relpath")
     (param $path i32) (param $relative_path i32) (result i32) 
-    (local $fp$ i32) 
+    (local $bp$ i32) (local $fp$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     global.get $fcntl:preopens_populated
     i32.eqz
@@ -542,22 +548,24 @@
     call $fcntl:populate_preopens
     drop
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $path
     local.get $fp$
     local.get $relative_path
     call $fcntl:find_abspath
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $fcntl:openat (export "openat")
     (param $fd i32) (param $path i32) (param $oflags i32) (result i32) 
-    (local $max i64) (local $error i32) (local $lookup_flags i32) (local $fs_flags i32) (local $fs_rights_base i64) (local $fs_rights_inheriting i64) (local $fp$ i32) (local $i1$ i32) 
+    (local $max i64) (local $error i32) (local $lookup_flags i32) (local $fs_flags i32) (local $fs_rights_base i64) (local $fs_rights_inheriting i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 32
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     i64.const -4211012
     local.set $max
@@ -626,9 +634,9 @@
     end $7$
     i32.const 28
     global.set $errno:errno
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end $1$
     local.get $fd
@@ -644,9 +652,9 @@
     i32.const 65535
     i32.and
     global.set $errno:errno
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     i32.const 0
@@ -707,25 +715,27 @@
     i32.const 65535
     i32.and
     global.set $errno:errno
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $fp$
-    global.set $env:__stack_pointer
-    local.get $fp$
     i32.load offset=24 align=4
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $fcntl:open (export "open")
     (param $path i32) (param $oflags i32) (result i32) 
-    (local $dirfd i32) (local $fp$ i32) 
+    (local $dirfd i32) (local $bp$ i32) (local $fp$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     local.get $path
     local.get $fp$
@@ -736,28 +746,30 @@
     if
     i32.const 76
     global.set $errno:errno
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $dirfd
     local.get $fp$
     i32.load offset=0 align=4
     local.get $oflags
     call $fcntl:openat
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $fcntl:fcntl (export "fcntl")
     (param $fd i32) (param $cmd i32) (param $ap$ i32) (result i32) 
-    (local $error i32) (local $oflags i32) (local $ap i32) (local $flags i32) (local $fs_flags i32) (local $error#6 i32) (local $fp$ i32) 
+    (local $error i32) (local $oflags i32) (local $ap i32) (local $flags i32) (local $fs_flags i32) (local $error#6 i32) (local $bp$ i32) (local $fp$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 32
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     block $1$
     block $6$
@@ -770,14 +782,14 @@
     i32.sub
     br_table $2$ $3$ $4$ $5$ $6$
     end $2$
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end $3$
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 0
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end $4$
     local.get $fd
@@ -793,9 +805,9 @@
     i32.const 65535
     i32.and
     global.set $errno:errno
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $fp$
@@ -847,9 +859,9 @@
     local.set $oflags
     end
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $oflags
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end $5$
     local.get $ap$
@@ -883,21 +895,21 @@
     i32.const 65535
     i32.and
     global.set $errno:errno
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const 0
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end $6$
     i32.const 28
     global.set $errno:errno
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end $1$
   )

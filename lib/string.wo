@@ -1,6 +1,7 @@
 (module $string
   (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
   (import "env" "__linear_memory" (memory $env:__linear_memory 0))
+  (import "env" "__stack_pointer" (global $env:__stack_pointer i32))
   (import "stdlib" "malloc" (func $stdlib:malloc (param i32) (result i32)))
   (import "errno" "_emsg" (global $errno:_emsg i32))
   (import "ctype" "toupper" (func $ctype:toupper (param i32) (result i32)))
@@ -14,6 +15,7 @@
     local.get $n
     call $string:memset
     drop
+    return
   )
   (func $string:memccpy (export "memccpy")
     (param $dst i32) (param $src i32) (param $c i32) (param $n i32) (result i32) 
@@ -473,6 +475,7 @@
     end
     end $2$
     end $1$
+    return
   )
   (func $string:strcasecmp (export "strcasecmp")
     (param $s1 i32) (param $s2 i32) (result i32) 
@@ -1286,12 +1289,14 @@
   )
   (func $string:strtok (export "strtok")
     (param $s i32) (param $delim i32) (result i32) 
-    (local $fp$ i32) (local $i1$ i32) 
+    (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     local.get $s
@@ -1325,9 +1330,9 @@
     local.get $fp$
     i32.load offset=0 align=4
     global.set $string:strtok_holder
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $s
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $string:strcoll (export "strcoll")

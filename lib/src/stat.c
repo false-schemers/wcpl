@@ -88,7 +88,7 @@ int stat(const char *path, struct stat *ps)
     errno = ENOTCAPABLE;
     return -1;
   }
-  fstatat(dirfd, relpath, ps, 0);
+  return fstatat(dirfd, relpath, ps, 0);
 }
 
 int lstat(const char *path, struct stat *ps) 
@@ -99,7 +99,7 @@ int lstat(const char *path, struct stat *ps)
     errno = ENOTCAPABLE;
     return -1;
   }
-  fstatat(dirfd, relpath, ps, AT_SYMLINK_NOFOLLOW);
+  return fstatat(dirfd, relpath, ps, AT_SYMLINK_NOFOLLOW);
 }
 
 int mkdirat(int fd, const char *path, mode_t mode) 

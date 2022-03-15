@@ -34,6 +34,7 @@ Compiler/linker/libc for a subset of C targeting Webassembly (partly functional)
 - structures/unions as parameters
 - instrumenting implicit return paths from a non-void function
 - fixme: NULL is not a constant for global init?
+- fixme: stdout/stderr are not line-buffered and don't autoflush on exit
 
 # C features that won't be supported
 
@@ -55,17 +56,19 @@ Compiler/linker/libc for a subset of C targeting Webassembly (partly functional)
 - `<ctype.h>`
 - `<string.h>`
 - `<errno.h>`
+- `<assert.h>` (header only)
 - `<stdarg.h>` (header only)
 - `<stdbool.h>` (header only)
 - `<stddef.h>` (header only)
 - `<stdint.h>` (header only)
 - `<inttypes.h>` (header only)
 - `<limits.h>` (header only)
+- `<float.h>` (header only)
+- `<stdlib.h>` (abridged)
+- `<stdio.h>` (abridged)
  
 # Libaries to be implemented
 
-- `<stdlib.h>`
-- `<stdio.h>`
 - `<time.h>`
 - `<math.h>`
 

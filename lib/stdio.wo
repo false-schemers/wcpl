@@ -1,11 +1,13 @@
 (module $stdio
   (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
   (import "env" "__linear_memory" (memory $env:__linear_memory 0))
+  (import "env" "__stack_pointer" (global $env:__stack_pointer i32))
   (import "wasi_snapshot_preview1" "path_rename" (func $wasi_snapshot_preview1:path_rename (param i32) (param i32) (param i32) (param i32) (param i32) (param i32) (result i32)))
   (import "errno" "errno" (global $errno:errno i32))
   (import "string" "memcpy" (func $string:memcpy (param i32) (param i32) (param i32) (result i32)))
   (import "string" "memchr" (func $string:memchr (param i32) (param i32) (param i32) (result i32)))
   (import "string" "strlen" (func $string:strlen (param i32) (result i32)))
+  (import "string" "strerror" (func $string:strerror (param i32) (result i32)))
   (import "string" "memccpy" (func $string:memccpy (param i32) (param i32) (param i32) (param i32) (result i32)))
   (import "string" "bzero" (func $string:bzero (param i32) (param i32)))
   (import "stdlib" "free" (func $stdlib:free (param i32)))
@@ -93,6 +95,7 @@
     br $1$
     end $1$
     end $2$
+    return
   )
   (func $stdio:freopen (export "freopen")
     (param $filename i32) (param $mode i32) (param $fp i32) (result i32) 
@@ -595,6 +598,7 @@
     local.get $fp
     i32.load offset=4 align=4
     i32.store offset=0 align=4
+    return
   )
   (func $stdio:_fillbuf (export "_fillbuf")
     (param $fp i32) (result i32) 
@@ -1035,12 +1039,14 @@
   )
   (func $stdio:_flushbuf (export "_flushbuf")
     (param $c i32) (param $fp i32) (result i32) 
-    (local $fp$ i32) (local $i2$ i32) (local $i1$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i8$ i32) (local $i7$ i32) 
+    (local $bp$ i32) (local $fp$ i32) (local $i2$ i32) (local $i1$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i8$ i32) (local $i7$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     block $2$
     loop $1$
@@ -1077,13 +1083,11 @@
     i32.const 10
     i32.ne
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $c
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
     local.get $c
     local.get $fp
@@ -1091,6 +1095,8 @@
     i32.const -1
     i32.eq
     select
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $fp
@@ -1116,9 +1122,9 @@
     i32.const 1
     i32.eq
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $c
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $fp
@@ -1130,9 +1136,9 @@
     i32.const 32
     i32.or
     i32.store offset=0 align=4
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $fp
@@ -1140,9 +1146,9 @@
     i32.const 0
     i32.ne
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     end $3$
@@ -1200,8 +1206,6 @@
     call $stdio:_flushbuf
     end
     drop
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
     local.get $c
     local.get $fp
@@ -1209,6 +1213,8 @@
     i32.const 32
     i32.and
     select
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $stdio:fwrite (export "fwrite")
@@ -2147,6 +2153,7 @@
     i32.and
     i32.store offset=0 align=4
     end
+    return
   )
   (func $stdio:fgetpos (export "fgetpos")
     (param $fp i32) (param $ptr i32) (result i32) 
@@ -2724,6 +2731,7 @@
     i32.const 1024
     call $stdio:setvbuf
     drop
+    return
   )
   (func $stdio:_out_buffer
     (param $c i32) (param $buffer i32) (param $idx i32) (param $maxlen i32) 
@@ -2744,9 +2752,11 @@
     i32.extend8_s
     i32.store8 offset=0 align=1
     end
+    return
   )
   (func $stdio:_out_null
     (param $c i32) (param $buffer i32) (param $idx i32) (param $maxlen i32) 
+    return
   )
   (func $stdio:_out_char
     (param $c i32) (param $buffer i32) (param $idx i32) (param $maxlen i32) 
@@ -2807,6 +2817,7 @@
     end
     drop
     end
+    return
   )
   (func $stdio:_out_fct
     (param $c i32) (param $buffer i32) (param $idx i32) (param $maxlen i32) 
@@ -2834,6 +2845,7 @@
     i32.load offset=0 align=4
     call_indirect (param i32 i32) (result)
     end
+    return
   )
   (func $stdio:_strnlen_s
     (param $str i32) (param $maxsize i32) (result i32) 
@@ -3351,12 +3363,14 @@
   )
   (func $stdio:_ntoa_long
     (param $out i32) (param $buffer i32) (param $idx i32) (param $maxlen i32) (param $value i32) (param $negative i32) (param $base i32) (param $prec i32) (param $width i32) (param $flags i32) (result i32) 
-    (local $len i32) (local $digit i32) (local $fp$ i32) (local $i1$ i32) 
+    (local $len i32) (local $digit i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 32
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     i32.const 0
     local.set $len
@@ -3448,8 +3462,6 @@
     end $1$
     end $2$
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $out
     local.get $buffer
     local.get $idx
@@ -3467,16 +3479,20 @@
     local.get $width
     local.get $flags
     call $stdio:_ntoa_format
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $stdio:_ntoa_long_long
     (param $out i32) (param $buffer i32) (param $idx i32) (param $maxlen i32) (param $value i64) (param $negative i32) (param $base i64) (param $prec i32) (param $width i32) (param $flags i32) (result i32) 
-    (local $len i32) (local $digit i32) (local $fp$ i32) (local $i1$ i32) 
+    (local $len i32) (local $digit i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 32
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     i32.const 0
     local.set $len
@@ -3489,6 +3505,7 @@
     local.set $flags
     end
     i32.const 1
+    i64.extend_i32_s
     local.get $value
     local.get $flags
     i32.const 1024
@@ -3575,8 +3592,6 @@
     end $1$
     end $2$
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $out
     local.get $buffer
     local.get $idx
@@ -3595,16 +3610,20 @@
     local.get $width
     local.get $flags
     call $stdio:_ntoa_format
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $stdio:_ftoa
     (param $out i32) (param $buffer i32) (param $idx i32) (param $maxlen i32) (param $value f64) (param $prec i32) (param $width i32) (param $flags i32) (result i32) 
-    (local $len i32) (local $diff f64) (local $negative i32) (local $whole i32) (local $tmp f64) (local $frac i32) (local $count i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) 
+    (local $len i32) (local $diff f64) (local $negative i32) (local $whole i32) (local $tmp f64) (local $frac i32) (local $count i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 32
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     i32.const 0
     local.set $len
@@ -3614,8 +3633,6 @@
     local.get $value
     f64.ne
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $out
     local.get $buffer
     local.get $idx
@@ -3625,14 +3642,14 @@
     local.get $width
     local.get $flags
     call $stdio:_out_rev
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $value
     f64.const -1.7976931348623157e+308
     f64.lt
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $out
     local.get $buffer
     local.get $idx
@@ -3642,14 +3659,14 @@
     local.get $width
     local.get $flags
     call $stdio:_out_rev
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $value
     f64.const 1.7976931348623157e+308
     f64.gt
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $out
     local.get $buffer
     local.get $idx
@@ -3671,6 +3688,8 @@
     local.get $width
     local.get $flags
     call $stdio:_out_rev
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $value
@@ -3684,8 +3703,6 @@
     f64.lt
     end
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $out
     local.get $buffer
     local.get $idx
@@ -3695,6 +3712,8 @@
     local.get $width
     local.get $flags
     call $stdio:_etoa
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     i32.const 0
@@ -4101,8 +4120,6 @@
     end
     end
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $out
     local.get $buffer
     local.get $idx
@@ -4112,16 +4129,20 @@
     local.get $width
     local.get $flags
     call $stdio:_out_rev
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $stdio:_etoa
     (param $out i32) (param $buffer i32) (param $idx i32) (param $maxlen i32) (param $value f64) (param $prec i32) (param $width i32) (param $flags i32) (result i32) 
-    (local $negative i32) (local $exp2 i32) (local $expval i32) (local $z f64) (local $z2 f64) (local $minwidth i32) (local $fwidth i32) (local $start_idx i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) 
+    (local $negative i32) (local $exp2 i32) (local $expval i32) (local $z f64) (local $z2 f64) (local $minwidth i32) (local $fwidth i32) (local $start_idx i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     local.get $value
     local.get $value
@@ -4141,8 +4162,6 @@
     f64.lt
     end
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $out
     local.get $buffer
     local.get $idx
@@ -4152,6 +4171,8 @@
     local.get $width
     local.get $flags
     call $stdio:_ftoa
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $value
@@ -4504,19 +4525,21 @@
     end $1$
     end
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $idx
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $stdio:_vsnprintf
     (param $out i32) (param $buffer i32) (param $maxlen i32) (param $format# i32) (param $va i32) (result i32) 
-    (local $flags i32) (local $width i32) (local $precision i32) (local $n i32) (local $idx i32) (local $w i32) (local $prec i32) (local $base i32) (local $value i64) (local $value#9 i32) (local $value#10 i32) (local $value#11 i32) (local $l i32) (local $p i32) (local $l#14 i32) (local $is_ll i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) (local $i10$ i32) (local $i11$ i32) (local $i12$ i32) (local $i13$ i32) (local $i14$ i32) (local $i15$ i32) (local $i16$ i32) (local $i17$ i32) (local $i18$ i32) (local $i19$ i32) (local $i20$ i32) (local $i21$ i32) (local $i22$ i32) (local $i23$ i32) (local $i24$ i32) (local $i25$ i32) (local $i26$ i32) (local $i27$ i32) (local $i28$ i32) (local $i29$ i32) 
+    (local $flags i32) (local $width i32) (local $precision i32) (local $n i32) (local $idx i32) (local $w i32) (local $prec i32) (local $base i32) (local $value i64) (local $value#9 i32) (local $value#10 i32) (local $value#11 i32) (local $l i32) (local $p i32) (local $l#14 i32) (local $is_ll i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) (local $i10$ i32) (local $i11$ i32) (local $i12$ i32) (local $i13$ i32) (local $i14$ i32) (local $i15$ i32) (local $i16$ i32) (local $i17$ i32) (local $i18$ i32) (local $i19$ i32) (local $i20$ i32) (local $i21$ i32) (local $i22$ i32) (local $i23$ i32) (local $i24$ i32) (local $i25$ i32) (local $i26$ i32) (local $i27$ i32) (local $i28$ i32) (local $i29$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     local.get $format#
@@ -4614,14 +4637,11 @@
     local.set $flags
     local.get $fp$
     local.tee $i5$
-    i32.load offset=0 align=4
-    local.get $i5$
     local.get $i5$
     i32.load offset=0 align=4
     i32.const 1
     i32.add
     i32.store offset=0 align=4
-    drop
     i32.const 1
     local.set $n
     br $6$
@@ -4632,14 +4652,11 @@
     local.set $flags
     local.get $fp$
     local.tee $i6$
-    i32.load offset=0 align=4
-    local.get $i6$
     local.get $i6$
     i32.load offset=0 align=4
     i32.const 1
     i32.add
     i32.store offset=0 align=4
-    drop
     i32.const 1
     local.set $n
     br $6$
@@ -4650,14 +4667,11 @@
     local.set $flags
     local.get $fp$
     local.tee $i7$
-    i32.load offset=0 align=4
-    local.get $i7$
     local.get $i7$
     i32.load offset=0 align=4
     i32.const 1
     i32.add
     i32.store offset=0 align=4
-    drop
     i32.const 1
     local.set $n
     br $6$
@@ -4668,14 +4682,11 @@
     local.set $flags
     local.get $fp$
     local.tee $i8$
-    i32.load offset=0 align=4
-    local.get $i8$
     local.get $i8$
     i32.load offset=0 align=4
     i32.const 1
     i32.add
     i32.store offset=0 align=4
-    drop
     i32.const 1
     local.set $n
     br $6$
@@ -4686,14 +4697,11 @@
     local.set $flags
     local.get $fp$
     local.tee $i9$
-    i32.load offset=0 align=4
-    local.get $i9$
     local.get $i9$
     i32.load offset=0 align=4
     i32.const 1
     i32.add
     i32.store offset=0 align=4
-    drop
     i32.const 1
     local.set $n
     br $6$
@@ -4751,14 +4759,11 @@
     end
     local.get $fp$
     local.tee $i10$
-    i32.load offset=0 align=4
-    local.get $i10$
     local.get $i10$
     i32.load offset=0 align=4
     i32.const 1
     i32.add
     i32.store offset=0 align=4
-    drop
     end
     end
     i32.const 0
@@ -4940,14 +4945,11 @@
     local.set $flags
     local.get $fp$
     local.tee $i19$
-    i32.load offset=0 align=4
-    local.get $i19$
     local.get $i19$
     i32.load offset=0 align=4
     i32.const 1
     i32.add
     i32.store offset=0 align=4
-    drop
     br $13$
     end $18$
     local.get $flags
@@ -4956,14 +4958,11 @@
     local.set $flags
     local.get $fp$
     local.tee $i20$
-    i32.load offset=0 align=4
-    local.get $i20$
     local.get $i20$
     i32.load offset=0 align=4
     i32.const 1
     i32.add
     i32.store offset=0 align=4
-    drop
     br $13$
     end $19$
     br $13$
@@ -5255,6 +5254,7 @@
     i32.shl
     i32.const 24
     i32.shr_s
+    i32.extend8_s
     else
     local.get $flags
     i32.const 128
@@ -5270,6 +5270,7 @@
     i32.shl
     i32.const 16
     i32.shr_s
+    i32.extend16_s
     else
     local.get $va
     local.get $va
@@ -5442,14 +5443,11 @@
     local.set $idx
     local.get $fp$
     local.tee $i23$
-    i32.load offset=0 align=4
-    local.get $i23$
     local.get $i23$
     i32.load offset=0 align=4
     i32.const 1
     i32.add
     i32.store offset=0 align=4
-    drop
     br $20$
     end $30$
     end $31$
@@ -5827,14 +5825,11 @@
     call_indirect (param i32 i32 i32 i32) (result)
     local.get $fp$
     local.tee $i28$
-    i32.load offset=0 align=4
-    local.get $i28$
     local.get $i28$
     i32.load offset=0 align=4
     i32.const 1
     i32.add
     i32.store offset=0 align=4
-    drop
     br $20$
     end $48$
     local.get $fp$
@@ -5851,14 +5846,11 @@
     call_indirect (param i32 i32 i32 i32) (result)
     local.get $fp$
     local.tee $i29$
-    i32.load offset=0 align=4
-    local.get $i29$
     local.get $i29$
     i32.load offset=0 align=4
     i32.const 1
     i32.add
     i32.store offset=0 align=4
-    drop
     br $20$
     end $20$
     br $2$
@@ -5881,18 +5873,18 @@
     local.get $maxlen
     local.get $out
     call_indirect (param i32 i32 i32 i32) (result)
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $idx
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $stdio:fprintf (export "fprintf")
-    (param $stream i32) (param $format i32) (param $ap$ i32) (result i32) 
+    (param $fp i32) (param $format i32) (param $ap$ i32) (result i32) 
     (local $va i32) (local $ret i32) 
     local.get $ap$
     local.set $va
     ref.func $stdio:_out_char
-    local.get $stream
+    local.get $fp
     i32.const -1
     local.get $format
     local.get $va
@@ -5969,9 +5961,9 @@
     return
   )
   (func $stdio:vfprintf (export "vfprintf")
-    (param $stream i32) (param $format i32) (param $va i32) (result i32) 
+    (param $fp i32) (param $format i32) (param $va i32) (result i32) 
     ref.func $stdio:_out_char
-    local.get $stream
+    local.get $fp
     i32.const -1
     local.get $format
     local.get $va
@@ -6028,12 +6020,14 @@
   )
   (func $stdio:rename (export "rename")
     (param $oldpath i32) (param $newpath i32) (result i32) 
-    (local $olddirfd i32) (local $newdirfd i32) (local $fp$ i32) 
+    (local $olddirfd i32) (local $newdirfd i32) (local $bp$ i32) (local $fp$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     local.get $oldpath
     local.get $fp$
@@ -6051,8 +6045,6 @@
     i32.const -1
     i32.ne
     if
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $olddirfd
     local.get $fp$
     i32.load offset=0 align=4
@@ -6060,24 +6052,28 @@
     local.get $fp$
     i32.load offset=4 align=4
     call $stdio:renameat
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     end
     i32.const 76
     global.set $errno:errno
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
   )
   (func $stdio:remove (export "remove")
     (param $path i32) (result i32) 
-    (local $dirfd i32) (local $r i32) (local $fp$ i32) 
+    (local $dirfd i32) (local $r i32) (local $bp$ i32) (local $fp$ i32) 
     global.get $env:__stack_pointer
+    local.set $bp$
     global.get $env:__stack_pointer
     i32.const 16
     i32.sub
     global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
     local.set $fp$
     local.get $path
     local.get $fp$
@@ -6088,9 +6084,9 @@
     if
     i32.const 76
     global.set $errno:errno
-    local.get $fp$
-    global.set $env:__stack_pointer
     i32.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
     return
     end
     local.get $dirfd
@@ -6129,9 +6125,58 @@
     global.set $errno:errno
     end
     end
-    local.get $fp$
-    global.set $env:__stack_pointer
     local.get $r
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+  )
+  (func $stdio:perror (export "perror")
+    (param $s i32) 
+    (local $fp i32) (local $err i32) 
+    ref.data $stdio:_iob
+    i32.const 64
+    i32.add
+    local.set $fp
+    global.get $errno:errno
+    call $string:strerror
+    local.set $err
+    local.get $s
+    i32.const 0
+    i32.ne
+    if (result i32)
+    local.get $s
+    i32.load8_s offset=0 align=1
+    else
+    i32.const 0
+    end
+    if
+    local.get $s
+    local.get $s
+    call $string:strlen
+    i32.const 1
+    local.get $fp
+    call $stdio:fwrite
+    drop
+    i32.const 58
+    local.get $fp
+    call $stdio:fputc
+    drop
+    i32.const 32
+    local.get $fp
+    call $stdio:fputc
+    drop
+    end
+    local.get $err
+    local.get $err
+    call $string:strlen
+    i32.const 1
+    local.get $fp
+    call $stdio:fwrite
+    drop
+    i32.const 10
+    local.get $fp
+    call $stdio:fputc
+    drop
     return
   )
 )

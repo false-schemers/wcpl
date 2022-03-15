@@ -1412,29 +1412,24 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
       else assert(pil[1] == 0); /* not a break/continue target */
     } break;
     case NT_RETURN: {
-      sym_t rp = intern("rp$"), fp = intern("fp$"); 
-      vi_t *prvi, *pfvi; node_t *psn;
+      sym_t rp = intern("rp$"), bp = intern("bp$"); 
+      vi_t *prvi, *pbvi; node_t *psn;
       if (ndlen(pn) > 0) {
         assert(ndlen(pn) == 1);
         expr_wasmify(ndref(pn, 0), pvib, plib);
       }
       prvi = bufbsearch(pvib, &rp, sym_cmp);
-      pfvi = bufbsearch(pvib, &fp, sym_cmp);
+      pbvi = bufbsearch(pvib, &bp, sym_cmp);
       if (prvi) { /* return x => { *rp$ = x; return; } */
         if (ndlen(pn) != 1) neprintf(pn, "return value expected"); 
         wrap_node(lift_arg0(pn), NT_ASSIGN); pn->op = TT_ASN;
         psn = ndinsfr(pn, NT_PREFIX); psn->op = TT_STAR;
         psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = rp;
         wrap_node(pn, NT_BLOCK); 
-        if (pfvi) { /* insert freea(fp$) if needed */
-          psn = ndinsbk(pn, NT_INTRCALL); psn->intr = INTR_FREEA;
-          psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = fp;
-        }
-        ndinsbk(pn, NT_RETURN);
-      } else if (pfvi) { /* just insert freea(fp$) */
-        wrap_node(pn, NT_BLOCK);
-        psn = ndinsfr(pn, NT_INTRCALL); psn->intr = INTR_FREEA;
-        psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = fp;
+        psn = ndinsbk(pn, NT_RETURN);
+        if (pbvi) psn->name = bp;
+      } else {
+        if (pbvi) pn->name = bp;
       }
     } break;
     case NT_BREAK: case NT_CONTINUE: {
@@ -1471,14 +1466,31 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
   }
 }
 
+/* check if node ends in NT_RETURN */
+static bool ends_in_return(node_t *pn)
+{
+  if (pn) {
+    switch (pn->nt) {
+      case NT_RETURN:
+        return true;
+      case NT_IF:
+        return ndlen(pn) == 3 && 
+          ends_in_return(ndref(pn, 1)) && ends_in_return(ndref(pn, 2));
+      case NT_BLOCK: 
+        return ndlen(pn) > 0 && ends_in_return(ndref(pn, ndlen(pn)-1));
+    }
+  }
+  return false;
+}
+
 /* convert function to wasm conventions, simplify */
 static void fundef_wasmify(node_t *pdn)
 {
   /* special registers (scalar/poiner vars with internal names): 
-   * fp$ (frame pointer), ap$ (... data pointer) */
+   * bp$ (base pointer), fp$ (frame pointer), ap$ (... data pointer) */
   node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
   buf_t vib = mkbuf(sizeof(vi_t)); node_t frame = mknd();
-  ndbuf_t asb; buf_t lib; size_t i; 
+  ndbuf_t asb; buf_t lib; size_t i; bool explicit_tail_ret = false;
   ndbinit(&asb); bufinit(&lib, sizeof(int)*2); /* <tt, lbsym> */
   
   /* init frame structure, in case there are auto locals*/
@@ -1584,9 +1596,10 @@ static void fundef_wasmify(node_t *pdn)
     ndbrem(&asb, 0);
   }
   
-  /* see if we need to insert fp$ init & local */
+  /* see if we need to insert bp$/fp$ inits & locals */
   if (ndlen(&frame) > 0) {
-    node_t *pin = ndinsnew(pbn, i), *psn; vi_t *pvi;
+    node_t *pin, *psn; vi_t *pvi;
+    pin = ndinsnew(pbn, i);
     ndset(pin, NT_ASSIGN, pbn->pwsid, pbn->startpos);
     pin->op = TT_ASN;
     psn = ndinsbk(pin, NT_IDENTIFIER); psn->name = intern("fp$");
@@ -1594,11 +1607,21 @@ static void fundef_wasmify(node_t *pdn)
     psn = ndinsbk(psn, NT_INTRCALL); psn->intr = INTR_SIZEOF;
     ndpushbk(psn, &frame);
     pin = ndinsnew(pbn, i);
+    ndset(pin, NT_ASSIGN, pbn->pwsid, pbn->startpos);
+    pin->op = TT_ASN;
+    psn = ndinsbk(pin, NT_IDENTIFIER); psn->name = intern("bp$");
+    psn = ndinsbk(pin, NT_IDENTIFIER); psn->name = g_sp_id;
+    pin = ndinsnew(pbn, i);
     ndset(pin, NT_VARDECL, pbn->pwsid, pbn->startpos);
     pin->name = intern("fp$"); wrap_type_pointer(ndpushbk(pin, &frame));
     pvi = bufnewbk(&vib); pvi->sc = SC_REGISTER;
     pvi->name = pvi->reg = pin->name;
-    i += 2; /* skip inserted nodes */ 
+    pin = ndinsnew(pbn, i);
+    ndset(pin, NT_VARDECL, pbn->pwsid, pbn->startpos);
+    pin->name = intern("bp$"); wrap_type_pointer(ndsettype(ndnewbk(pin), TS_VOID));
+    pvi = bufnewbk(&vib); pvi->sc = SC_REGISTER;
+    pvi->name = pvi->reg = pin->name;
+    i += 4; /* skip inserted nodes */ 
   }
   
   /* sort vib by name for faster lookup in wasmify_expr */
@@ -1606,18 +1629,17 @@ static void fundef_wasmify(node_t *pdn)
 
   for (/* use current i */; i < ndlen(pbn); ++i) {
     node_t *pni = ndref(pbn, i);
+    if (i + 1 == ndlen(pbn)) explicit_tail_ret = ends_in_return(pni);
     expr_wasmify(pni, &vib, &lib);
   }
 
   /* check if falling off is a valid way to return */
-  if (ndref(ptn, 0)->ts == TS_VOID) {
-    /* if fp$ is present, insert freea(fp$); */
-    sym_t fp = intern("fp$"); 
-    vi_t *pvi = bufbsearch(&vib, &fp, sym_cmp);
-    if (pvi) {
-      node_t *psn = ndinsbk(pbn, NT_INTRCALL); psn->intr = INTR_FREEA;
-      psn = ndinsbk(psn, NT_IDENTIFIER); psn->name = fp;
-    }
+  if (ndref(ptn, 0)->ts == TS_VOID && !explicit_tail_ret) {
+    /* insert explicit return */
+    sym_t bp = intern("bp$"); 
+    vi_t *pvi = bufbsearch(&vib, &bp, sym_cmp);
+    node_t *psn = ndinsbk(pbn, NT_RETURN);
+    if (pvi) psn->name = bp;
   }
 
   buffini(&lib);
@@ -2045,6 +2067,7 @@ static void asm_popbk(icbuf_t *pdata, inscode_t *pic)
 
 /* acode node predicates and helpers */
 
+/* type of acode node as NT_TYPE node */
 static node_t *acode_type(node_t *pcn)
 {
   node_t *ptn; assert(pcn);
@@ -2356,14 +2379,17 @@ node_t *compile_intsel(node_t *prn, node_t *pan)
 static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan3)
 {
   node_t *patn1 = acode_type(pan1), *patn2 = acode_type(pan2), *patn3 = acode_type(pan3); 
-  node_t nt = mknd(), *pcn = npnewcode(prn), *pctn = NULL; 
+  node_t nt = mknd(), *pcn = npnewcode(prn), *pctn = NULL; bool use_select;
   if (ts_numerical(patn2->ts) && ts_numerical(patn3->ts)) 
     pctn = ndsettype(&nt, ts_arith_common(patn2->ts, patn3->ts));
   else if (same_type(patn2, patn3)) pctn = patn2;
   else neprintf(prn, "incompatible types of ?: operator branches");
+  use_select = acode_simple_noeff(pan2) && acode_simple_noeff(pan3);
+  if (!same_type(pctn, patn2)) pan2 = compile_cast(prn, pctn, pan2);
+  if (!same_type(pctn, patn3)) pan3 = compile_cast(prn, pctn, pan3);
   pan1 = compile_booltest(prn, pan1); /* add !=0 if not i32 */
   ndcpy(ndnewbk(pcn), pctn);
-  if (acode_simple_noeff(pan2) && acode_simple_noeff(pan3)) {
+  if (use_select) {
     /* both branches can be computed cheaply with no effects; use SELECT */
     acode_swapin(pcn, pan2); 
     acode_swapin(pcn, pan3);
@@ -2605,18 +2631,26 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     acode_swapin(pcn, pani); /* leaves arg on stack */
     if (nd_inited) ndfini(&nd);
   }
-  if (etc && i < buflen(pab)) {
+  if (etc && i <= buflen(pab)) {
     /* collect remaining arguments into a stack array of va_arg_t */
     sym_t pname = rpalloc(VT_I32); /* arg frame ptr (wasm32) */
     /* frame is an array of uint64s (va_arg_t), aligned to 16 */
     size_t asz = 8, nargs = buflen(pab)-i, framesz = (nargs*asz + 15) & ~0xFLL, basei;
     inscode_t *pic = icbnewfr(&pcn->data); pic->in = IN_REGDECL;
     pic->id = pname; pic->arg.u = VT_I32; /* wasm32 pointer */
+#if 1
+    acode_pushin_id_mod(pcn, IN_GLOBAL_GET, g_sp_id, g_env_mod);
+    acode_pushin_uarg(pcn, IN_I32_CONST, framesz);
+    acode_pushin(pcn, IN_I32_SUB);
+    acode_pushin_id(pcn, IN_LOCAL_TEE, pname);
+    acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_env_mod); 
+#else
     acode_pushin_id_mod(pcn, IN_GLOBAL_GET, g_sp_id, g_env_mod);
     acode_pushin_id(pcn, IN_LOCAL_TEE, pname);
     acode_pushin_uarg(pcn, IN_I32_CONST, framesz);
     acode_pushin(pcn, IN_I32_SUB);
     acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_env_mod); 
+#endif
     /* start of va_arg_t[nargs] array is now in pname, fill it */
     for (basei = i; i < buflen(pab); ++i) {
       node_t **ppani = bufref(pab, i), *pani = *ppani;
@@ -2750,8 +2784,8 @@ static node_t *compile_switch_ifs(node_t *prn, node_t *pan, node_t *pcv, size_t 
   return pcn;
 }
 
-/* compile return statement */
-static node_t *compile_return(node_t *prn, node_t *pan, const node_t *ptn)
+/* compile return statement; if bpid != 0, insert freea code */
+static node_t *compile_return(node_t *prn, node_t *pan, const node_t *ptn, sym_t bpid)
 {
   node_t *pcn = npnewcode(prn); ndsettype(ndnewbk(pcn), TS_VOID);
   assert(ptn && ptn->nt == NT_TYPE);
@@ -2762,6 +2796,10 @@ static node_t *compile_return(node_t *prn, node_t *pan, const node_t *ptn)
     acode_swapin(pcn, pan);
   } else { /* no argument */
     if (ptn->ts != TS_VOID) neprintf(prn, "return statement should return a value");
+  }
+  if (bpid) {
+    acode_pushin_id(pcn, IN_LOCAL_GET, bpid);
+    acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_env_mod);
   }
   acode_pushin(pcn, IN_RETURN);
   return pcn;
@@ -2843,12 +2881,20 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             ts_t ts = acode_const(pan, &pnv);
             if (ts == TS_INT) { /* sizeof?: calc frame size statically */
               pnv->i = (pnv->i + 15) & ~0xFLL;
+#if 1         /* fp$ = sp = bp$ - size;  */
+              pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; 
+              pic->id = g_sp_id; pic->arg2.mod = g_env_mod;
+              acode_pushin(pan, IN_I32_SUB); 
+              acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
+              acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_env_mod);
+#else
               pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; 
               pic->id = g_sp_id; pic->arg2.mod = g_env_mod;
               pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; 
               pic->id = g_sp_id; pic->arg2.mod = g_env_mod;
               acode_pushin(pan, IN_I32_SUB); 
               acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
+#endif
             } else { /* calc frame size dynamically */
               sym_t sname = rpalloc(VT_I32), pname = rpalloc(VT_I32); /* wasm32 */
               pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->id = sname; pic->arg.u = VT_I32;
@@ -2860,6 +2906,13 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
               acode_pushin_uarg(pan, IN_I32_CONST, 0xFFFFFFF0);
               acode_pushin(pan, IN_I32_AND);   
               acode_pushin_id(pan, IN_LOCAL_SET, sname);
+#if 1
+              acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_env_mod);
+              acode_pushin_id(pan, IN_LOCAL_GET, sname);
+              acode_pushin(pan, IN_I32_SUB);
+              acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
+              acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_env_mod);
+#else
               acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_env_mod);
               acode_pushin_id(pan, IN_LOCAL_TEE, pname);
               acode_pushin_id(pan, IN_LOCAL_GET, sname);
@@ -2867,6 +2920,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
               acode_pushin(pan, IN_I32_SUB);
               acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
               acode_pushin_id(pan, IN_LOCAL_GET, pname);
+#endif
             }
             wrap_type_pointer(ndsettype(acode_type(pan), TS_VOID));
             pcn = pan;
@@ -2874,6 +2928,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             neprintf(pn, "alloca() intrinsic expects one argument");
           }
         } break;
+#if 0
         case INTR_FREEA: {
           if (ndlen(pn) == 1) {
             node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
@@ -2887,6 +2942,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             neprintf(pn, "freea() intrinsic expects one argument");
           }
         } break;
+#endif        
         case INTR_VAETC: 
         case INTR_VAARG: assert(false); /* wasmified */
         case INTR_SASSERT: {
@@ -3057,7 +3113,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
       node_t *pan = NULL;
       assert(ret);
       if (ndlen(pn) == 1) pan = expr_compile(ndref(pn, 0), prib, NULL);
-      pcn = compile_return(pn, pan, ret);
+      pcn = compile_return(pn, pan, ret, pn->name);
     } break;
     case NT_BREAK:
     case NT_CONTINUE: assert(false); break; /* dewasmified */
@@ -3066,7 +3122,8 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
     } break;
   }
 
-  if (!pcn) neprintf(pn, "failed to compile expression");
+  if (!pcn) 
+    neprintf(pn, "failed to compile expression");
   assert(pcn->nt == NT_ACODE);
   if (pcn->nt == NT_ACODE) assert(ndlen(pcn) > 0 && ndref(pcn, 0)->nt == NT_TYPE);
   return pcn;  
@@ -3075,8 +3132,8 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
 /* compile function -- that is, convert it to asm tree */
 static node_t *fundef_compile(node_t *pdn)
 {
-  node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
-  buf_t rib = mkbuf(sizeof(ri_t)); node_t *ret; size_t i; 
+  node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1), *pln = NULL;
+  buf_t rib = mkbuf(sizeof(ri_t)); node_t *ret; size_t i;
   /* output is created anew from pieces of input and pool nodes */
   node_t *prn = npnew(NT_FUNDEF, pdn->pwsid, pdn->startpos), *prtn, *prbn; 
   prn->name = pdn->name; prn->sc = pdn->sc;
@@ -3105,9 +3162,16 @@ static node_t *fundef_compile(node_t *pdn)
 
   /* go over body statements */
   for (/* use current i */; i < ndlen(pbn); ++i) {
-    node_t *pni = ndref(pbn, i);
-    node_t *pcn = expr_compile(pni, &rib, ret);
+    node_t *pni = ndref(pbn, i), *pcn;
+    if (i+1 == ndlen(pbn)) pln = pni; 
+    pcn = expr_compile(pni, &rib, ret);
     ndswap(ndnewbk(prbn), compile_stm(pcn));
+  }
+
+  /* check for unexpected implicit return */
+  if (ret->ts != TS_VOID) {
+    if (!ends_in_return(pln))
+      n2eprintf(pln, pdn, "non-void function: last statement must return value");
   }
 
   buffini(&rib);
@@ -3465,6 +3529,7 @@ static sym_t process_module(const char *fname, wat_module_t *pm)
     /* this should be workspace #0 */
     assert(pwsid(pw) == 0);
     assert(pwscurmod(pw));
+    /* parse top level */
     while (parse_top_form(pw, &nd)) {
       if (nd.nt == NT_INCLUDE) {
         bool sys = (nd.op != TT_STRING);
@@ -3489,6 +3554,13 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
 
   init_compiler();
   wat_module_clear(pwm);
+
+  { /* add builtin declarations: stack pointer */
+    node_t nd = mknd(); ndset(&nd, NT_VARDECL, -1, -1);
+    nd.name = g_sp_id; wrap_type_pointer(ndsettype(ndnewbk(&nd), TS_VOID)); 
+    post_symbol(g_env_mod, &nd, false, false);
+    ndfini(&nd);
+  }
   
   mod = process_module(ifname, pwm); assert(mod);
   pwm->name = mod;
