@@ -1016,21 +1016,9 @@ static void fundef_check_type(node_t *ptn)
       case TS_ARRAY: {
         node_t *pcn; assert(ndlen(ptni) == 2);
         pcn = ndref(ptni, 1);
-#if 1
         if (pcn->nt == NT_NULL) { /* t foo[] == t* foo */
           ndbrem(&ptni->body, 1); ptni->ts = TS_PTR;
-        } // else neprintf(ptni, "not supported: array as function parameter/return type");
-#else
-        if (pcn->nt == NT_NULL) {
-          neprintf(ptn, "not supported: flexible array as global variable type");
-        } else if (pcn->nt != NT_LITERAL || pcn->ts != TS_INT) {
-          int count = 0;
-          if (!arithmetic_eval_to_int(pcn, &count) || count <= 0)
-            n2eprintf(pcn, prn, "array size should be positive constant");
-          ndset(pcn, NT_LITERAL, pcn->pwsid, pcn->startpos);
-          pcn->ts = TS_INT; pcn->val.i = count;
-        }
-#endif
+        } /* else neprintf(ptni, "not supported: array as function parameter/return type"); */
       } break;
       case TS_STRUCT:
         if (i > 0) neprintf(ptni, "not supported: struct as function parameter type");
@@ -2638,19 +2626,11 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     size_t asz = 8, nargs = buflen(pab)-i, framesz = (nargs*asz + 15) & ~0xFLL, basei;
     inscode_t *pic = icbnewfr(&pcn->data); pic->in = IN_REGDECL;
     pic->id = pname; pic->arg.u = VT_I32; /* wasm32 pointer */
-#if 1
     acode_pushin_id_mod(pcn, IN_GLOBAL_GET, g_sp_id, g_env_mod);
     acode_pushin_uarg(pcn, IN_I32_CONST, framesz);
     acode_pushin(pcn, IN_I32_SUB);
     acode_pushin_id(pcn, IN_LOCAL_TEE, pname);
     acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_env_mod); 
-#else
-    acode_pushin_id_mod(pcn, IN_GLOBAL_GET, g_sp_id, g_env_mod);
-    acode_pushin_id(pcn, IN_LOCAL_TEE, pname);
-    acode_pushin_uarg(pcn, IN_I32_CONST, framesz);
-    acode_pushin(pcn, IN_I32_SUB);
-    acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_env_mod); 
-#endif
     /* start of va_arg_t[nargs] array is now in pname, fill it */
     for (basei = i; i < buflen(pab); ++i) {
       node_t **ppani = bufref(pab, i), *pani = *ppani;
@@ -2881,20 +2861,11 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             ts_t ts = acode_const(pan, &pnv);
             if (ts == TS_INT) { /* sizeof?: calc frame size statically */
               pnv->i = (pnv->i + 15) & ~0xFLL;
-#if 1         /* fp$ = sp = bp$ - size;  */
               pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; 
               pic->id = g_sp_id; pic->arg2.mod = g_env_mod;
               acode_pushin(pan, IN_I32_SUB); 
               acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
               acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_env_mod);
-#else
-              pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; 
-              pic->id = g_sp_id; pic->arg2.mod = g_env_mod;
-              pic = icbnewfr(&pan->data); pic->in = IN_GLOBAL_GET; 
-              pic->id = g_sp_id; pic->arg2.mod = g_env_mod;
-              acode_pushin(pan, IN_I32_SUB); 
-              acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
-#endif
             } else { /* calc frame size dynamically */
               sym_t sname = rpalloc(VT_I32), pname = rpalloc(VT_I32); /* wasm32 */
               pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->id = sname; pic->arg.u = VT_I32;
@@ -2906,21 +2877,11 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
               acode_pushin_uarg(pan, IN_I32_CONST, 0xFFFFFFF0);
               acode_pushin(pan, IN_I32_AND);   
               acode_pushin_id(pan, IN_LOCAL_SET, sname);
-#if 1
               acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_env_mod);
               acode_pushin_id(pan, IN_LOCAL_GET, sname);
               acode_pushin(pan, IN_I32_SUB);
               acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
               acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_env_mod);
-#else
-              acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_env_mod);
-              acode_pushin_id(pan, IN_LOCAL_TEE, pname);
-              acode_pushin_id(pan, IN_LOCAL_GET, sname);
-              pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->id = pname; pic->arg.u = VT_I32;
-              acode_pushin(pan, IN_I32_SUB);
-              acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
-              acode_pushin_id(pan, IN_LOCAL_GET, pname);
-#endif
             }
             wrap_type_pointer(ndsettype(acode_type(pan), TS_VOID));
             pcn = pan;
@@ -2928,21 +2889,6 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             neprintf(pn, "alloca() intrinsic expects one argument");
           }
         } break;
-#if 0
-        case INTR_FREEA: {
-          if (ndlen(pn) == 1) {
-            node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
-            node_t *ptni = acode_type(pan);
-            if (ptni->ts != TS_PTR)
-              neprintf(pn, "invalid freea() intrinsic's argument");
-            acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_env_mod);
-            ndsettype(acode_type(pan), TS_VOID);
-            pcn = pan;
-          } else {
-            neprintf(pn, "freea() intrinsic expects one argument");
-          }
-        } break;
-#endif        
         case INTR_VAETC: 
         case INTR_VAARG: assert(false); /* wasmified */
         case INTR_SASSERT: {

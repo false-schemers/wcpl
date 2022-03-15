@@ -429,9 +429,6 @@ void init_symbols(void)
   intern_symbol("alignof", TT_INTR_NAME, INTR_ALIGNOF);
   intern_symbol("offsetof", TT_INTR_NAME, INTR_OFFSETOF);
   intern_symbol("alloca", TT_INTR_NAME, INTR_ALLOCA);
-#if 0
-  intern_symbol("freea", TT_INTR_NAME, INTR_FREEA);
-#endif
   intern_symbol("va_etc", TT_INTR_NAME, INTR_VAETC);
   intern_symbol("va_arg", TT_INTR_NAME, INTR_VAARG);
   intern_symbol("static_assert", TT_INTR_NAME, INTR_SASSERT);
@@ -2394,9 +2391,6 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           expect(pw, TT_RPAR, ")"); 
         } break;
         case INTR_ALLOCA: 
-#if 0
-        case INTR_FREEA:
-#endif
         case INTR_SASSERT: { /* (expr ...) */
           size_t n = 0;
           expect(pw, TT_LPAR, "(");
@@ -2407,7 +2401,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
             dropt(pw); 
           }
           expect(pw, TT_RPAR, ")"); 
-          if (((intr == INTR_ALLOCA/* || intr == INTR_FREEA*/) && n != 1) || 
+          if ((intr == INTR_ALLOCA && n != 1) || 
               (intr == INTR_SASSERT && !(n == 1 || n == 2)))  
            reprintf(pw, startpos, "unexpected arguments for %s", intr_name(pn->intr));
         } break;
@@ -3703,9 +3697,6 @@ const char *intr_name(intr_t intr)
   switch (intr) {
     case INTR_NONE: s = ""; break; 
     case INTR_ALLOCA: s = "alloca"; break; 
-#if 0
-    case INTR_FREEA: s = "freea"; break; 
-#endif
     case INTR_SIZEOF: s = "sizeof"; break; 
     case INTR_ALIGNOF: s = "alignof"; break; 
     case INTR_OFFSETOF: s = "offsetof"; break; 

@@ -350,9 +350,7 @@ void *buffini(buf_t* pb)
 {
   assert(pb);
   free(pb->buf);
-#ifndef NDEBUG
   pb->buf = NULL;
-#endif
   return pb;
 }
 
