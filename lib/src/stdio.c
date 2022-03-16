@@ -1,6 +1,7 @@
 #include <wasi/api.h>
 #include <assert.h>
 #include <errno.h>
+#include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -505,6 +506,539 @@ void setbuf(FILE *fp, char *buf)
 }
 
 
+/* formatted i/o helpers */
+
+/* todo: use macros? */
+static bool _is_oct_digit(char ch)
+{
+  return (ch >= '0') && (ch <= '7');
+}
+
+static bool _is_dec_digit(char ch)
+{
+  return (ch >= '0') && (ch <= '9');
+}
+
+static bool _is_hex_digit(char ch)
+{
+  return (ch >= '0') && (ch <= '9') 
+      || (ch >= 'a') && (ch <= 'f')
+      || (ch >= 'A') && (ch <= 'F');
+}
+
+/* length of the string (excluding the terminating 0) limited by 'maxsize' */
+static unsigned int _strnlen_s(const char* str, size_t maxsize)
+{
+  const char* s;
+  for (s = str; *s && maxsize--; ++s);
+  return (unsigned int)(s - str);
+}
+
+static unsigned int _atoi(const char** str)
+{
+  unsigned i = 0U;
+  while (_is_dec_digit(**str)) {
+    i = i * 10U + (unsigned)(*((*str)++) - '0');
+  }
+  return i;
+}
+
+
+/* formatted input */
+
+/* 'aton' conversion buffer size, this must be big enough to hold one converted
+ *  integer number not including sign/prefixes (dynamically created on stack) */
+#define SCANF_ATON_BUFFER_SIZE    32U
+
+ /* 'atod' conversion buffer size, this must be big enough to hold one converted
+  * floating-point number including prefixes (dynamically created on stack) */
+#define SCANF_ATOD_BUFFER_SIZE    32U
+
+/* internal size definitions */
+#define SIZE_HH  (-2)
+#define SIZE_H   (-1)
+#define SIZE_DEF (0)
+#define SIZE_L   (1)
+#define SIZE_LL  (2)
+
+/* input function type */
+typedef int(*in_fct_t)(void *data, size_t idx, size_t maxlen, bool get);
+
+/* internal buffer input */
+static int _in_buffer(void *data, size_t idx, size_t maxlen, bool get)
+{
+  if (idx < maxlen) return ((char*)data)[idx];
+  else return EOF;
+}
+
+/* internal file input */
+static int _in_file(void *data, size_t idx, size_t maxlen, bool get)
+{
+  FILE *fp = (FILE*)data;
+  int c = getc(fp);
+  if (c != EOF && !get) ungetc(c, fp);
+  return c;
+}
+
+static void store_int(void *dst, int size, unsigned long long i)
+{
+  if (!dst) return;
+  switch (size) {
+    case SIZE_HH:       *(char*)dst = (char)i;      break;
+    case SIZE_H:       *(short*)dst = (short)i;     break;
+    case SIZE_DEF:       *(int*)dst = (int)i;       break;
+    case SIZE_L:        *(long*)dst = (long)i;      break;
+    case SIZE_LL:  *(long long*)dst = (long long)i; break;
+  }
+}
+
+static void store_float(void *dst, int size, double f)
+{
+  if (!dst) return;
+  switch (size) {
+    case SIZE_DEF:     *(float*)dst = (float)f;     break;
+    case SIZE_L:      *(double*)dst = (double)f;    break;
+  }
+}
+
+/* internal aton for integers */
+static unsigned long long _aton(in_fct_t in, void *data, const size_t maxlen, int base, int width, size_t *pidx)
+{
+  char buf[SCANF_ATON_BUFFER_SIZE];
+  size_t len = 0, dc = 0; int c; bool gotsign = false;
+  unsigned long long res; char *end;
+  size_t maxidx = (width == 0) ? SIZE_MAX : *pidx + width;
+  
+  { /* scan chars up to maxidx */
+    if (*pidx >= maxidx) goto stop;
+    c = (*in)(data, *pidx, maxlen, false);
+    if (c == '-' || c == '+') {
+      gotsign = (c == '-');
+      buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
+    }
+    if (base == 0) { /* determine radix by prefix */
+      if (*pidx >= maxidx) goto stop;
+      c = (*in)(data, *pidx, maxlen, false);
+      if (c == '0') {
+        (*in)(data, (*pidx)++, maxlen, true);
+        ++dc;
+        if (*pidx >= maxidx) goto stop;
+        c = (*in)(data, *pidx, maxlen, false);
+        if (c == 'x' || c == 'X') {
+          (*in)(data, (*pidx)++, maxlen, true);
+          base = 16; dc = 0;
+        }
+        else base = 8;
+      }
+      else base = 10;
+    } else if (base == 16) { /* eat optional prefix */
+      if (*pidx >= maxidx) goto stop;
+      c = (*in)(data, *pidx, maxlen, false);
+      if (c == '0') {
+        (*in)(data, (*pidx)++, maxlen, true);
+        ++dc;
+        if (*pidx >= maxidx) goto stop;
+        c = (*in)(data, *pidx, maxlen, false);
+        if (c == 'x' || c == 'X') {
+          (*in)(data, (*pidx)++, maxlen, true);
+          dc = 0;
+        }
+      }
+    }
+    switch (base) {
+    case 8:
+      while (len < SCANF_ATON_BUFFER_SIZE - 1) {
+        if (*pidx >= maxidx) goto stop;
+        c = (*in)(data, *pidx, maxlen, false);
+        if (c != EOF && _is_oct_digit(c)) {
+          buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
+          ++dc;
+        }
+        else break;
+      }
+      break;
+    case 10:
+      while (len < SCANF_ATON_BUFFER_SIZE - 1) {
+        if (*pidx >= maxidx) goto stop;
+        c = (*in)(data, *pidx, maxlen, false);
+        if (c != EOF && _is_dec_digit(c)) {
+          buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
+          ++dc;
+        }
+        else break;
+      }
+      break;
+    case 16:
+      while (len < SCANF_ATON_BUFFER_SIZE - 1) {
+        if (*pidx >= maxidx) goto stop;
+        c = (*in)(data, *pidx, maxlen, false);
+        if (c != EOF && _is_hex_digit(c)) {
+          buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
+          ++dc;
+        }
+        else break;
+      }
+      break;
+    }
+  stop:;
+  }
+  if (!dc) { /* no digits */
+    errno = EILSEQ;
+    return 0;
+  }
+  buf[len] = 0; errno = 0;
+  if (gotsign) res = (unsigned long long)strtoll(buf, &end, base);
+  else res = strtoull(buf, &end, base);
+  if (*end != 0) errno = EILSEQ;
+  return res;
+}
+
+/* internal atod for decimal floating point */
+static double _atod(in_fct_t in, void *data, const size_t maxlen, int width, size_t *pidx)
+{
+  char buf[SCANF_ATON_BUFFER_SIZE];
+  size_t len = 0, dc = 0; int c;
+  double res; char *end; bool neg = false;
+  size_t maxidx = (width == 0) ? SIZE_MAX : *pidx + width;
+
+  { /* scan chars up to maxidx */
+    if (*pidx >= maxidx) goto stop;
+    c = (*in)(data, *pidx, maxlen, false);
+    if (c == '-' || c == '+') {
+      (*in)(data, (*pidx)++, maxlen, true);
+      neg = (c == '-');
+      buf[len++] = c;
+    }
+    if (*pidx >= maxidx) goto stop;
+    c = (*in)(data, *pidx, maxlen, false);
+    if (c == 'i' || c == 'I') {
+      (*in)(data, (*pidx)++, maxlen, true);
+      if (*pidx >= maxidx) goto stop;
+      c = (*in)(data, *pidx, maxlen, false);
+      if (c == 'n' || c == 'N') {
+        (*in)(data, (*pidx)++, maxlen, true);
+        if (*pidx >= maxidx) goto stop;
+        c = (*in)(data, *pidx, maxlen, false);
+        if (c == 'f' || c == 'F') {
+          (*in)(data, (*pidx)++, maxlen, true);
+          return neg ? -HUGE_VAL : HUGE_VAL;
+        }
+      }
+      errno = EILSEQ; return 0;
+    } else if (c == 'n' || c == 'N') {
+      (*in)(data, (*pidx)++, maxlen, true);
+      if (*pidx >= maxidx) goto stop;
+      c = (*in)(data, *pidx, maxlen, false);
+      if (c == 'a' || c == 'A') {
+        (*in)(data, (*pidx)++, maxlen, true);
+        if (*pidx >= maxidx) goto stop;
+        c = (*in)(data, *pidx, maxlen, false);
+        if (c == 'n' || c == 'N') {
+          (*in)(data, (*pidx)++, maxlen, true);
+          return -HUGE_VAL+HUGE_VAL;
+        }
+      }
+      errno = EILSEQ; return 0;
+    }
+    while (len < SCANF_ATON_BUFFER_SIZE - 1) {
+      if (*pidx >= maxidx) goto stop;
+      c = (*in)(data, *pidx, maxlen, false);
+      if (c != EOF && _is_dec_digit(c)) {
+        buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
+        ++dc;
+      }
+      else break;
+    }
+    if (len < SCANF_ATON_BUFFER_SIZE - 1) {
+      if (*pidx >= maxidx) goto stop;
+      c = (*in)(data, *pidx, maxlen, false);
+      if (c == '.') {
+        buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
+        while (len < SCANF_ATON_BUFFER_SIZE - 1) {
+          if (*pidx >= maxidx) goto stop;
+          c = (*in)(data, *pidx, maxlen, false);
+          if (c != EOF && _is_dec_digit(c)) {
+            buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
+            ++dc;
+          }
+          else break;
+        }
+      }
+    }
+    if (len < SCANF_ATON_BUFFER_SIZE - 1) {
+      if (*pidx >= maxidx) goto stop;
+      c = (*in)(data, *pidx, maxlen, false);
+      if (c == 'e' || c == 'E') {
+        buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
+        if (len < SCANF_ATON_BUFFER_SIZE - 1) {
+          if (*pidx >= maxidx) goto stop;
+          c = (*in)(data, *pidx, maxlen, false);
+          if (c == '-' || c == '+') {
+            (*in)(data, (*pidx)++, maxlen, true);
+            buf[len++] = c;
+          }
+          while (len < SCANF_ATON_BUFFER_SIZE - 1) {
+            if (*pidx >= maxidx) goto stop;
+            c = (*in)(data, *pidx, maxlen, false);
+            if (c != EOF && _is_dec_digit(c))
+              buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
+            else break;
+          }
+        }
+      }
+    }
+  stop:;
+  }
+  if (!dc) { /* no digits */
+    errno = EILSEQ;
+    return 0;
+  }
+  buf[len] = 0; errno = 0;
+  res = strtod(buf, &end);
+  if (*end != 0) errno = EILSEQ;
+  return res;
+}
+
+/* internal vsnscanf */
+int _vsnscanf(in_fct_t in, void *data, size_t maxlen, const char *format, va_list va)
+{
+  int width, size, base;
+  const unsigned char *p;
+  int c, t; char *s; void *dest = NULL;
+  int invert, matchc = 0;
+  unsigned long long x; double y;
+  unsigned char scanset[257];
+  size_t i, idx = 0;
+
+  for (p = (const unsigned char *)format; *p; ++p) {
+
+    if (isspace(*p)) {
+      while (isspace(p[1])) ++p;
+      while (true) {
+        c = (*in)(data, idx, maxlen, false);
+        if (c != EOF && isspace(c)) (*in)(data, idx++, maxlen, true);
+        else break;
+      }
+      continue;
+    }
+
+    if (*p != '%' || p[1] == '%') {
+      if (*p == '%') {
+        ++p;
+        while (true) {
+          c = (*in)(data, idx, maxlen, false);
+          if (c != EOF && isspace(c)) (*in)(data, idx++, maxlen, true);
+          else break;
+        }
+      } else {
+        c = (*in)(data, idx, maxlen, false);
+      }
+      if (c == *p) {
+        (*in)(data, idx++, maxlen, true);
+      } else {
+        if (c == EOF) return matchc ? matchc : EOF;
+        else return matchc;
+      }
+      continue;
+    }
+
+    ++p;
+    if (*p == '*') {
+      dest = NULL; ++p;
+    } else {
+      dest = va_arg(va, void *);
+    }
+
+    for (width = 0; isdigit(*p); ++p) {
+      width = 10 * width + *p - '0';
+    }
+
+    size = SIZE_DEF;
+    switch (*p++) {
+      case 'h':
+        if (*p == 'h') ++p, size = SIZE_HH;
+        else size = SIZE_H;
+        break;
+      case 'l':
+        if (*p == 'l') ++p, size = SIZE_LL;
+        else size = SIZE_L;
+        break;
+      case 'j':
+        size = SIZE_LL;
+        break;
+      case 'z': case 't':
+        size = SIZE_L;
+        break;
+      case 'd': case 'i': case 'o': case 'u': case 'x':
+      case 'a': case 'e': case 'f': case 'g':
+      case 'A': case 'E': case 'F': case 'G': case 'X':
+      case 's': case 'c': case '[':
+      case 'p': case 'n':
+        --p;
+        break;
+      default:
+        return EOF;
+    }
+
+    t = *p;
+
+    switch (t) {
+      case 'c':
+        if (width < 1) width = 1;
+      case '[':
+        break;
+      case 'n':
+        store_int(dest, size, idx);
+        continue;
+      default: {
+        while (true) {
+          c = (*in)(data, idx, maxlen, false);
+          if (c != EOF && isspace(c)) (*in)(data, idx++, maxlen, true);
+          else break;
+        }
+      } break;
+    }
+
+    if ((*in)(data, idx, maxlen, false) == EOF) 
+      return matchc ? matchc : EOF;
+
+    switch (t) {
+      case 's':
+      case 'c':
+      case '[':
+        if (t == 'c' || t == 's') {
+          memset(&scanset[0], -1, 257);
+          scanset[0] = 0;
+          if (t == 's') {
+            scanset[1 + '\t'] = 0;
+            scanset[1 + '\n'] = 0;
+            scanset[1 + '\v'] = 0;
+            scanset[1 + '\f'] = 0;
+            scanset[1 + '\r'] = 0;
+            scanset[1 + ' '] = 0;
+          }
+        } else {
+          if (*++p == '^') p++, invert = 1;
+          else invert = 0;
+          memset(&scanset[0], invert, 257);
+          scanset[0] = 0;
+          if (*p == '-') p++, scanset[1 + '-'] = 1 - invert;
+          else if (*p == ']') p++, scanset[1 + ']'] = 1 - invert;
+          for (; *p != ']'; p++) {
+            if (!*p) return EOF;
+            if (*p == '-' && p[1] && p[1] != ']')
+              for (c = p++[-1]; c < *p; c++)
+                scanset[1 + c] = 1 - invert;
+            scanset[1 + *p] = 1 - invert;
+          }
+        }
+        i = 0;
+        if ((s = dest) != NULL) {
+          while (!width || (int)i < width) {
+            c = (*in)(data, idx, maxlen, false);
+            if (c == EOF || !scanset[(c & 0xFF) + 1]) break;
+            s[i++] = c; (*in)(data, idx++, maxlen, true);
+          }
+        } else {
+          while (!width || (int)i < width) {
+            c = (*in)(data, idx, maxlen, false);
+            if (c == EOF || !scanset[(c & 0xFF) + 1]) break;
+            ++i; (*in)(data, idx++, maxlen, true);
+          }
+        }
+        if (!i || (t == 'c' && i != width)) 
+          return matchc ? matchc : EOF;
+        if (t != 'c') {
+          if (s) s[i] = 0;
+        }
+        break;
+      case 'p': case 'X': case 'x': case 'o':
+      case 'd': case 'u': case 'i':
+        base = 0;
+        switch (t) {
+          case 'p': case 'X': case 'x': base = 16; break;
+          case 'o': base = 8; break;
+          case 'd': case 'u': base = 10; break;
+        }
+        i = idx; 
+        x = _aton(in, data, maxlen, base, width, &idx);
+        if (idx == i || errno) return matchc; // matchc ? matchc : EOF;
+        if (t == 'p' && dest != NULL) *(void **)dest = (void *)(uintptr_t)x;
+        else store_int(dest, size, x);
+        break;
+      case 'a': case 'A':
+      case 'e': case 'E':
+      case 'f': case 'F':
+      case 'g': case 'G':
+        i = idx; 
+        y = _atod(in, data, maxlen, width, &idx);
+        if (idx == i || errno) return matchc; // matchc ? matchc : EOF;
+        else store_float(dest, size, y);
+        break;
+    }
+    if (dest) ++matchc;
+  }
+  
+  return matchc;
+}
+
+int fscanf(FILE *fp, const char *format, ...)
+{
+  va_list va;
+  va_start(va, format);
+  int ret = _vsnscanf(&_in_file, fp, SIZE_MAX, format, va);
+  va_end(va);
+  return ret;
+}
+
+int scanf(const char *format, ...)
+{
+  va_list va;
+  va_start(va, format);
+  int ret = _vsnscanf(&_in_file, stdin, SIZE_MAX, format, va);
+  va_end(va);
+  return ret;
+}
+
+int sscanf(const char *buf, const char *format, ...)
+{
+  va_list va;
+  va_start(va, format);
+  int ret = _vsnscanf(&_in_buffer, buf, strlen(buf), format, va);
+  va_end(va);
+  return ret;
+}
+
+int snscanf(const char *buf, size_t count, const char *format, ...)
+{
+  va_list va;
+  va_start(va, format);
+  int ret = _vsnscanf(&_in_buffer, buf, _strnlen_s(buf, count), format, va);
+  va_end(va);
+  return ret;
+}
+
+int vfscanf(FILE *fp, const char *format, va_list va)
+{
+  return _vsnscanf(&_in_file, fp, SIZE_MAX, format, va);
+}
+
+int vscanf(const char *format, va_list va)
+{
+  return _vsnscanf(&_in_file, stdin, SIZE_MAX, format, va);
+}
+
+int vsscanf(const char *buf, const char *format, va_list va)
+{
+  return _vsnscanf(&_in_buffer, buf, strlen(buf), format, va);
+}
+
+int vsnscanf(const char *buf, size_t count, const char *format, va_list va)
+{
+  return _vsnscanf(&_in_buffer, buf, _strnlen_s(buf, count), format, va);
+}
+
+
 /* formatted output */
 /* derived from: https://github.com/mpaland/printf (c) Marco Paland (info@paland.com) */
 
@@ -537,78 +1071,42 @@ void setbuf(FILE *fp, char *buf)
 #define FLAGS_ADAPT_EXP (1U << 11U)
 
 /* output function type */
-typedef void (*out_fct_t)(char c, void* buffer, size_t idx, size_t maxlen);
-
-/* wrapper (used as buffer) for output function type */
-typedef struct out_fct_wrap {
-  void  (*fct)(char c, void* arg);
-  void* arg;
-} out_fct_wrap_t;
+typedef void (*out_fct_t)(char c, void *data, size_t idx, size_t maxlen);
 
 /* internal buffer output */
-static void _out_buffer(char c, void* buffer, size_t idx, size_t maxlen)
+static void _out_buffer(char c, void *data, size_t idx, size_t maxlen)
 {
-  if (idx < maxlen) ((char*)buffer)[idx] = c;
+  if (idx < maxlen) ((char*)data)[idx] = c;
 }
 
 /* internal null output */
-static void _out_null(char c, void* buffer, size_t idx, size_t maxlen)
+static void _out_null(char c, void *data, size_t idx, size_t maxlen)
 {
 }
 
-/* internal putc wrapper */
-static void _out_char(char c, void* buffer, size_t idx, size_t maxlen)
+/* internal file output */
+static void _out_file(char c, void *data, size_t idx, size_t maxlen)
 {
-  FILE *fp = (FILE *)buffer;
+  FILE *fp = (FILE *)data;
   if (c) putc(c, fp);
 } 
 
-/* internal output function wrapper */
-static void _out_fct(char c, void* buffer, size_t idx, size_t maxlen)
-{
-  out_fct_wrap_t *pw = (out_fct_wrap_t*)buffer;
-  if (c) (*pw->fct)(c, pw->arg);
-}
-
-/* length of the string (excluding the terminating 0) limited by 'maxsize' */
-static unsigned int _strnlen_s(const char* str, size_t maxsize)
-{
-  const char* s;
-  for (s = str; *s && maxsize--; ++s);
-  return (unsigned int)(s - str);
-}
-
-/* todo: use macro? */
-static bool _is_digit(char ch)
-{
-  return (ch >= '0') && (ch <= '9');
-}
-
-static unsigned int _atoi(const char** str)
-{
-  unsigned i = 0U;
-  while (_is_digit(**str)) {
-    i = i * 10U + (unsigned)(*((*str)++) - '0');
-  }
-  return i;
-}
-
 /* output the specified string in reverse, taking care of any zero-padding */
-static size_t _out_rev(out_fct_t out, char *buffer, size_t idx, size_t maxlen, const char* buf, size_t len, unsigned int width, unsigned int flags)
+static size_t _out_rev(out_fct_t out, void *data, size_t idx, size_t maxlen, const char *buf, size_t len, unsigned int width, unsigned int flags)
 {
   const size_t start_idx = idx; size_t i;
   if (!(flags & FLAGS_LEFT) && !(flags & FLAGS_ZEROPAD)) {
-    for (i = len; i < width; i++) (*out)(' ', buffer, idx++, maxlen);
+    for (i = len; i < width; i++) (*out)(' ', data, idx++, maxlen);
   }
-  while (len) (*out)(buf[--len], buffer, idx++, maxlen);
+  while (len) (*out)(buf[--len], data, idx++, maxlen);
   if (flags & FLAGS_LEFT) {
-    while (idx - start_idx < width) (*out)(' ', buffer, idx++, maxlen);
+    while (idx - start_idx < width) (*out)(' ', data, idx++, maxlen);
   }
   return idx;
 }
 
 /* internal itoa format */
-static size_t _ntoa_format(out_fct_t out, char *buffer, size_t idx, size_t maxlen, char* buf, size_t len, bool negative, unsigned int base, unsigned int prec, unsigned int width, unsigned int flags)
+static size_t _ntoa_format(out_fct_t out, void *data, size_t idx, size_t maxlen, char *buf, size_t len, bool negative, unsigned int base, unsigned int prec, unsigned int width, unsigned int flags)
 {
   if (!(flags & FLAGS_LEFT)) {
     if (width && (flags & FLAGS_ZEROPAD) && (negative || (flags & (FLAGS_PLUS | FLAGS_SPACE)))) --width;
@@ -629,11 +1127,11 @@ static size_t _ntoa_format(out_fct_t out, char *buffer, size_t idx, size_t maxle
     else if (flags & FLAGS_PLUS) buf[len++] = '+'; 
     else if (flags & FLAGS_SPACE) buf[len++] = ' ';
   }
-  return _out_rev(out, buffer, idx, maxlen, buf, len, width, flags);
+  return _out_rev(out, data, idx, maxlen, buf, len, width, flags);
 }
 
 /* internal itoa for 'long' type */
-static size_t _ntoa_long(out_fct_t out, char *buffer, size_t idx, size_t maxlen, unsigned long value, bool negative, unsigned long base, unsigned int prec, unsigned int width, unsigned int flags)
+static size_t _ntoa_long(out_fct_t out, void *data, size_t idx, size_t maxlen, unsigned long value, bool negative, unsigned long base, unsigned int prec, unsigned int width, unsigned int flags)
 {
   char buf[PRINTF_NTOA_BUFFER_SIZE];
   size_t len = 0U;
@@ -645,11 +1143,11 @@ static size_t _ntoa_long(out_fct_t out, char *buffer, size_t idx, size_t maxlen,
       value /= base;
     } while (value && (len < PRINTF_NTOA_BUFFER_SIZE));
   }
-  return _ntoa_format(out, buffer, idx, maxlen, buf, len, negative, (unsigned int)base, prec, width, flags);
+  return _ntoa_format(out, data, idx, maxlen, buf, len, negative, (unsigned int)base, prec, width, flags);
 }
 
 /* internal itoa for 'long long' type */
-static size_t _ntoa_long_long(out_fct_t out, char *buffer, size_t idx, size_t maxlen, unsigned long long value, bool negative, unsigned long long base, unsigned int prec, unsigned int width, unsigned int flags)
+static size_t _ntoa_long_long(out_fct_t out, void *data, size_t idx, size_t maxlen, unsigned long long value, bool negative, unsigned long long base, unsigned int prec, unsigned int width, unsigned int flags)
 {
   char buf[PRINTF_NTOA_BUFFER_SIZE];
   size_t len = 0U;
@@ -661,30 +1159,30 @@ static size_t _ntoa_long_long(out_fct_t out, char *buffer, size_t idx, size_t ma
       value /= base;
     } while (value && (len < PRINTF_NTOA_BUFFER_SIZE));
   }
-  return _ntoa_format(out, buffer, idx, maxlen, buf, len, negative, (unsigned int)base, prec, width, flags);
+  return _ntoa_format(out, data, idx, maxlen, buf, len, negative, (unsigned int)base, prec, width, flags);
 }
 
-/* powers of 10 for _ftoa */
+/* powers of 10 for _ftoa's 9 digits of precision */
 static const double pow10[] = { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000 };
 
 /* forward declaration so that _ftoa can switch to exp notation for values > PRINTF_MAX_FLOAT */
-static size_t _etoa(out_fct_t out, char *buffer, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags);
+static size_t _etoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags);
 
 /* internal ftoa for fixed decimal floating point */
-static size_t _ftoa(out_fct_t out, char *buffer, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags)
+static size_t _ftoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags)
 {
   char buf[PRINTF_FTOA_BUFFER_SIZE];
   size_t len  = 0U; double diff = 0.0;
   
   if (value != value)   /* NAN */
-    return _out_rev(out, buffer, idx, maxlen, "nan", 3, width, flags);
+    return _out_rev(out, data, idx, maxlen, "nan", 3, width, flags);
   if (value < -DBL_MAX) /* -INF */
-    return _out_rev(out, buffer, idx, maxlen, "fni-", 4, width, flags);
+    return _out_rev(out, data, idx, maxlen, "fni-", 4, width, flags);
   if (value > DBL_MAX)  /* +INF */
-    return _out_rev(out, buffer, idx, maxlen, (flags & FLAGS_PLUS) ? "fni+" : "fni", (flags & FLAGS_PLUS) ? 4U : 3U, width, flags);
+    return _out_rev(out, data, idx, maxlen, (flags & FLAGS_PLUS) ? "fni+" : "fni", (flags & FLAGS_PLUS) ? 4U : 3U, width, flags);
   /* fall back to etoa for very large values */
   if ((value > PRINTF_MAX_FLOAT) || (value < -PRINTF_MAX_FLOAT)) {
-    return _etoa(out, buffer, idx, maxlen, value, prec, width, flags);
+    return _etoa(out, data, idx, maxlen, value, prec, width, flags);
   }
   bool negative = false;
   if (value < 0) { negative = true; value = -value; }
@@ -700,7 +1198,6 @@ static size_t _ftoa(out_fct_t out, char *buffer, size_t idx, size_t maxlen, doub
   int whole = (int)value;
   double tmp = (value - whole) * pow10[prec];
   unsigned long frac = (unsigned long)tmp;
-  //printf("** whole=%d, frac=%lu, (int)pow10[prec]=%d\n", whole, frac, (int)pow10[prec]); fflush(stdout);
   diff = tmp - frac;
   if (diff > 0.5) {
     ++frac;
@@ -753,14 +1250,14 @@ static size_t _ftoa(out_fct_t out, char *buffer, size_t idx, size_t maxlen, doub
     else if (flags & FLAGS_SPACE) buf[len++] = ' ';
   }
 
-  return _out_rev(out, buffer, idx, maxlen, buf, len, width, flags);
+  return _out_rev(out, data, idx, maxlen, buf, len, width, flags);
 }
 
 /* internal ftoa variant for exponential floating-point type, contributed by Martijn Jasperse <m.jasperse@gmail.com> */
-static size_t _etoa(out_fct_t out, char *buffer, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags)
+static size_t _etoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags)
 {
   if ((value != value) || (value > DBL_MAX) || (value < -DBL_MAX)) {
-    return _ftoa(out, buffer, idx, maxlen, value, prec, width, flags);
+    return _ftoa(out, data, idx, maxlen, value, prec, width, flags);
   }
   const bool negative = value < 0; if (negative) value = -value;
   if (!(flags & FLAGS_PRECISION)) prec = PRINTF_DEFAULT_FLOAT_PRECISION;
@@ -817,13 +1314,13 @@ static size_t _etoa(out_fct_t out, char *buffer, size_t idx, size_t maxlen, doub
 
   /* output the floating part */
   const size_t start_idx = idx;
-  idx = _ftoa(out, buffer, idx, maxlen, negative ? -value : value, prec, fwidth, flags & ~FLAGS_ADAPT_EXP);
+  idx = _ftoa(out, data, idx, maxlen, negative ? -value : value, prec, fwidth, flags & ~FLAGS_ADAPT_EXP);
   /* output the exponent part */
   if (minwidth) {
-    (*out)((flags & FLAGS_UPPERCASE) ? 'E' : 'e', buffer, idx++, maxlen);
-    idx = _ntoa_long(out, buffer, idx, maxlen, (expval < 0) ? -expval : expval, expval < 0, 10, 0, minwidth-1, FLAGS_ZEROPAD | FLAGS_PLUS);
+    (*out)((flags & FLAGS_UPPERCASE) ? 'E' : 'e', data, idx++, maxlen);
+    idx = _ntoa_long(out, data, idx, maxlen, (expval < 0) ? -expval : expval, expval < 0, 10, 0, minwidth-1, FLAGS_ZEROPAD | FLAGS_PLUS);
     if (flags & FLAGS_LEFT) { /* right-pad spaces */ 
-      while (idx - start_idx < width) (*out)(' ', buffer, idx++, maxlen);
+      while (idx - start_idx < width) (*out)(' ', data, idx++, maxlen);
     }
   }
 
@@ -831,16 +1328,16 @@ static size_t _etoa(out_fct_t out, char *buffer, size_t idx, size_t maxlen, doub
 }
 
 /* internal vsnprintf */
-static int _vsnprintf(out_fct_t out, char *buffer, const size_t maxlen, const char *format, va_list va)
+static int _vsnprintf(out_fct_t out, void *data, const size_t maxlen, const char *format, va_list va)
 {
   unsigned int flags, width, precision, n;
   size_t idx = 0U;
-  if (!buffer) out = &_out_null; /* use null output function */
+  if (!data) out = &_out_null; /* use null output function */
 
   while (*format) {
     /* format specifier?  %[flags][width][.precision][length] */
     if (*format != '%') { /* no */
-      (*out)(*format, buffer, idx++, maxlen);
+      (*out)(*format, data, idx++, maxlen);
       ++format;
       continue;
     } else { /* yes */
@@ -860,7 +1357,7 @@ static int _vsnprintf(out_fct_t out, char *buffer, const size_t maxlen, const ch
     } while (n);
 
     width = 0U;
-    if (_is_digit(*format)) {
+    if (_is_dec_digit(*format)) {
       width = _atoi(&format);
     } else if (*format == '*') {
       const int w = va_arg(va, int);
@@ -877,7 +1374,7 @@ static int _vsnprintf(out_fct_t out, char *buffer, const size_t maxlen, const ch
     if (*format == '.') {
       flags |= FLAGS_PRECISION;
       format++;
-      if (_is_digit(*format)) {
+      if (_is_dec_digit(*format)) {
         precision = _atoi(&format);
       } else if (*format == '*') {
         const int prec = (int)va_arg(va, int);
@@ -927,45 +1424,45 @@ static int _vsnprintf(out_fct_t out, char *buffer, const size_t maxlen, const ch
         if (*format == 'i' || *format == 'd') { /* signed */
           if (flags & FLAGS_LONG_LONG) {
             const long long value = va_arg(va, long long);
-            idx = _ntoa_long_long(out, buffer, idx, maxlen, (unsigned long long)(value > 0 ? value : 0 - value), value < 0, base, precision, width, flags);
+            idx = _ntoa_long_long(out, data, idx, maxlen, (unsigned long long)(value > 0 ? value : 0 - value), value < 0, base, precision, width, flags);
           } else if (flags & FLAGS_LONG) {
             const long value = va_arg(va, long);
-            idx = _ntoa_long(out, buffer, idx, maxlen, (unsigned long)(value > 0 ? value : 0 - value), value < 0, base, precision, width, flags);
+            idx = _ntoa_long(out, data, idx, maxlen, (unsigned long)(value > 0 ? value : 0 - value), value < 0, base, precision, width, flags);
           } else {
             const int value = (flags & FLAGS_CHAR) ? (char)va_arg(va, int) : (flags & FLAGS_SHORT) ? (short int)va_arg(va, int) : va_arg(va, int);
-            idx = _ntoa_long(out, buffer, idx, maxlen, (unsigned int)(value > 0 ? value : 0 - value), value < 0, base, precision, width, flags);
+            idx = _ntoa_long(out, data, idx, maxlen, (unsigned int)(value > 0 ? value : 0 - value), value < 0, base, precision, width, flags);
           }
         } else { /* unsigned */
           if (flags & FLAGS_LONG_LONG) {
-            idx = _ntoa_long_long(out, buffer, idx, maxlen, va_arg(va, unsigned long long), false, base, precision, width, flags);
+            idx = _ntoa_long_long(out, data, idx, maxlen, va_arg(va, unsigned long long), false, base, precision, width, flags);
           } else if (flags & FLAGS_LONG) {
-            idx = _ntoa_long(out, buffer, idx, maxlen, va_arg(va, unsigned long), false, base, precision, width, flags);
+            idx = _ntoa_long(out, data, idx, maxlen, va_arg(va, unsigned long), false, base, precision, width, flags);
           } else {
             const unsigned int value = (flags & FLAGS_CHAR) ? (unsigned char)va_arg(va, unsigned int) : (flags & FLAGS_SHORT) ? (unsigned short int)va_arg(va, unsigned int) : va_arg(va, unsigned int);
-            idx = _ntoa_long(out, buffer, idx, maxlen, value, false, base, precision, width, flags);
+            idx = _ntoa_long(out, data, idx, maxlen, value, false, base, precision, width, flags);
           }
         }
         ++format;
       } break;
       case 'f': case 'F': {
         if (*format == 'F') flags |= FLAGS_UPPERCASE;
-        idx = _ftoa(out, buffer, idx, maxlen, va_arg(va, double), precision, width, flags);
+        idx = _ftoa(out, data, idx, maxlen, va_arg(va, double), precision, width, flags);
         ++format;
       } break;
       case 'e': case 'E': case 'g': case 'G': {
         if (*format == 'g' || *format == 'G') flags |= FLAGS_ADAPT_EXP;
         if (*format == 'E' || *format == 'G') flags |= FLAGS_UPPERCASE;
-        idx = _etoa(out, buffer, idx, maxlen, va_arg(va, double), precision, width, flags);
+        idx = _etoa(out, data, idx, maxlen, va_arg(va, double), precision, width, flags);
         ++format;
       } break;
       case 'c': {
         unsigned int l = 1U;
         if (!(flags & FLAGS_LEFT)) {
-          while (l++ < width) (*out)(' ', buffer, idx++, maxlen);
+          while (l++ < width) (*out)(' ', data, idx++, maxlen);
         }
-        (*out)((char)va_arg(va, int), buffer, idx++, maxlen);
+        (*out)((char)va_arg(va, int), data, idx++, maxlen);
         if (flags & FLAGS_LEFT) {
-          while (l++ < width) (*out)(' ', buffer, idx++, maxlen);
+          while (l++ < width) (*out)(' ', data, idx++, maxlen);
         }
         ++format;
       } break;
@@ -974,13 +1471,13 @@ static int _vsnprintf(out_fct_t out, char *buffer, const size_t maxlen, const ch
         unsigned int l = _strnlen_s(p, precision ? precision : (size_t)-1);
         if (flags & FLAGS_PRECISION) l = (l < precision ? l : precision);
         if (!(flags & FLAGS_LEFT)) {
-          while (l++ < width) (*out)(' ', buffer, idx++, maxlen);
+          while (l++ < width) (*out)(' ', data, idx++, maxlen);
         }
         while (*p != 0 && (!(flags & FLAGS_PRECISION) || precision--)) {
-          (*out)(*(p++), buffer, idx++, maxlen);
+          (*out)(*(p++), data, idx++, maxlen);
         }
         if (flags & FLAGS_LEFT) {
-          while (l++ < width) (*out)(' ', buffer, idx++, maxlen);
+          while (l++ < width) (*out)(' ', data, idx++, maxlen);
         }
         ++format;
       } break;
@@ -989,24 +1486,24 @@ static int _vsnprintf(out_fct_t out, char *buffer, const size_t maxlen, const ch
         flags |= FLAGS_ZEROPAD | FLAGS_UPPERCASE;
         const bool is_ll = sizeof(uintptr_t) == sizeof(long long);
         if (is_ll) {
-          idx = _ntoa_long_long(out, buffer, idx, maxlen, (uintptr_t)va_arg(va, void*), false, 16U, precision, width, flags);
+          idx = _ntoa_long_long(out, data, idx, maxlen, (uintptr_t)va_arg(va, void*), false, 16U, precision, width, flags);
         } else {
-          idx = _ntoa_long(out, buffer, idx, maxlen, (unsigned long)((uintptr_t)va_arg(va, void*)), false, 16U, precision, width, flags);
+          idx = _ntoa_long(out, data, idx, maxlen, (unsigned long)((uintptr_t)va_arg(va, void*)), false, 16U, precision, width, flags);
         }
         ++format;
       } break;
       case '%': {
-        (*out)('%', buffer, idx++, maxlen);
+        (*out)('%', data, idx++, maxlen);
         ++format;
       } break;
       default: {
-        (*out)(*format, buffer, idx++, maxlen);
+        (*out)(*format, data, idx++, maxlen);
         ++format;
       } break;
     }
   }
 
-  (*out)((char)0, buffer, idx < maxlen ? idx : maxlen - 1U, maxlen); /* \0 */
+  (*out)((char)0, data, idx < maxlen ? idx : maxlen - 1U, maxlen); /* \0 */
   return (int)idx; /* # of written chars sans \0 */
 }
 
@@ -1014,7 +1511,7 @@ int fprintf(FILE *fp, const char *format, ...)
 {
   va_list va;
   va_start(va, format);
-  const int ret = _vsnprintf(&_out_char, (char*)fp, (size_t)-1, format, va);
+  const int ret = _vsnprintf(&_out_file, fp, SIZE_MAX, format, va);
   va_end(va);
   return ret;
 }
@@ -1023,49 +1520,48 @@ int printf(const char* format, ...)
 {
   va_list va;
   va_start(va, format);
-  const int ret = _vsnprintf(&_out_char, (char*)stdout, (size_t)-1, format, va);
+  const int ret = _vsnprintf(&_out_file, stdout, SIZE_MAX, format, va);
   va_end(va);
   return ret;
 }
 
-int sprintf(char* buffer, const char* format, ...)
+int sprintf(char* buf, const char* format, ...)
 {
   va_list va;
   va_start(va, format);
-  const int ret = _vsnprintf(&_out_buffer, buffer, (size_t)-1, format, va);
+  const int ret = _vsnprintf(&_out_buffer, buf, SIZE_MAX, format, va);
   va_end(va);
   return ret;
 }
 
-int snprintf(char* buffer, size_t count, const char* format, ...)
+int snprintf(char* buf, size_t count, const char* format, ...)
 {
   va_list va;
   va_start(va, format);
-  const int ret = _vsnprintf(&_out_buffer, buffer, count, format, va);
+  const int ret = _vsnprintf(&_out_buffer, buf, count, format, va);
   va_end(va);
   return ret;
 }
 
 int vprintf(const char* format, va_list va)
 {
-  return _vsnprintf(&_out_char, (char*)stdout, (size_t)-1, format, va);
+  return _vsnprintf(&_out_file, stdout, SIZE_MAX, format, va);
 }
 
 int vfprintf(FILE *fp, const char *format, va_list va)
 {
-  return _vsnprintf(&_out_char, (char*)fp, (size_t)-1, format, va);
+  return _vsnprintf(&_out_file, fp, SIZE_MAX, format, va);
 }
 
-int vsprintf(char* buffer, const char* format, va_list va)
+int vsprintf(char* buf, const char* format, va_list va)
 {
-  return _vsnprintf(&_out_buffer, buffer, (size_t)-1, format, va);
+  return _vsnprintf(&_out_buffer, buf, SIZE_MAX, format, va);
 }
 
-int vsnprintf(char* buffer, size_t count, const char* format, va_list va)
+int vsnprintf(char* buf, size_t count, const char* format, va_list va)
 {
-  return _vsnprintf(&_out_buffer, buffer, count, format, va);
+  return _vsnprintf(&_out_buffer, buf, count, format, va);
 }
-
 
 
 /* misc filesystem functions */

@@ -67,7 +67,6 @@ extern int fsetpos(FILE *stream, const fpos_t *ptr);
 extern int fflush(FILE *stream);
 extern int setvbuf(FILE *stream, char *buf, int mode, size_t size);
 extern void setbuf(FILE *stream, char *buf);
-
 extern int fprintf(FILE *stream, const char *format, ...);
 extern int printf(const char *format, ...);
 extern int sprintf(char *s, const char *format, ...);
@@ -77,9 +76,13 @@ extern int vfprintf(FILE *stream, const char *format, va_list arg);
 extern int vsprintf(char *s, const char *format, va_list arg);
 extern int vsnprintf(char *s, size_t count, const char* format, va_list arg);
 extern int fscanf(FILE *stream, const char *format, ...);
-extern int int scanf(const char *format, ...);
+extern int scanf(const char *format, ...);
 extern int sscanf(const char *s, const char *format, ...);
-
+extern int snscanf(const char *s, size_t count, const char *format, ...);
+extern int vfscanf(FILE *stream, const char *format, va_list arg);
+extern int vscanf(const char *format, va_list arg);
+extern int vsscanf(const char *s, const char *format, va_list arg);
+extern int vsnscanf(const char *s, size_t count, const char *format, va_list arg);
 /* extern FILE *tmpfile(void); -- not in WASI? */
 /* extern char *tmpnam(char s[L_tmpnam]); -- not in WASI? */
 extern int int remove(const char *filename);
