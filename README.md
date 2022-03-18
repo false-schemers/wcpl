@@ -26,13 +26,15 @@ Compiler/linker/libc for a subset of C targeting Webassembly (partly functional)
 - user object modules should be provided explicitly as command line arguments
 - lookup directories should end in separator char (`/` on Un*x, `\` on Windows), file name is just appended to it
 
-# C features not yet supported
+# C and library features not yet supported
 
 - taking address of a global scalar var (?)
 - `{}` initializers for locals
 - `static` variables in function scope
 - structures/unions as parameters
 - instrumenting implicit return paths from a non-void function
+- hex format of doubles in WAT object and output files
+- eval of `asuint64` and `asdouble` intrinsics in constant expressions
 - fixme: NULL is not a constant for global init?
 - fixme: stdout/stderr are not line-buffered and don't autoflush on exit
 
@@ -52,25 +54,32 @@ Compiler/linker/libc for a subset of C targeting Webassembly (partly functional)
 
 # Libraries already implemented
 
-- `<wasi/api.h>` (header only, implemented by host)
-- `<ctype.h>`
-- `<string.h>`
-- `<errno.h>`
 - `<assert.h>` (header only)
+- `<ctype.h>`
+- `<dirent.h>` (POSIX-like, abridged)
+- `<errno.h>`
+- `<fcntl.h>` (POSIX-like, abridged)
+- `<fenv.h>` (with WASM limitations)
+- `<float.h>` (header only)
+- `<inttypes.h>` (header only)
+- `<limits.h>` (header only)
 - `<stdarg.h>` (header only)
 - `<stdbool.h>` (header only)
 - `<stddef.h>` (header only)
 - `<stdint.h>` (header only)
-- `<inttypes.h>` (header only)
-- `<limits.h>` (header only)
-- `<float.h>` (header only)
-- `<stdlib.h>` (abridged)
-- `<stdio.h>` (abridged)
+- `<stdio.h>` (abridged: no `gets`, `tmpfile`, `tmpnam`)
+- `<stdlib.h>` (abridged: no `system`)
+- `<string.h>`
+- `<sys/types.h>` (header only)
+- `<sys/defs.h>` (header only, internal)
+- `<sys/stat.h>` (POSIX-like, abridged)
+- `<unistd.h>` (POSIX-like, abridged)
+- `<wasi/api.h>` (header only, implemented by host)
  
-# Libaries to be implemented
+# Libaries yet to be implemented
 
 - `<time.h>`
-- `<math.h>`
+- `<math.h>` (just a few functions for now)
 
 # Libaries that won't be supported
 
