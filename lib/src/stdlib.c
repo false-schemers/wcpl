@@ -57,86 +57,191 @@ long long atoll(const char *s)
   return neg ? n : -n;
 }
 
-/* mattn/strtod (Yasuhiro Matsumoto); simplistic */
-double strtod(const char *str, char **end)
+/* poor man's strtod: rounding errors are possible in decimal, hex is exact */
+
+#define MAX_BASE10_EXPONENT 511 /* largest possible base 10 exponent */
+#define MAX_BASE10_DIGS 18 /* more than this won't affect the result */
+static double powers_of_10[] = { 10., 100., 1.0e4, 1.0e8, 1.0e16, 1.0e32, 1.0e64, 1.0e128, 1.0e256 };
+
+static double strtod_dec(const char *s, const char *pc, bool neg, char **endp)
 {
-  double d = 0.0; int sign, n = 0;
-  const char *p = str, *a = str;
-  while (isspace(*p)) p++;
-  { /* decimal part */
-    sign = 1;
-    if (*p == '-') {
-      sign = -1; ++p;
-    } else if (*p == '+') {
-      ++p;
+  bool negexp = false;
+  double fraction, exponent, *pd;
+  int c, exp = 0, fracexp = 0;
+  int mantsz = 0, dotpos = -1, expsz = -1;
+  const char *pexp;
+
+  while (true) {
+    if (!isdigit(c = *pc)) {
+      if ((c != '.') || (dotpos >= 0)) break;
+      dotpos = mantsz;
     }
-    if (isdigit(*p)) {
-      d = (double)(*p++ - '0');
-      while (*p && isdigit(*p)) {
-        d = d * 10.0 + (double)(*p - '0');
-        ++p; ++n;
-      }
-      a = p;
-    } else if (*p != '.') {
-      goto done;
-    }
-    d *= sign;
-    /* fraction part */
-    if (*p == '.') {
-      double f = 0.0, base = 0.1;
-      ++p;
-      if (isdigit(*p)) {
-        while (*p && isdigit(*p)) {
-          f += base * (*p - '0');
-          base /= 10.0;
-          ++p;
-          ++n;
-        }
-      }
-      d += f * sign;
-      a = p;
-    }
-    /* exponential part */
-    if ((*p == 'E') || (*p == 'e')) {
-      int e = 0;
-      ++p; sign = 1;
-      if (*p == '-') {
-        sign = -1; ++p;
-      } else if (*p == '+') {
-        ++p;
-      }
-      if (isdigit(*p)) {
-        while (*p == '0') ++p;
-        if (*p == '\0') --p;
-        e = (int)(*p++ - '0');
-        while (*p && isdigit(*p)) {
-          e = e * 10 + (int)(*p - '0');
-          ++p;
-        }
-        e *= sign;
-      } else if (!isdigit(*(a - 1))) {
-        a = str;
-        goto done;
-      } else if (*p == 0) {
-        goto done;
-      }
-      if (d == 2.2250738585072011 && e == -308) {
-        d = 0.0; a = p; errno = ERANGE;
-        goto done;
-      }
-      if (d == 2.2250738585072012 && e <= -308) {
-        d *= 1.0e-308; a = p;
-        goto done;
-      }
-      d *= pow(10.0, (double)e); a = p;
-    } else if (p > str && !isdigit(*(p - 1))) {
-      a = str;
-      goto done;
-    }
-  done:;
+    ++pc; ++mantsz;
   }
-  if (end) *end = (char *)a;
-  return d;
+  pexp = pc; pc -= mantsz;
+  if (dotpos < 0) dotpos = mantsz; 
+  else --mantsz;
+  if (mantsz > MAX_BASE10_DIGS) mantsz = MAX_BASE10_DIGS;
+  fracexp = dotpos - mantsz;
+  if (mantsz == 0) {
+    if (endp != NULL) *endp = (char*)s;
+    return 0.0;
+  } else {
+    long long frac = 0LL;
+    while (mantsz-- > 0) {
+      if ((c = *pc++) == '.') c = *pc++;
+      frac = 10LL * frac + (c - '0');
+    }
+    fraction = (double)frac;
+  }
+  pc = pexp;
+  if ((*pc == 'E') || (*pc == 'e')) {
+    expsz = 0;
+    if (*++pc == '-') { ++pc; negexp = true; }
+    else if (*pc == '+') ++pc;
+    while (isdigit(*pc)) {
+      exp = exp * 10 + (*pc++ - '0');
+      ++expsz;
+    }
+  }
+  if (expsz == 0) {
+    if (endp != NULL) *endp = (char*)s;
+    return 0.0;
+  }
+  if (negexp) exp = fracexp - exp;
+  else exp = fracexp + exp;
+  if (exp < 0) { negexp = true; exp = -exp; } 
+  else negexp = false;
+  if (exp > MAX_BASE10_EXPONENT) {
+    if (endp != NULL) *endp = (char *)pc;
+    errno = ERANGE;
+    return neg ? -HUGE_VAL : HUGE_VAL;
+  }
+  exponent = 1.0;
+  for (pd = &powers_of_10[0]; exp != 0; exp >>= 1, ++pd) {
+    if (exp & 1) exponent *= *pd;
+  }
+  if (negexp) fraction /= exponent;
+  else fraction *= exponent;
+
+  if (endp != NULL) *endp = (char *)pc;
+  return neg ? -fraction : fraction;
+}
+
+#define MAX_BASE2_EXPONENT 1024 /* largest possible base 2 exponent */
+#define MAX_BASE16_DIGS 15 /* more than this won't affect the result */
+
+static double strtod_hex(const char *s, const char *pc, bool neg, char **endp)
+{
+  bool negexp = false;
+  double fraction; // , exponent, *pd;
+  int c, exp = 0, fracexp = 0, val;
+  int mantsz = 0, dotpos = -1, expsz = -1;
+  const char *pexp;
+
+  while (true) {
+    if (!isxdigit(c = *pc)) {
+      if ((c != '.') || (dotpos >= 0)) break;
+      dotpos = mantsz;
+    }
+    ++pc; ++mantsz;
+  }
+  pexp = pc; pc -= mantsz;
+  if (dotpos < 0) dotpos = mantsz;
+  else --mantsz;
+  if (mantsz > MAX_BASE16_DIGS) mantsz = MAX_BASE16_DIGS;
+  fracexp = (dotpos - mantsz)*4;
+  if (mantsz == 0) {
+    if (endp != NULL) *endp = (char*)s;
+    return 0.0;
+  } else {
+    long long frac = 0LL;
+    while (mantsz-- > 0) {
+      if ((c = *pc++) == '.') c = *pc++;
+      if ('0' <= c && c <= '9') val = c - '0';
+      else if ('a' <= c && c <= 'f') val = c - 'a' + 10;
+      else val = c - 'A' + 10;
+      frac = 16LL * frac + val;
+    }
+    fraction = (double)frac;
+  }
+  pc = pexp;
+  if ((*pc == 'P') || (*pc == 'p')) {
+    expsz = 0;
+    if (*++pc == '-') { ++pc; negexp = true; }
+    else if (*pc == '+') ++pc;
+    while (isdigit(*pc)) {
+      exp = exp * 10 + (*pc++ - '0');
+      ++expsz;
+    }
+  }
+  if (expsz == 0) {
+    if (endp != NULL) *endp = (char*)s;
+    return 0.0;
+  }
+  if (negexp) exp = fracexp - exp;
+  else exp = fracexp + exp;
+  if (exp < 0) { negexp = true; exp = -exp; }
+  else negexp = false;
+  if (exp > MAX_BASE2_EXPONENT) {
+    if (endp != NULL) *endp = (char *)pc;
+    errno = ERANGE;
+    return neg ? -HUGE_VAL : HUGE_VAL;
+  }
+  fraction = ldexp(fraction, negexp ? -exp : exp);
+
+  if (endp != NULL) *endp = (char *)pc;
+  return neg ? -fraction : fraction;
+}
+
+/* internal scanner for special values */
+static int strtod_s(const char *pc, const char *s)
+{
+  int n = 0; bool full = true;
+  while (*s) {
+    int c = *pc;
+    if (c == 0) break;
+    if (*s == '*') {
+      full = false;
+      if (c == ')') { ++s; full = true; }
+      else ++pc;
+    } else if (tolower(*s) == tolower(c)) {
+      ++s; ++pc;
+    } else break;
+    ++n;
+  }
+  return full ? n : -1;
+}
+
+double strtod(const char *s, char **endp)
+{
+  int neg = false;
+  const char *pc = s;
+  while (isspace(*pc)) ++pc;
+  if (*pc == '-') { ++pc; neg = true; }
+  else if (*pc == '+') ++pc;
+  if (pc[0] == '0' && (pc[1] == 'x' || pc[1] == 'X')) {
+    return strtod_hex(s, pc + 2, neg, endp);
+  } else if (pc[0] == 'I' || pc[0] == 'i') {
+    int n = strtod_s(pc, "INFINITY");
+    if (n == 3 || n == 8) {
+      if (endp) *endp = (char *)pc + n;
+      return neg ? -HUGE_VAL : HUGE_VAL;
+    } else {
+      if (endp) *endp = (char *)s;
+      return 0.0;
+    }
+  } else if (pc[0] == 'N' || pc[0] == 'n') {
+    int n = strtod_s(pc, "NAN(*)");
+    if (n >= 3) {
+      if (endp) *endp = (char *)pc + n;
+      return -HUGE_VAL + HUGE_VAL; /* fixme */
+    } else {
+      if (endp) *endp = (char *)s;
+      return 0.0;
+    }
+  }
+  return strtod_dec(s, pc, neg, endp);
 }
 
 static int digitval(int c)

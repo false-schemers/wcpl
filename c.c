@@ -1267,6 +1267,10 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           ndswap(pin, ptn); pn->nt = NT_CAST;
           wrap_unary_operator(pn, pn->startpos, TT_STAR);
         } break;
+        case INTR_ALLOCA: case INTR_ASU64: case INTR_ASDBL: {
+          size_t i;
+          for (i = 0; i < ndlen(pn); ++i) expr_wasmify(ndref(pn, i), pvib, plib);
+        } break;
       }
     } break;
     case NT_POSTFIX: {
@@ -2838,7 +2842,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
     } break; 
     case NT_IDENTIFIER: {
       sym_t mod = 0; const node_t *ptn = lookup_var_type(pn->name, prib, &mod);
-      if (!ptn) neprintf(pn, "compile: undefined identifier");
+      if (!ptn) neprintf(pn, "compile: undefined identifier %s", symname(pn->name));
       if (ret && getwlevel() < 1) nwprintf(pn, "warning: identifier value is not used");
       pcn = compile_idref(pn, mod, pn->name, ptn);
     } break;
@@ -2890,6 +2894,30 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             pcn = pan;
           } else {
             neprintf(pn, "alloca() intrinsic expects one argument");
+          }
+        } break;
+        case INTR_ASU64: {
+          if (ndlen(pn) == 1) {
+            node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
+            node_t *ptni = acode_type(pan);
+            if (ptni->ts != TS_DOUBLE) neprintf(pn, "asuint64() argument should have 'double' type");
+            acode_pushin(pan, IN_I64_REINTERPRET_F64);
+            ptni->ts = TS_ULLONG;
+            pcn = pan;
+          } else {
+            neprintf(pn, "asuint64() intrinsic expects one argument");
+          }
+        } break;
+        case INTR_ASDBL: {
+          if (ndlen(pn) == 1) {
+            node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
+            node_t *ptni = acode_type(pan);
+            if (ptni->ts != TS_ULLONG) neprintf(pn, "asdouble() argument should have 'uint64_t' type");
+            acode_pushin(pan, IN_F64_REINTERPRET_I64);
+            ptni->ts = TS_DOUBLE;
+            pcn = pan;
+          } else {
+            neprintf(pn, "asdouble() intrinsic expects one argument");
           }
         } break;
         case INTR_VAETC: 

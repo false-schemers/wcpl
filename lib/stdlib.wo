@@ -8,11 +8,16 @@
   (import "string" "memswap" (func $string:memswap (param i32) (param i32) (param i32)))
   (import "ctype" "isdigit" (func $ctype:isdigit (param i32) (result i32)))
   (import "ctype" "isspace" (func $ctype:isspace (param i32) (result i32)))
-  (import "math" "pow" (func $math:pow (param f64) (param f64) (result f64)))
+  (import "ctype" "isxdigit" (func $ctype:isxdigit (param i32) (result i32)))
+  (import "ctype" "tolower" (func $ctype:tolower (param i32) (result i32)))
+  (import "math" "ldexp" (func $math:ldexp (param f64) (param i32) (result f64)))
   (import "unistd" "sbrk" (func $unistd:sbrk (param i32) (result i32)))
   (import "wasi_snapshot_preview1" "proc_exit" (func $wasi_snapshot_preview1:proc_exit (param i32)))
   (global $stdlib:atexit_count (mut i32))
   (global $stdlib:g_freep (mut i32))
+  (data $stdlib:powers_of_10 var align=8 "\00\00\00\00\00\00$@\00\00\00\00\00\00Y@\00\00\00\00\00\88\c3@\00\00\00\00\84\d7\97A\00\80\e07y\c3AC\17n\05\b5\b5\b8\93F\f5\f9?\e9\03O8M2\1d0\f9Hw\82Z<\bfs\7f\ddO\15u")
+  (data $stdlib:ds8$ const align=1 "INFINITY\00")
+  (data $stdlib:ds9$ const align=1 "NAN(*)\00")
   (data $stdlib:rand48_seed var align=2 size=6)
   (data $stdlib:atexit_funcs var align=4 size=128)
   (data $stdlib:g_base var align=4 size=16)
@@ -252,402 +257,1035 @@
     end
     return
   )
-  (func $stdlib:strtod (export "strtod")
-    (param $str i32) (param $end i32) (result f64) 
-    (local $d f64) (local $sign i32) (local $n i32) (local $p i32) (local $a i32) (local $f f64) (local $base f64) (local $e i32) (local $i1$ i32) 
-    f64.const 0
-    local.set $d
+  (func $stdlib:strtod_dec
+    (param $s i32) (param $pc i32) (param $neg i32) (param $endp i32) (result f64) 
+    (local $negexp i32) (local $fraction f64) (local $exponent f64) (local $pd i32) (local $c i32) (local $exp i32) (local $fracexp i32) (local $mantsz i32) (local $dotpos i32) (local $expsz i32) (local $pexp i32) (local $frac i64) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
     i32.const 0
-    local.set $n
-    local.get $str
-    local.set $p
-    local.get $str
-    local.set $a
+    i32.extend8_s
+    local.set $negexp
+    i32.const 0
+    local.set $exp
+    i32.const 0
+    local.set $fracexp
+    i32.const 0
+    local.set $mantsz
+    i32.const -1
+    local.set $dotpos
+    i32.const -1
+    local.set $expsz
     block $1$
     loop $2$
-    local.get $p
-    i32.load8_s offset=0 align=1
-    call $ctype:isspace
+    i32.const 1
+    i32.extend8_s
+    i32.const 0
+    i32.ne
     if
-    local.get $p
-    local.get $p
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    local.tee $c
+    call $ctype:isdigit
+    i32.eqz
+    if
+    local.get $c
+    i32.const 46
+    i32.ne
+    if (result i32)
+    i32.const 1
+    else
+    local.get $dotpos
+    i32.const 0
+    i32.ge_s
+    end
+    br_if $1$
+    local.get $mantsz
+    local.set $dotpos
+    end
+    local.get $pc
     i32.const 1
     i32.add
-    local.set $p
-    drop
+    local.set $pc
+    local.get $mantsz
+    i32.const 1
+    i32.add
+    local.set $mantsz
     br $2$
     end
     end $2$
     end $1$
-    block $done
-    i32.const 1
-    local.set $sign
-    local.get $p
-    i32.load8_s offset=0 align=1
-    i32.const 45
-    i32.eq
-    if
-    i32.const -1
-    local.set $sign
-    local.get $p
-    i32.const 1
-    i32.add
-    local.set $p
-    else
-    local.get $p
-    i32.load8_s offset=0 align=1
-    i32.const 43
-    i32.eq
-    if
-    local.get $p
-    i32.const 1
-    i32.add
-    local.set $p
-    end
-    end
-    local.get $p
-    i32.load8_s offset=0 align=1
-    call $ctype:isdigit
-    if
-    local.get $p
-    local.get $p
-    i32.const 1
-    i32.add
-    local.set $p
-    i32.load8_s offset=0 align=1
-    i32.const 48
+    local.get $pc
+    local.set $pexp
+    local.get $pc
+    local.get $mantsz
     i32.sub
-    f64.convert_i32_s
-    local.set $d
+    local.set $pc
+    local.get $dotpos
+    i32.const 0
+    i32.lt_s
+    if
+    local.get $mantsz
+    local.set $dotpos
+    else
+    local.get $mantsz
+    i32.const 1
+    i32.sub
+    local.set $mantsz
+    end
+    local.get $mantsz
+    i32.const 18
+    i32.gt_s
+    if
+    i32.const 18
+    local.set $mantsz
+    end
+    local.get $dotpos
+    local.get $mantsz
+    i32.sub
+    local.set $fracexp
+    local.get $mantsz
+    i32.const 0
+    i32.eq
+    if
+    local.get $endp
+    i32.const 0
+    i32.ne
+    if
+    local.get $endp
+    local.tee $i1$
+    local.get $s
+    i32.store offset=0 align=4
+    end
+    f64.const 0
+    return
+    else
+    i64.const 0
+    local.set $frac
     block $3$
     loop $4$
-    local.get $p
-    i32.load8_s offset=0 align=1
-    if (result i32)
-    local.get $p
-    i32.load8_s offset=0 align=1
-    call $ctype:isdigit
-    else
+    local.get $mantsz
+    local.get $mantsz
+    i32.const 1
+    i32.sub
+    local.set $mantsz
     i32.const 0
-    end
+    i32.gt_s
     if
-    local.get $d
-    f64.const 10
-    f64.mul
-    local.get $p
+    local.get $pc
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
     i32.load8_s offset=0 align=1
+    local.tee $c
+    i32.const 46
+    i32.eq
+    if
+    local.get $pc
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    i32.load8_s offset=0 align=1
+    local.set $c
+    end
+    i64.const 10
+    local.get $frac
+    i64.mul
+    local.get $c
     i32.const 48
     i32.sub
-    f64.convert_i32_s
-    f64.add
-    local.set $d
-    local.get $p
-    i32.const 1
-    i32.add
-    local.set $p
-    local.get $n
-    i32.const 1
-    i32.add
-    local.set $n
+    i64.extend_i32_s
+    i64.add
+    local.set $frac
     br $4$
     end
     end $4$
     end $3$
-    local.get $p
-    local.set $a
-    else
-    local.get $p
-    i32.load8_s offset=0 align=1
-    i32.const 46
-    i32.ne
-    if
-    br $done
+    local.get $frac
+    f64.convert_i64_s
+    local.set $fraction
     end
-    end
-    local.get $d
-    local.get $sign
-    f64.convert_i32_s
-    f64.mul
-    local.set $d
-    local.get $p
-    i32.load8_s offset=0 align=1
-    i32.const 46
-    i32.eq
-    if
-    f64.const 0
-    local.set $f
-    f64.const 0.10000000000000001
-    local.set $base
-    local.get $p
-    i32.const 1
-    i32.add
-    local.tee $p
-    i32.load8_s offset=0 align=1
-    call $ctype:isdigit
-    if
-    block $5$
-    loop $6$
-    local.get $p
-    i32.load8_s offset=0 align=1
-    if (result i32)
-    local.get $p
-    i32.load8_s offset=0 align=1
-    call $ctype:isdigit
-    else
-    i32.const 0
-    end
-    if
-    local.get $f
-    local.get $base
-    local.get $p
-    i32.load8_s offset=0 align=1
-    i32.const 48
-    i32.sub
-    f64.convert_i32_s
-    f64.mul
-    f64.add
-    local.set $f
-    local.get $base
-    f64.const 10
-    f64.div
-    local.set $base
-    local.get $p
-    i32.const 1
-    i32.add
-    local.set $p
-    local.get $n
-    i32.const 1
-    i32.add
-    local.set $n
-    br $6$
-    end
-    end $6$
-    end $5$
-    end
-    local.get $d
-    local.get $f
-    local.get $sign
-    f64.convert_i32_s
-    f64.mul
-    f64.add
-    local.set $d
-    local.get $p
-    local.set $a
-    end
-    local.get $p
+    local.get $pexp
+    local.tee $pc
     i32.load8_s offset=0 align=1
     i32.const 69
     i32.eq
     if (result i32)
     i32.const 1
     else
-    local.get $p
+    local.get $pc
     i32.load8_s offset=0 align=1
     i32.const 101
     i32.eq
     end
     if
     i32.const 0
-    local.set $e
-    local.get $p
+    local.set $expsz
+    local.get $pc
     i32.const 1
     i32.add
-    local.set $p
-    i32.const 1
-    local.set $sign
-    local.get $p
+    local.tee $pc
     i32.load8_s offset=0 align=1
     i32.const 45
     i32.eq
     if
-    i32.const -1
-    local.set $sign
-    local.get $p
+    local.get $pc
     i32.const 1
     i32.add
-    local.set $p
+    local.set $pc
+    i32.const 1
+    i32.extend8_s
+    local.set $negexp
     else
-    local.get $p
+    local.get $pc
     i32.load8_s offset=0 align=1
     i32.const 43
     i32.eq
     if
-    local.get $p
+    local.get $pc
     i32.const 1
     i32.add
-    local.set $p
+    local.set $pc
     end
     end
-    local.get $p
+    block $5$
+    loop $6$
+    local.get $pc
     i32.load8_s offset=0 align=1
     call $ctype:isdigit
     if
-    block $7$
-    loop $8$
-    local.get $p
-    i32.load8_s offset=0 align=1
-    i32.const 48
-    i32.eq
-    if
-    local.get $p
-    i32.const 1
-    i32.add
-    local.set $p
-    br $8$
-    end
-    end $8$
-    end $7$
-    local.get $p
-    i32.load8_s offset=0 align=1
-    i32.const 0
-    i32.eq
-    if
-    local.get $p
-    i32.const 1
-    i32.sub
-    local.set $p
-    end
-    local.get $p
-    local.get $p
-    i32.const 1
-    i32.add
-    local.set $p
-    i32.load8_s offset=0 align=1
-    i32.const 48
-    i32.sub
-    local.set $e
-    block $9$
-    loop $10$
-    local.get $p
-    i32.load8_s offset=0 align=1
-    if (result i32)
-    local.get $p
-    i32.load8_s offset=0 align=1
-    call $ctype:isdigit
-    else
-    i32.const 0
-    end
-    if
-    local.get $e
+    local.get $exp
     i32.const 10
     i32.mul
-    local.get $p
+    local.get $pc
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
     i32.load8_s offset=0 align=1
     i32.const 48
     i32.sub
     i32.add
-    local.set $e
-    local.get $p
+    local.set $exp
+    local.get $expsz
     i32.const 1
     i32.add
-    local.set $p
-    br $10$
+    local.set $expsz
+    br $6$
     end
-    end $10$
-    end $9$
-    local.get $e
-    local.get $sign
-    i32.mul
-    local.set $e
-    else
-    local.get $a
-    i32.const 1
-    i32.sub
-    i32.load8_s offset=0 align=1
-    call $ctype:isdigit
-    i32.eqz
-    if
-    local.get $str
-    local.set $a
-    br $done
-    else
-    local.get $p
-    i32.load8_s offset=0 align=1
+    end $6$
+    end $5$
+    end
+    local.get $expsz
     i32.const 0
     i32.eq
     if
-    br $done
-    end
-    end
-    end
-    local.get $d
-    f64.const 2.225073858507201
-    f64.eq
-    if (result i32)
-    local.get $e
-    i32.const -308
-    i32.eq
-    else
+    local.get $endp
     i32.const 0
-    end
+    i32.ne
     if
+    local.get $endp
+    local.tee $i2$
+    local.get $s
+    i32.store offset=0 align=4
+    end
     f64.const 0
-    local.set $d
-    local.get $p
-    local.set $a
+    return
+    end
+    local.get $negexp
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 0
+    i32.ne
+    if
+    local.get $fracexp
+    local.get $exp
+    i32.sub
+    local.set $exp
+    else
+    local.get $fracexp
+    local.get $exp
+    i32.add
+    local.set $exp
+    end
+    local.get $exp
+    i32.const 0
+    i32.lt_s
+    if
+    i32.const 1
+    i32.extend8_s
+    local.set $negexp
+    i32.const 0
+    local.get $exp
+    i32.sub
+    local.set $exp
+    else
+    i32.const 0
+    i32.extend8_s
+    local.set $negexp
+    end
+    local.get $exp
+    i32.const 511
+    i32.gt_s
+    if
+    local.get $endp
+    i32.const 0
+    i32.ne
+    if
+    local.get $endp
+    local.tee $i3$
+    local.get $pc
+    i32.store offset=0 align=4
+    end
     i32.const 68
     global.set $errno:errno
-    br $done
+    f64.const -inf
+    f64.const +inf
+    local.get $neg
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 0
+    i32.ne
+    select
+    return
     end
-    local.get $d
-    f64.const 2.2250738585072014
-    f64.eq
+    f64.const 1
+    local.set $exponent
+    block $8$
+    ref.data $stdlib:powers_of_10
+    local.set $pd
+    loop $7$
+    local.get $exp
+    i32.const 0
+    i32.ne
+    i32.eqz
+    br_if $8$
+    block $9$
+    local.get $exp
+    i32.const 1
+    i32.and
+    if
+    local.get $exponent
+    local.get $pd
+    f64.load offset=0 align=8
+    f64.mul
+    local.set $exponent
+    end
+    end $9$
+    local.get $exp
+    i32.const 1
+    i32.shr_s
+    local.set $exp
+    local.get $pd
+    i32.const 8
+    i32.add
+    local.set $pd
+    br $7$
+    end $7$
+    end $8$
+    local.get $negexp
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 0
+    i32.ne
+    if
+    local.get $fraction
+    local.get $exponent
+    f64.div
+    local.set $fraction
+    else
+    local.get $fraction
+    local.get $exponent
+    f64.mul
+    local.set $fraction
+    end
+    local.get $endp
+    i32.const 0
+    i32.ne
+    if
+    local.get $endp
+    local.tee $i4$
+    local.get $pc
+    i32.store offset=0 align=4
+    end
+    local.get $neg
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 0
+    i32.ne
+    if (result f64)
+    local.get $fraction
+    f64.neg
+    else
+    local.get $fraction
+    end
+    return
+  )
+  (func $stdlib:strtod_hex
+    (param $s i32) (param $pc i32) (param $neg i32) (param $endp i32) (result f64) 
+    (local $negexp i32) (local $fraction f64) (local $c i32) (local $exp i32) (local $fracexp i32) (local $val i32) (local $mantsz i32) (local $dotpos i32) (local $expsz i32) (local $pexp i32) (local $frac i64) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
+    i32.const 0
+    i32.extend8_s
+    local.set $negexp
+    i32.const 0
+    local.set $exp
+    i32.const 0
+    local.set $fracexp
+    i32.const 0
+    local.set $mantsz
+    i32.const -1
+    local.set $dotpos
+    i32.const -1
+    local.set $expsz
+    block $1$
+    loop $2$
+    i32.const 1
+    i32.extend8_s
+    i32.const 0
+    i32.ne
+    if
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    local.tee $c
+    call $ctype:isxdigit
+    i32.eqz
+    if
+    local.get $c
+    i32.const 46
+    i32.ne
     if (result i32)
-    local.get $e
-    i32.const -308
+    i32.const 1
+    else
+    local.get $dotpos
+    i32.const 0
+    i32.ge_s
+    end
+    br_if $1$
+    local.get $mantsz
+    local.set $dotpos
+    end
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    local.get $mantsz
+    i32.const 1
+    i32.add
+    local.set $mantsz
+    br $2$
+    end
+    end $2$
+    end $1$
+    local.get $pc
+    local.set $pexp
+    local.get $pc
+    local.get $mantsz
+    i32.sub
+    local.set $pc
+    local.get $dotpos
+    i32.const 0
+    i32.lt_s
+    if
+    local.get $mantsz
+    local.set $dotpos
+    else
+    local.get $mantsz
+    i32.const 1
+    i32.sub
+    local.set $mantsz
+    end
+    local.get $mantsz
+    i32.const 15
+    i32.gt_s
+    if
+    i32.const 15
+    local.set $mantsz
+    end
+    local.get $dotpos
+    local.get $mantsz
+    i32.sub
+    i32.const 4
+    i32.mul
+    local.set $fracexp
+    local.get $mantsz
+    i32.const 0
+    i32.eq
+    if
+    local.get $endp
+    i32.const 0
+    i32.ne
+    if
+    local.get $endp
+    local.tee $i1$
+    local.get $s
+    i32.store offset=0 align=4
+    end
+    f64.const 0
+    return
+    else
+    i64.const 0
+    local.set $frac
+    block $3$
+    loop $4$
+    local.get $mantsz
+    local.get $mantsz
+    i32.const 1
+    i32.sub
+    local.set $mantsz
+    i32.const 0
+    i32.gt_s
+    if
+    local.get $pc
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    i32.load8_s offset=0 align=1
+    local.tee $c
+    i32.const 46
+    i32.eq
+    if
+    local.get $pc
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    i32.load8_s offset=0 align=1
+    local.set $c
+    end
+    i32.const 48
+    local.get $c
+    i32.le_s
+    if (result i32)
+    local.get $c
+    i32.const 57
     i32.le_s
     else
     i32.const 0
     end
     if
-    local.get $d
-    f64.const 9.9999999999999991e-309
-    f64.mul
-    local.set $d
-    local.get $p
-    local.set $a
-    br $done
-    end
-    local.get $d
-    f64.const 10
-    local.get $e
-    f64.convert_i32_s
-    call $math:pow
-    f64.mul
-    local.set $d
-    local.get $p
-    local.set $a
-    else
-    local.get $p
-    local.get $str
-    i32.gt_u
-    if (result i32)
-    local.get $p
-    i32.const 1
+    local.get $c
+    i32.const 48
     i32.sub
-    i32.load8_s offset=0 align=1
-    call $ctype:isdigit
-    i32.eqz
+    local.set $val
+    else
+    i32.const 97
+    local.get $c
+    i32.le_s
+    if (result i32)
+    local.get $c
+    i32.const 102
+    i32.le_s
     else
     i32.const 0
     end
     if
-    local.get $str
-    local.set $a
-    br $done
+    local.get $c
+    i32.const 97
+    i32.sub
+    i32.const 10
+    i32.add
+    local.set $val
+    else
+    local.get $c
+    i32.const 65
+    i32.sub
+    i32.const 10
+    i32.add
+    local.set $val
     end
     end
-    end $done
-    local.get $end
+    i64.const 16
+    local.get $frac
+    i64.mul
+    local.get $val
+    i64.extend_i32_s
+    i64.add
+    local.set $frac
+    br $4$
+    end
+    end $4$
+    end $3$
+    local.get $frac
+    f64.convert_i64_s
+    local.set $fraction
+    end
+    local.get $pexp
+    local.tee $pc
+    i32.load8_s offset=0 align=1
+    i32.const 80
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    i32.const 112
+    i32.eq
+    end
+    if
+    i32.const 0
+    local.set $expsz
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.tee $pc
+    i32.load8_s offset=0 align=1
+    i32.const 45
+    i32.eq
+    if
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    i32.const 1
+    i32.extend8_s
+    local.set $negexp
+    else
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    i32.const 43
+    i32.eq
+    if
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    end
+    end
+    block $5$
+    loop $6$
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    call $ctype:isdigit
+    if
+    local.get $exp
+    i32.const 10
+    i32.mul
+    local.get $pc
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.sub
+    i32.add
+    local.set $exp
+    local.get $expsz
+    i32.const 1
+    i32.add
+    local.set $expsz
+    br $6$
+    end
+    end $6$
+    end $5$
+    end
+    local.get $expsz
+    i32.const 0
+    i32.eq
+    if
+    local.get $endp
     i32.const 0
     i32.ne
     if
-    local.get $end
-    local.tee $i1$
-    local.get $a
+    local.get $endp
+    local.tee $i2$
+    local.get $s
     i32.store offset=0 align=4
     end
-    local.get $d
+    f64.const 0
+    return
+    end
+    local.get $negexp
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 0
+    i32.ne
+    if
+    local.get $fracexp
+    local.get $exp
+    i32.sub
+    local.set $exp
+    else
+    local.get $fracexp
+    local.get $exp
+    i32.add
+    local.set $exp
+    end
+    local.get $exp
+    i32.const 0
+    i32.lt_s
+    if
+    i32.const 1
+    i32.extend8_s
+    local.set $negexp
+    i32.const 0
+    local.get $exp
+    i32.sub
+    local.set $exp
+    else
+    i32.const 0
+    i32.extend8_s
+    local.set $negexp
+    end
+    local.get $exp
+    i32.const 1024
+    i32.gt_s
+    if
+    local.get $endp
+    i32.const 0
+    i32.ne
+    if
+    local.get $endp
+    local.tee $i3$
+    local.get $pc
+    i32.store offset=0 align=4
+    end
+    i32.const 68
+    global.set $errno:errno
+    f64.const -inf
+    f64.const +inf
+    local.get $neg
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 0
+    i32.ne
+    select
+    return
+    end
+    local.get $fraction
+    local.get $negexp
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 0
+    i32.ne
+    if (result i32)
+    i32.const 0
+    local.get $exp
+    i32.sub
+    else
+    local.get $exp
+    end
+    call $math:ldexp
+    local.set $fraction
+    local.get $endp
+    i32.const 0
+    i32.ne
+    if
+    local.get $endp
+    local.tee $i4$
+    local.get $pc
+    i32.store offset=0 align=4
+    end
+    local.get $neg
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 0
+    i32.ne
+    if (result f64)
+    local.get $fraction
+    f64.neg
+    else
+    local.get $fraction
+    end
+    return
+  )
+  (func $stdlib:strtod_s
+    (param $pc i32) (param $s i32) (result i32) 
+    (local $n i32) (local $full i32) (local $c i32) 
+    i32.const 0
+    local.set $n
+    i32.const 1
+    i32.extend8_s
+    local.set $full
+    block $1$
+    loop $2$
+    local.get $s
+    i32.load8_s offset=0 align=1
+    if
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    local.tee $c
+    i32.const 0
+    i32.eq
+    br_if $1$
+    local.get $s
+    i32.load8_s offset=0 align=1
+    i32.const 42
+    i32.eq
+    if
+    i32.const 0
+    i32.extend8_s
+    local.set $full
+    local.get $c
+    i32.const 41
+    i32.eq
+    if
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    i32.const 1
+    i32.extend8_s
+    local.set $full
+    else
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    end
+    else
+    local.get $s
+    i32.load8_s offset=0 align=1
+    call $ctype:tolower
+    local.get $c
+    call $ctype:tolower
+    i32.eq
+    if
+    local.get $s
+    i32.const 1
+    i32.add
+    local.set $s
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    else
+    br $1$
+    end
+    end
+    local.get $n
+    i32.const 1
+    i32.add
+    local.set $n
+    br $2$
+    end
+    end $2$
+    end $1$
+    local.get $n
+    i32.const -1
+    local.get $full
+    i32.const 24
+    i32.shl
+    i32.const 24
+    i32.shr_s
+    i32.extend8_s
+    i32.const 0
+    i32.ne
+    select
+    return
+  )
+  (func $stdlib:strtod (export "strtod")
+    (param $s i32) (param $endp i32) (result f64) 
+    (local $neg i32) (local $pc i32) (local $n i32) (local $n#3 i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
+    i32.const 0
+    i32.extend8_s
+    local.set $neg
+    local.get $s
+    local.set $pc
+    block $1$
+    loop $2$
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    call $ctype:isspace
+    if
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    br $2$
+    end
+    end $2$
+    end $1$
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    i32.const 45
+    i32.eq
+    if
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    i32.const 1
+    i32.extend8_s
+    local.set $neg
+    else
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    i32.const 43
+    i32.eq
+    if
+    local.get $pc
+    i32.const 1
+    i32.add
+    local.set $pc
+    end
+    end
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.eq
+    if (result i32)
+    local.get $pc
+    i32.load8_s offset=1 align=1
+    i32.const 120
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $pc
+    i32.load8_s offset=1 align=1
+    i32.const 88
+    i32.eq
+    end
+    else
+    i32.const 0
+    end
+    if
+    local.get $s
+    local.get $pc
+    i32.const 2
+    i32.add
+    local.get $neg
+    local.get $endp
+    call $stdlib:strtod_hex
+    return
+    else
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    i32.const 73
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    i32.const 105
+    i32.eq
+    end
+    if
+    local.get $pc
+    ref.data $stdlib:ds8$
+    call $stdlib:strtod_s
+    local.tee $n
+    i32.const 3
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $n
+    i32.const 8
+    i32.eq
+    end
+    if
+    local.get $endp
+    i32.const 0
+    i32.ne
+    if
+    local.get $endp
+    local.tee $i1$
+    local.get $pc
+    local.get $n
+    i32.add
+    i32.store offset=0 align=4
+    end
+    f64.const -inf
+    f64.const +inf
+    local.get $neg
+    select
+    return
+    else
+    local.get $endp
+    i32.const 0
+    i32.ne
+    if
+    local.get $endp
+    local.tee $i2$
+    local.get $s
+    i32.store offset=0 align=4
+    end
+    f64.const 0
+    return
+    end
+    else
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    i32.const 78
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $pc
+    i32.load8_s offset=0 align=1
+    i32.const 110
+    i32.eq
+    end
+    if
+    local.get $pc
+    ref.data $stdlib:ds9$
+    call $stdlib:strtod_s
+    local.tee $n#3
+    i32.const 3
+    i32.ge_s
+    if
+    local.get $endp
+    i32.const 0
+    i32.ne
+    if
+    local.get $endp
+    local.tee $i3$
+    local.get $pc
+    local.get $n#3
+    i32.add
+    i32.store offset=0 align=4
+    end
+    f64.const +nan
+    return
+    else
+    local.get $endp
+    i32.const 0
+    i32.ne
+    if
+    local.get $endp
+    local.tee $i4$
+    local.get $s
+    i32.store offset=0 align=4
+    end
+    f64.const 0
+    return
+    end
+    end
+    end
+    end
+    local.get $s
+    local.get $pc
+    local.get $neg
+    local.get $endp
+    call $stdlib:strtod_dec
     return
   )
   (func $stdlib:digitval

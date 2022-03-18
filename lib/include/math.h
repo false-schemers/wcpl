@@ -3,6 +3,8 @@
 #pragma once
 
 /* HUGE_VAL is built-in */
+/* uint64_t asuint64(double) is built-in */
+/* double asdouble(uint64_t) is built-in */
 
 extern double acos(double x);
 extern double asin(double x);

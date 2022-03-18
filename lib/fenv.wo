@@ -1,0 +1,52 @@
+(module $fenv
+  (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
+  (import "env" "__linear_memory" (memory $env:__linear_memory 0))
+  (func $fenv:feclearexcept (export "feclearexcept")
+    (param $mask i32) 
+    return
+  )
+  (func $fenv:fegetexceptflag (export "fegetexceptflag")
+    (param $flagp i32) (param $excepts i32) 
+    return
+  )
+  (func $fenv:feraiseexcept (export "feraiseexcept")
+    (param $excepts i32) 
+    return
+  )
+  (func $fenv:fesetexceptflag (export "fesetexceptflag")
+    (param $flagp i32) (param $excepts i32) 
+    return
+  )
+  (func $fenv:fetestexcept (export "fetestexcept")
+    (param $excepts i32) (result i32) 
+    i32.const 0
+    return
+  )
+  (func $fenv:fegetround (export "fegetround")
+    (result i32) 
+    i32.const 0
+    return
+  )
+  (func $fenv:fesetround (export "fesetround")
+    (param $round i32) (result i32) 
+    i32.const 0
+    return
+  )
+  (func $fenv:fegetenv (export "fegetenv")
+    (param $envp i32) 
+    return
+  )
+  (func $fenv:feholdexcept (export "feholdexcept")
+    (param $envp i32) (result i32) 
+    i32.const 0
+    return
+  )
+  (func $fenv:fesetenv (export "fesetenv")
+    (param $envp i32) 
+    return
+  )
+  (func $fenv:feupdateenv (export "feupdateenv")
+    (param $envp i32) 
+    return
+  )
+)

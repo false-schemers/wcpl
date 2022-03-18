@@ -568,7 +568,7 @@ typedef int(*in_fct_t)(void *data, size_t idx, size_t maxlen, bool get);
 static int _in_buffer(void *data, size_t idx, size_t maxlen, bool get)
 {
   if (idx < maxlen) return ((char*)data)[idx];
-  else return EOF;
+  return EOF;
 }
 
 /* internal file input */
@@ -693,11 +693,31 @@ static unsigned long long _aton(in_fct_t in, void *data, const size_t maxlen, in
   return res;
 }
 
+/* internal scanner for special values */
+static int _atos(in_fct_t in, void *data, const size_t maxlen, const char *s, size_t *pidx)
+{
+  int n = 0; bool full = true;
+  while (*s) {
+    int c = (*in)(data, *pidx, maxlen, false);
+    if (c == EOF) break;
+    if (*s == '*') {
+      full = false;
+      if (c == ')') { ++s; full = true; }
+      else (*in)(data, (*pidx)++, maxlen, true);
+    } else if (tolower(*s) == tolower(c)) {
+      ++s;
+      (*in)(data, (*pidx)++, maxlen, true);
+    } else break;
+    ++n;
+  }
+  return full ? n : -1;
+}
+
 /* internal atod for decimal floating point */
 static double _atod(in_fct_t in, void *data, const size_t maxlen, int width, size_t *pidx)
 {
   char buf[SCANF_ATON_BUFFER_SIZE];
-  size_t len = 0, dc = 0; int c;
+  size_t len = 0, dc = 0; int c; bool hex = false;
   double res; char *end; bool neg = false;
   size_t maxidx = (width == 0) ? SIZE_MAX : *pidx + width;
 
@@ -712,42 +732,27 @@ static double _atod(in_fct_t in, void *data, const size_t maxlen, int width, siz
     if (*pidx >= maxidx) goto stop;
     c = (*in)(data, *pidx, maxlen, false);
     if (c == 'i' || c == 'I') {
-      (*in)(data, (*pidx)++, maxlen, true);
-      if (*pidx >= maxidx) goto stop;
-      c = (*in)(data, *pidx, maxlen, false);
-      if (c == 'n' || c == 'N') {
-        (*in)(data, (*pidx)++, maxlen, true);
-        if (*pidx >= maxidx) goto stop;
-        c = (*in)(data, *pidx, maxlen, false);
-        if (c == 'f' || c == 'F') {
-          (*in)(data, (*pidx)++, maxlen, true);
-          return neg ? -HUGE_VAL : HUGE_VAL;
-        }
-      }
+      int n = _atos(in, data, maxlen, "INFINITY", pidx);
+      if (n == 3 || n == 8) return neg ? -HUGE_VAL : HUGE_VAL;
       errno = EILSEQ; return 0;
     } else if (c == 'n' || c == 'N') {
-      (*in)(data, (*pidx)++, maxlen, true);
-      if (*pidx >= maxidx) goto stop;
-      c = (*in)(data, *pidx, maxlen, false);
-      if (c == 'a' || c == 'A') {
-        (*in)(data, (*pidx)++, maxlen, true);
-        if (*pidx >= maxidx) goto stop;
-        c = (*in)(data, *pidx, maxlen, false);
-        if (c == 'n' || c == 'N') {
-          (*in)(data, (*pidx)++, maxlen, true);
-          return -HUGE_VAL+HUGE_VAL;
-        }
-      }
+      int n = _atos(in, data, maxlen, "NAN(*)", pidx);
+      if (n >= 3) return -HUGE_VAL + HUGE_VAL; /* fixme */
       errno = EILSEQ; return 0;
     }
     while (len < SCANF_ATON_BUFFER_SIZE - 1) {
       if (*pidx >= maxidx) goto stop;
       c = (*in)(data, *pidx, maxlen, false);
-      if (c != EOF && _is_dec_digit(c)) {
+      if (c == EOF) break;
+      else if (c == 'x' || c == 'X') {
+        if (!((len == 2 && (buf[0] == '+' || buf[0] == '-') && buf[1] == '0') || 
+              (len == 1 && buf[0] == '0'))) break;
+        buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
+        hex = true; dc = 0;
+      } else if (hex ? _is_hex_digit(c) : _is_dec_digit(c)) {
         buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
         ++dc;
-      }
-      else break;
+      } else break;
     }
     if (len < SCANF_ATON_BUFFER_SIZE - 1) {
       if (*pidx >= maxidx) goto stop;
@@ -757,18 +762,17 @@ static double _atod(in_fct_t in, void *data, const size_t maxlen, int width, siz
         while (len < SCANF_ATON_BUFFER_SIZE - 1) {
           if (*pidx >= maxidx) goto stop;
           c = (*in)(data, *pidx, maxlen, false);
-          if (c != EOF && _is_dec_digit(c)) {
+          if (c != EOF && hex ? _is_hex_digit(c) : _is_dec_digit(c)) {
             buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
             ++dc;
-          }
-          else break;
+          } else break;
         }
       }
     }
     if (len < SCANF_ATON_BUFFER_SIZE - 1) {
       if (*pidx >= maxidx) goto stop;
       c = (*in)(data, *pidx, maxlen, false);
-      if (c == 'e' || c == 'E') {
+      if (hex ? (c == 'p' || c == 'P')  : (c == 'e' || c == 'E')) {
         buf[len++] = (*in)(data, (*pidx)++, maxlen, true);
         if (len < SCANF_ATON_BUFFER_SIZE - 1) {
           if (*pidx >= maxidx) goto stop;
@@ -1040,18 +1044,26 @@ int vsnscanf(const char *buf, size_t count, const char *format, va_list va)
 
 
 /* formatted output */
+
 /* derived from: https://github.com/mpaland/printf (c) Marco Paland (info@paland.com) */
 
 /* 'ntoa' conversion buffer size, this must be big enough to hold one converted
- * numeric number including padded zeros (dynamically created on stack) */
+ * integer number including padded zeros (dynamically created on stack) */
 #define PRINTF_NTOA_BUFFER_SIZE    32U
 
 /* 'ftoa' conversion buffer size, this must be big enough to hold one converted
  * float number including padded zeros (dynamically created on stack) */
 #define PRINTF_FTOA_BUFFER_SIZE    32U
 
-/* default floating point precision */
+/* 'atoa' conversion buffer size, this must be big enough to hold one converted
+ * hex float number including padded zeros (dynamically created on stack) */
+#define PRINTF_ATOA_BUFFER_SIZE    32U
+
+ /* default precision for decimal doubles */
 #define PRINTF_DEFAULT_FLOAT_PRECISION  6U
+
+/* default precision for hexadecimal doubles */
+#define PRINTF_DEFAULT_HEXFL_PRECISION  13U 
 
 /* largest float suitable to print with %f */
 #define PRINTF_MAX_FLOAT  1e9
@@ -1264,8 +1276,7 @@ static size_t _etoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double
 
   /* determine the decimal exponent
    * based on the algorithm by David Gay (https://www.ampl.com/netlib/fp/dtoa.c) */
-  union { uint64_t U; double F; } conv;
-  conv.F = value;
+  union { uint64_t U; double F; } conv; conv.F = value;
   int exp2 = (int)((conv.U >> 52U) & 0x07FFU) - 1023;  /* effectively log2 */
   conv.U = (conv.U & ((1ULL << 52U) - 1U)) | (1023ULL << 52U);  /* drop the exponent so conv.F is now in [1,2) */
   /* now approximate log10 from the log2 integer part and an expansion of ln around 1.5 */
@@ -1325,6 +1336,70 @@ static size_t _etoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double
   }
 
   return idx;
+}
+
+/* internal hexadecimal ftoa variant for exponential floating-point type */
+static size_t _atoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags)
+{
+  if ((value != value) || (value > DBL_MAX) || (value < -DBL_MAX)) {
+    return _ftoa(out, data, idx, maxlen, value, prec, width, flags);
+  }
+  const bool negative = value < 0; if (negative) value = -value;
+  if (!(flags & FLAGS_PRECISION)) prec = PRINTF_DEFAULT_HEXFL_PRECISION;
+  union { uint64_t U; double F; } conv; conv.F = value;
+  int exp2 = (int)((conv.U >> 52U) & 0x07FFU);
+  uint64_t mantissa = (conv.U & 0xFFFFFFFFFFFFFULL);
+  int mandigits = 13;
+  char buf[PRINTF_ATOA_BUFFER_SIZE];
+  size_t len = 0U; int val, vneg = false;
+  if (exp2 == 0) val = mantissa == 0 ? 0 : -1022; else val = exp2 - 1023;
+  if (val < 0) val = -val, vneg = true;
+  if (len < PRINTF_ATOA_BUFFER_SIZE) do {
+    const char digit = (char)(val % 10);
+    buf[len++] = '0' + digit; val /= 10;
+  } while (val && (len < PRINTF_ATOA_BUFFER_SIZE));
+  if (len < PRINTF_ATOA_BUFFER_SIZE) buf[len++] = vneg ? '-' : '+';
+  if (len < PRINTF_ATOA_BUFFER_SIZE) buf[len++] = flags & FLAGS_UPPERCASE ? 'P' : 'p';
+  while ((len < PRINTF_FTOA_BUFFER_SIZE) && (prec > PRINTF_DEFAULT_HEXFL_PRECISION)) {
+    buf[len++] = '0';
+    --prec;
+  }
+  size_t rlen = prec < PRINTF_DEFAULT_HEXFL_PRECISION ? PRINTF_DEFAULT_HEXFL_PRECISION - prec : 0;
+  double diff = 0.0; /* [0..16) */
+  if (len < PRINTF_ATOA_BUFFER_SIZE) do {
+    int digit = (int)(mantissa % 16);
+    if (rlen > 0) { /* no output, keep tracking diff */
+      diff = diff/16.0 + digit;
+      --rlen;
+    } else { /* output, absorb diff */
+      if (diff > 8.0 || (diff == 8.0 && (digit & 1))) {
+        if (++digit == 16) {
+          digit = 0; diff = diff / 16.0 + 15;
+        } else { /* diff fully absorbed */
+          diff = 0.0;
+        }
+      } else { /* diff fully absorbed */
+        diff = 0.0;
+      }
+      buf[len++] = digit < 10 ? '0' + digit : (flags & FLAGS_UPPERCASE ? 'A' : 'a') + digit - 10;
+    }
+    mantissa /= 16; --mandigits;
+  } while (mandigits && (len < PRINTF_ATOA_BUFFER_SIZE));
+  if (prec > 0 && len < PRINTF_ATOA_BUFFER_SIZE) buf[len++] = '.';
+  if (len < PRINTF_ATOA_BUFFER_SIZE) {
+    int digit = (exp2 == 0) ? 0 : 1;
+    if (diff > 8.0 || (diff == 8.0 && (digit & 1))) ++digit;
+    buf[len++] = '0' + digit;
+  }
+  if (!(flags & FLAGS_UPPERCASE) && (len < PRINTF_ATOA_BUFFER_SIZE)) buf[len++] = 'x';
+  else if (len < PRINTF_ATOA_BUFFER_SIZE) buf[len++] = 'X';
+  if (len < PRINTF_ATOA_BUFFER_SIZE) buf[len++] = '0';
+  if (len < PRINTF_ATOA_BUFFER_SIZE) {
+    if (negative) buf[len++] = '-';
+    else if (flags & FLAGS_PLUS) buf[len++] = '+';
+    else if (flags & FLAGS_SPACE) buf[len++] = ' ';
+  }
+  return _out_rev(out, data, idx, maxlen, buf, len, width, flags);
 }
 
 /* internal vsnprintf */
@@ -1442,6 +1517,11 @@ static int _vsnprintf(out_fct_t out, void *data, const size_t maxlen, const char
             idx = _ntoa_long(out, data, idx, maxlen, value, false, base, precision, width, flags);
           }
         }
+        ++format;
+      } break;
+      case 'a': case 'A': {
+        if (*format == 'A') flags |= FLAGS_UPPERCASE;
+        idx = _atoa(out, data, idx, maxlen, va_arg(va, double), precision, width, flags);
         ++format;
       } break;
       case 'f': case 'F': {
