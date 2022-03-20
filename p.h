@@ -83,6 +83,7 @@ typedef enum ts {
 /* intrinsics and special forms */
 typedef enum intr {
   INTR_NONE,   INTR_ALLOCA,
+  INTR_ASU32,  INTR_ASFLT,   
   INTR_ASU64,  INTR_ASDBL,
   INTR_SIZEOF, INTR_ALIGNOF, INTR_OFFSETOF,
   INTR_VAETC,  INTR_VAARG,   INTR_SASSERT

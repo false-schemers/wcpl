@@ -626,6 +626,24 @@ bool static_eval(node_t *pn, seval_t *pr)
         pr->ts = TS_INT; 
         pr->val.i = (int)offset;
         return true;
+      } else if (pn->intr == INTR_ASU32 || pn->intr == INTR_ASFLT) {
+        ts_t tc = pn->intr == INTR_ASU32 ? TS_FLOAT : TS_UINT; 
+        seval_t rx; bool ok = false; assert(ndlen(pn) == 1);
+        if (static_eval(ndref(pn, 0), &rx) && rx.ts == tc) {
+          union { unsigned u; float f; } uf;
+          if (pn->intr == INTR_ASU32) { uf.f = rx.val.f; pr->ts = TS_UINT; pr->val.u = uf.u; }
+          else { uf.u = (unsigned)rx.val.u; pr->ts = TS_FLOAT; pr->val.f = uf.f; }
+          ok = true;
+        }
+        return ok;
+      } else if (pn->intr == INTR_ASU64 || pn->intr == INTR_ASDBL) {
+        ts_t tc = pn->intr == INTR_ASU64 ? TS_DOUBLE : TS_ULLONG; 
+        seval_t rx; bool ok = false; assert(ndlen(pn) == 1);
+        if (static_eval(ndref(pn, 0), &rx) && rx.ts == tc) {
+          pr->ts = (pn->intr == INTR_ASU64) ? TS_ULLONG : TS_DOUBLE;
+          pr->val = rx.val; ok = true;
+        }
+        return ok;
       }
     } break;
     case NT_PREFIX: {
@@ -1267,7 +1285,9 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           ndswap(pin, ptn); pn->nt = NT_CAST;
           wrap_unary_operator(pn, pn->startpos, TT_STAR);
         } break;
-        case INTR_ALLOCA: case INTR_ASU64: case INTR_ASDBL: {
+        case INTR_ALLOCA: 
+        case INTR_ASU32: case INTR_ASFLT:
+        case INTR_ASU64: case INTR_ASDBL: {
           size_t i;
           for (i = 0; i < ndlen(pn); ++i) expr_wasmify(ndref(pn, i), pvib, plib);
         } break;
@@ -2894,6 +2914,30 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             pcn = pan;
           } else {
             neprintf(pn, "alloca() intrinsic expects one argument");
+          }
+        } break;
+        case INTR_ASU32: {
+          if (ndlen(pn) == 1) {
+            node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
+            node_t *ptni = acode_type(pan);
+            if (ptni->ts != TS_FLOAT) neprintf(pn, "asuint32() argument should have 'float' type");
+            acode_pushin(pan, IN_I32_REINTERPRET_F32);
+            ptni->ts = TS_UINT;
+            pcn = pan;
+          } else {
+            neprintf(pn, "asuint32() intrinsic expects one argument");
+          }
+        } break;
+        case INTR_ASFLT: {
+          if (ndlen(pn) == 1) {
+            node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
+            node_t *ptni = acode_type(pan);
+            if (ptni->ts != TS_UINT) neprintf(pn, "asfloat() argument should have 'uint32_t' type");
+            acode_pushin(pan, IN_F32_REINTERPRET_I32);
+            ptni->ts = TS_FLOAT;
+            pcn = pan;
+          } else {
+            neprintf(pn, "asfloat() intrinsic expects one argument");
           }
         } break;
         case INTR_ASU64: {

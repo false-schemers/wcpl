@@ -429,6 +429,8 @@ void init_symbols(void)
   intern_symbol("alignof", TT_INTR_NAME, INTR_ALIGNOF);
   intern_symbol("offsetof", TT_INTR_NAME, INTR_OFFSETOF);
   intern_symbol("alloca", TT_INTR_NAME, INTR_ALLOCA);
+  intern_symbol("asuint32", TT_INTR_NAME, INTR_ASU32);
+  intern_symbol("asfloat", TT_INTR_NAME, INTR_ASFLT);
   intern_symbol("asuint64", TT_INTR_NAME, INTR_ASU64);
   intern_symbol("asdouble", TT_INTR_NAME, INTR_ASDBL);
   intern_symbol("va_etc", TT_INTR_NAME, INTR_VAETC);
@@ -2393,6 +2395,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           expect(pw, TT_RPAR, ")"); 
         } break;
         case INTR_ALLOCA:
+        case INTR_ASU32: case INTR_ASFLT: 
         case INTR_ASU64: case INTR_ASDBL: 
         case INTR_SASSERT: { /* (expr ...) */
           size_t n = 0;
@@ -2404,7 +2407,8 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
             dropt(pw); 
           }
           expect(pw, TT_RPAR, ")"); 
-          if (((intr == INTR_ALLOCA || intr == INTR_ASU64 || intr == INTR_ASDBL) && n != 1) || 
+          if (((intr == INTR_ALLOCA || intr == INTR_ASU32 || intr == INTR_ASFLT
+             || intr == INTR_ASU64 || intr == INTR_ASDBL) && n != 1) || 
               (intr == INTR_SASSERT && !(n == 1 || n == 2)))  
            reprintf(pw, startpos, "unexpected arguments for %s", intr_name(pn->intr));
         } break;
@@ -3700,6 +3704,8 @@ const char *intr_name(intr_t intr)
   switch (intr) {
     case INTR_NONE: s = ""; break; 
     case INTR_ALLOCA: s = "alloca"; break; 
+    case INTR_ASU32: s = "asuint32"; break;
+    case INTR_ASFLT: s = "asfloat"; break;
     case INTR_ASU64: s = "asuint64"; break;
     case INTR_ASDBL: s = "asdouble"; break;
     case INTR_SIZEOF: s = "sizeof"; break; 

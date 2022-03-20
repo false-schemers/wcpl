@@ -1,7 +1,7 @@
 WCPL
 ====
 
-Compiler/linker/libc for a subset of C targeting Webassembly (partly functional)
+Standalone compiler/linker/libc for a subset of C targeting Webassembly (mostly functional)
 
 # C features supported
 
@@ -15,7 +15,7 @@ Compiler/linker/libc for a subset of C targeting Webassembly (partly functional)
 - variables can be declared at any top-level position in a block
 - labels can only label starts/ends of sub-blocks; `goto` can only target labels in the same block or its parent blocks
 - assignment of structures/unions (and same-type arrays as well)
-- vararg macros and stdarg.h
+- vararg macros and `stdarg.h`
 - object modules can have the following extensions: `.o`, `.wo`
 - system object modules are looked up in library directories given via `-L` option and `WCPL_LIBRARY_PATH` environment variable
 - system headers included as `#include <foo>` can have the following extensions: (none), `.h`, `.wh`
@@ -28,6 +28,7 @@ Compiler/linker/libc for a subset of C targeting Webassembly (partly functional)
 
 # C and library features not yet supported
 
+- implicit conversions of arrays to element pointers; explicit `&arr[0]` required
 - taking address of a global scalar var (?)
 - `{}` initializers for locals
 - `static` variables in function scope

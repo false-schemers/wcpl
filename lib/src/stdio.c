@@ -1344,7 +1344,7 @@ static size_t _atoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double
   if ((value != value) || (value > DBL_MAX) || (value < -DBL_MAX)) {
     return _ftoa(out, data, idx, maxlen, value, prec, width, flags);
   }
-  const bool negative = value < 0; if (negative) value = -value;
+  const bool negative = value < 0.0; if (negative) value = -value;
   if (!(flags & FLAGS_PRECISION)) prec = PRINTF_DEFAULT_HEXFL_PRECISION;
   union { uint64_t U; double F; } conv; conv.F = value;
   int exp2 = (int)((conv.U >> 52U) & 0x07FFU);
