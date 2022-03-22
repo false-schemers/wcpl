@@ -774,6 +774,10 @@ static bool arithmetic_constant_expr(node_t *pn)
       switch (pn->intr) {
         case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF:
           return true;
+        case INTR_ASU32: case INTR_ASFLT: 
+        case INTR_ASU64: case INTR_ASDBL:
+          assert(ndlen(pn) == 1); 
+          return arithmetic_constant_expr(ndref(pn, 0));
       }
       return false;
     case NT_PREFIX:
@@ -1000,10 +1004,11 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
       if (pin) {
         seval_t r; assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
         assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
-        if (!static_eval(ndref(pin, 1), &r) || !ts_numerical(r.ts)) 
+        if (!static_eval(ndref(pin, 1), &r) || !(ts_numerical(r.ts) 
+            || (r.ts == TS_PTR && r.val.i == 0 && r.id == 0))) /* NULL is ok, &other is not (fixme) */
           neprintf(pin, "non-constant initializer");
         pg = watiebref(&g_curpwm->exports, pgidx); /* re-fetch after static_eval */
-        asm_numerical_const(r.ts, &r.val, &pg->ic);
+        asm_numerical_const(r.ts == TS_PTR ? TS_UINT : r.ts, &r.val, &pg->ic); /* wasm32 */
       }  
       pg->mut = MT_VAR;
       pg->vt = ts2vt(ptn->ts);

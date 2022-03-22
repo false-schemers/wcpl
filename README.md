@@ -9,6 +9,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly (mostly 
 - `static_assert(expr);`, `static_assert(expr, "message");` on top level in headers and module files
 - `sizeof(type)`, `alignof(type)`, and `offsetof(type, field)` are supported
 - static evaluation of expressions (numerics only in general, numerics+static pointers in top-level initializers)
+- `asuint32`, `asfloat`, `asuint64`, `asdouble` reinterpret-cast-style intrinsics
 - limited macros: `#define FOO 1234`, `#define FOO (expr)`, `#define FOO do {...} while (0)` as well as 
   corresponding parameterized forms (`#define FOO(a, b) ...`)   
 - `const` and `volatile` specifiers are allowed but ignored
@@ -35,8 +36,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly (mostly 
 - structures/unions as parameters
 - instrumenting implicit return paths from a non-void function
 - hex format of doubles in WAT object and output files
-- eval of `asuint64` and `asdouble` intrinsics in constant expressions
-- fixme: NULL is not a constant for global init?
+- fixme: non-NULL address expr is not a constant for global var init
 - fixme: stdout/stderr are not line-buffered and don't autoflush on exit
 
 # C features that won't be supported

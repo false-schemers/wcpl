@@ -7575,8 +7575,7 @@
     return
     end
     local.get $value
-    i32.const 0
-    f64.convert_i32_s
+    f64.const 0
     f64.lt
     i32.const 24
     i32.shl
