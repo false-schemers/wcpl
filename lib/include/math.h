@@ -28,5 +28,8 @@ extern double ceil(double x); /* + */
 extern double fabs(double x); /* + */
 extern double floor(double x); /* + */
 extern double fmod(double x, double y); /* + */
+/* selected C99 additions */
+extern double copysign(double x, double y);
+
 
 

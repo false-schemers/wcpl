@@ -171,7 +171,7 @@
     local.get $fp$
     f64.load offset=0 align=8
     i64.reinterpret_f64
-    i64.const 8000000000000000
+    i64.const -9223372036854775808
     i64.and
     i64.or
     f64.reinterpret_i64
@@ -198,7 +198,7 @@
     local.get $fp$
     f64.load offset=0 align=8
     i64.reinterpret_f64
-    i64.const 8000000000000000
+    i64.const -9223372036854775808
     i64.and
     i64.or
     f64.reinterpret_i64
@@ -253,7 +253,7 @@
     local.get $fp$
     f64.load offset=0 align=8
     i64.reinterpret_f64
-    i64.const 8000000000000000
+    i64.const -9223372036854775808
     i64.and
     i64.or
     f64.reinterpret_i64
@@ -988,6 +988,8 @@
     end
     end
     end
+    f64.const +nan
+    return
   )
   (func $math:__ieee754_fmod
     (param $x f64) (param $y f64) (result f64) 
@@ -3091,7 +3093,7 @@
     i64.const 9218868437227405312
     local.get $s
     i64.reinterpret_f64
-    i64.const 8000000000000000
+    i64.const -9223372036854775808
     i64.and
     i64.or
     f64.reinterpret_i64
@@ -3114,7 +3116,7 @@
     i64.const 9218868437227405312
     local.get $s
     i64.reinterpret_f64
-    i64.const 8000000000000000
+    i64.const -9223372036854775808
     i64.and
     i64.or
     f64.reinterpret_i64
@@ -3142,7 +3144,7 @@
     i64.const 0
     local.get $s
     i64.reinterpret_f64
-    i64.const 8000000000000000
+    i64.const -9223372036854775808
     i64.and
     i64.or
     f64.reinterpret_i64
@@ -3163,7 +3165,7 @@
     i64.const 0
     local.get $s
     i64.reinterpret_f64
-    i64.const 8000000000000000
+    i64.const -9223372036854775808
     i64.and
     i64.or
     f64.reinterpret_i64
@@ -4021,7 +4023,7 @@
     i64.and
     local.get $y
     i64.reinterpret_f64
-    i64.const 8000000000000000
+    i64.const -9223372036854775808
     i64.and
     i64.or
     f64.reinterpret_i64

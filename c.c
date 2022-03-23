@@ -1489,6 +1489,9 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
 /* check if node ends in NT_RETURN */
 static bool ends_in_return(node_t *pn)
 {
+#if 1
+  return (pn && pn->nt == NT_RETURN);
+#else /* relaxed definition produces invalid WASM! */
   if (pn) {
     switch (pn->nt) {
       case NT_RETURN:
@@ -1501,6 +1504,7 @@ static bool ends_in_return(node_t *pn)
     }
   }
   return false;
+#endif
 }
 
 /* convert function to wasm conventions, simplify */
@@ -3197,7 +3201,7 @@ static node_t *fundef_compile(node_t *pdn)
   /* check for unexpected implicit return */
   if (ret->ts != TS_VOID) {
     if (!ends_in_return(pln))
-      n2eprintf(pln, pdn, "non-void function: last statement must return value");
+      n2eprintf(pln, pdn, "non-void function: last statement must be explicit 'return'");
   }
 
   buffini(&rib);

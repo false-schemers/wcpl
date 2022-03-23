@@ -9,10 +9,9 @@
 #define FE_UNDERFLOW 0
 
 #define __ieee754_fabs(x) (asdouble(asuint64(x) & 0x7FFFFFFFFFFFFFFFULL))
-#define __ieee754_copysign(x, y) (asdouble((asuint64(x) & 0x7FFFFFFFFFFFFFFFULL) \
-  | (asuint64(y) & 8000000000000000ULL)))
+#define __ieee754_copysign(x, y) (asdouble((asuint64(x) & 0x7FFFFFFFFFFFFFFFULL) | (asuint64(y) & 0x8000000000000000ULL)))
 
-#define __builtin_nan(s) (HUGE_VAL-HUGE_VAL) /* fixme! */
+#define __builtin_nan(s) (asdouble(0x7FF8000000000000ULL)) /* +nan */
 #define math_force_eval(x) ((void)(x)) /* supposed to raise exception but probably won't */
 
 /* code below is based on fdlibm with the following licensing note:
@@ -349,6 +348,7 @@ static double __ieee754_modf(double x, double *iptr)
       return x - *iptr;
     }
   }
+  return __builtin_nan(""); /* to silence WCPL */
 }
 
 /* __ieee754_fmod(x,y)
@@ -1171,4 +1171,3 @@ double log10(double x)
 }
 
 /* to be continued.. */
-

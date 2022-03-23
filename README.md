@@ -34,7 +34,6 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly (mostly 
 - `{}` initializers for locals
 - `static` variables in function scope
 - structures/unions as parameters
-- instrumenting implicit return paths from a non-void function
 - hex format of doubles in WAT object and output files
 - fixme: non-NULL address expr is not a constant for global var init
 - fixme: stdout/stderr are not line-buffered and don't autoflush on exit
