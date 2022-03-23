@@ -72,6 +72,16 @@ extern bool fget8bom(FILE *fp);
 #define is8ctail(c) (((c) & 0xC0) == 0x80)
 extern int int_cmp(const void *pi1, const void *pi2);
 
+/* floating-point reinterpret casts and exact hex i/o */
+extern unsigned long long asuint64(double f); /* NB: WCPL intrinsic */
+extern double asdouble(unsigned long long u); /* NB: WCPL intrinsic */
+extern unsigned asuint32(float f); /* NB: WCPL intrinsic */
+extern float asfloat(unsigned u); /* NB: WCPL intrinsic */
+extern char *udtohex(unsigned long long uval, char buf[32]);
+extern unsigned long long hextoud(const char *buf); /* -1 on error */
+extern char *uftohex(unsigned uval, char buf[32]);
+extern unsigned hextouf(const char *buf); /* -1 on error */
+
 /* dynamic (heap-allocated) 0-terminated strings */
 typedef char* dstr_t;
 #define dsinit(pds) (*(dstr_t*)(pds) = NULL)

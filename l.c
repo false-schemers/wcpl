@@ -284,6 +284,177 @@ int int_cmp(const void *pi1, const void *pi2)
 }
 
 
+/* floating-point reinterpret casts and exact hex i/o */
+
+unsigned long long asuint64(double f) /* NB: WCPL intrinsic */
+{
+  union { unsigned long long u; double f; } uf;
+  uf.f = f;
+  return uf.u;
+}
+
+double asdouble(unsigned long long u) /* NB: WCPL intrinsic */
+{
+  union { unsigned long long u; double f; } uf;
+  uf.u = u;
+  return uf.f;
+}
+
+unsigned asuint32(float f) /* NB: WCPL intrinsic */
+{
+  union { unsigned u; float f; } uf;
+  uf.f = f;
+  return uf.u;
+}
+
+float asfloat(unsigned u) /* NB: WCPL intrinsic */
+{
+  union { unsigned u; float f; } uf;
+  uf.u = u;
+  return uf.f;
+}
+
+/* print uint64 representation of double exactly in WASM-compatible hex format */
+char *udtohex(unsigned long long uval, char buf[32]) /* 25 chars (actual requirement), rounded up */
+{
+  bool dneg = (bool)(uval >> 63ULL);
+  int exp2 = (int)((uval >> 52ULL) & 0x07FFULL);
+  unsigned long long mant = (uval & 0xFFFFFFFFFFFFFULL);
+  if (exp2 == 0x7FF) {
+    if (mant != 0ULL) strcpy(buf, dneg ? "-nan" : "nan");
+    else strcpy(buf, dneg ? "-inf" : "inf");
+  } else {
+    size_t i = 0, j; int val, vneg = false, dig, mdigs;
+    if (exp2 == 0) val = mant == 0 ? 0 : -1022; else val = exp2 - 1023;
+    if (val < 0) val = -val, vneg = true;
+    do { dig = val % 10; buf[i++] = '0' + dig; val /= 10; } while (val);
+    buf[i++] = vneg ? '-' : '+'; buf[i++] = 'p';
+    for (mdigs = 13; mdigs > 0; --mdigs, mant >>= 4ULL) {
+      dig = (int)(mant % 16); buf[i++] = dig < 10 ? '0' + dig : 'a' + dig - 10; 
+    }
+    buf[i++] = '.'; buf[i++] = '0' + ((exp2 == 0) ? 0 : 1);
+    buf[i++] = 'x'; buf[i++] = '0';
+    if (dneg) buf[i++] = '-'; buf[i] = 0;
+    for (j = 0, i -= 1; j < i; ++j, --i) { 
+      dig = buf[j]; buf[j] = buf[i]; buf[i] = dig;
+    }
+  }
+  return buf;
+}
+
+/* read back uint64 representation of double as printed via udtohex; -1 on error */
+unsigned long long hextoud(const char *buf)
+{
+  bool dneg = false;
+  if (*buf == '-') ++buf, dneg = true;
+  else if (*buf == '+') ++buf;
+  if (strcmp(buf, "inf") == 0) {
+    return dneg ? 0xFFF0000000000000ULL : 0x7FF0000000000000ULL;
+  } else if (strcmp(buf, "nan") == 0) {
+    return dneg ? 0xFFF8000000000000ULL : 0x7FF8000000000000ULL;
+  } else {
+    int exp2 = 0; unsigned long long mant = 0ULL;
+    int ldig, val, vneg, dig, mdigs;
+    if (*buf++ != '0') goto err;
+    if (*buf++ != 'x') goto err;
+    if (*buf != '0' && *buf != '1') goto err;
+    ldig = *buf++ - '0';
+    if (*buf++ != '.') goto err;
+    for (mdigs = 13; mdigs > 0; --mdigs) {
+      if (!*buf || !isxdigit(*buf)) goto err; 
+      val = *buf++;
+      dig = val < '9' ? val - '0'
+          : val < 'F' ? val - 'A' + 10
+          : val - 'a' + 10;
+      mant = (mant << 4ULL) | dig;
+    }
+    if (*buf++ != 'p') goto err;
+    if (*buf != '+' && *buf != '-') goto err;
+    vneg = *buf++ == '-';
+    for (val = 0; *buf; ++buf) {
+      if (!isdigit(*buf)) goto err;
+      val = val * 10 + *buf - '0';
+    }
+    if (vneg) val = -val;
+    exp2 = ldig == 1 ? val + 1023 : 0;
+    if (0 <= exp2 && exp2 <= 2046)
+      return (unsigned long long)dneg << 63ULL | (unsigned long long)exp2 << 52ULL | mant;
+ err:;
+  }
+  return 0xFFFFFFFFFFFFFFFFULL; 
+}
+
+/* print uint32 representation of double exactly in WASM-compatible hex format */
+char *uftohex(unsigned uval, char buf[32]) /* 17 chars (actual requirement), rounded up */
+{
+  bool dneg = (bool)(uval >> 31U);
+  int exp2 = (int)((uval >> 23U) & 0x0FFU);
+  unsigned mant = (uval & 0x7FFFFFU);
+  if (exp2 == 0xFF) {
+    if (mant != 0UL) strcpy(buf, dneg ? "-nan" : "nan");
+    else strcpy(buf, dneg ? "-inf" : "inf");
+  } else {
+    size_t i = 0, j; int val, vneg = false, dig, mdigs;
+    if (exp2 == 0) val = mant == 0 ? 0 : -126; else val = exp2 - 127;
+    if (val < 0) val = -val, vneg = true;
+    do { dig = val % 10; buf[i++] = '0' + dig; val /= 10; } while (val);
+    buf[i++] = vneg ? '-' : '+'; buf[i++] = 'p';
+    for (mdigs = 6, mant <<= 1; mdigs > 0; --mdigs, mant >>= 4ULL) {
+      dig = (int)(mant % 16); buf[i++] = dig < 10 ? '0' + dig : 'a' + dig - 10;
+    }
+    buf[i++] = '.'; buf[i++] = '0' + ((exp2 == 0) ? 0 : 1);
+    buf[i++] = 'x'; buf[i++] = '0';
+    if (dneg) buf[i++] = '-'; buf[i] = 0;
+    for (j = 0, i -= 1; j < i; ++j, --i) {
+      dig = buf[j]; buf[j] = buf[i]; buf[i] = dig;
+    }
+  }
+  return buf;
+}
+
+/* read back uint32 representation of float as printed via uftohex; -1 on error */
+unsigned hextouf(const char *buf)
+{
+  bool dneg = false;
+  if (*buf == '-') ++buf, dneg = true;
+  else if (*buf == '+') ++buf;
+  if (strcmp(buf, "inf") == 0) {
+    return dneg ? 0xFF800000U : 0x7F800000U;
+  } else if (strcmp(buf, "nan") == 0) {
+    return dneg ? 0xFFC00000U : 0x7FC00000U;
+  } else {
+    int exp2 = 0; unsigned mant = 0UL;
+    int ldig, val, vneg, dig, mdigs;
+    if (*buf++ != '0') goto err;
+    if (*buf++ != 'x') goto err;
+    if (*buf != '0' && *buf != '1') goto err;
+    ldig = *buf++ - '0';
+    if (*buf++ != '.') goto err;
+    for (mdigs = 6; mdigs > 0; --mdigs) {
+      if (!*buf || !isxdigit(*buf)) goto err;
+      val = *buf++;
+      dig = val < '9' ? val - '0'
+          : val < 'F' ? val - 'A' + 10
+          : val - 'a' + 10;
+      mant = (mant << 4ULL) | dig;
+    }
+    if (*buf++ != 'p') goto err;
+    if (*buf != '+' && *buf != '-') goto err;
+    vneg = *buf++ == '-';
+    for (val = 0; *buf; ++buf) {
+      if (!isdigit(*buf)) goto err;
+      val = val * 10 + *buf - '0';
+    }
+    if (vneg) val = -val;
+    exp2 = ldig == 1 ? val + 127 : 0;
+    if (0 <= exp2 && exp2 <= 254)
+      return (unsigned)dneg << 31U | (unsigned)exp2 << 23U | mant >> 1;
+  err:;
+  }
+  return 0xFFFFFFFFU;
+}
+
+
 /* dynamic (heap-allocated) 0-terminated strings */
 
 void dsicpy(dstr_t* mem, const dstr_t* pds)

@@ -40,10 +40,37 @@
   (global $math:ivln10 (mut f64) (f64.const 0.43429448190325182))
   (global $math:log10_2hi (mut f64) (f64.const 0.30102999566361177))
   (global $math:log10_2lo (mut f64) (f64.const 3.6942390771589308e-013))
+  (global $math:twom1000 (mut f64) (f64.const 9.3326361850321888e-302))
+  (global $math:o_threshold (mut f64) (f64.const 709.78271289338397))
+  (global $math:u_threshold (mut f64) (f64.const -745.13321910194111))
   (data $math:bp var align=8 "\00\00\00\00\00\00\f0?\00\00\00\00\00\00\f8?")
   (data $math:dp_h var align=8 "\00\00\00\00\00\00\00\00\00\00\00@\03\b8\e2?")
   (data $math:dp_l var align=8 "\00\00\00\00\00\00\00\00\06\d0\cfC\eb\fdL>")
   (data $math:Zero var align=8 "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\80")
+  (data $math:halF var align=8 "\00\00\00\00\00\00\e0?\00\00\00\00\00\00\e0\bf")
+  (data $math:ln2HI var align=8 "\00\00\e0\feB.\e6?\00\00\e0\feB.\e6\bf")
+  (data $math:ln2LO var align=8 "v<y5\ef9\ea=v<y5\ef9\ea\bd")
+  (func $math:isnan
+    (param $x f64) (result i32) 
+    (local $ux i64) 
+    local.get $x
+    i64.reinterpret_f64
+    local.tee $ux
+    i64.const 9218868437227405312
+    i64.and
+    i64.const 9218868437227405312
+    i64.eq
+    if (result i32)
+    local.get $ux
+    i64.const 4503599627370495
+    i64.and
+    i64.const 0
+    i64.ne
+    else
+    i32.const 0
+    end
+    return
+  )
   (func $math:issignaling
     (param $x f64) (result i32) 
     (local $hxi i32) (local $lxi i32) (local $__t i64) 
@@ -791,6 +818,265 @@
     i64.or
     f64.reinterpret_i64
     local.tee $x
+    return
+  )
+  (func $math:__ieee754_round
+    (param $x f64) (result f64) 
+    (local $i0 i32) (local $j0 i32) (local $i1 i32) (local $__t i64) (local $i i32) (local $i#5 i32) (local $j i32) 
+    local.get $x
+    i64.reinterpret_f64
+    local.tee $__t
+    i32.const 32
+    i64.extend_i32_s
+    i64.shr_u
+    i32.wrap_i64
+    local.set $i0
+    local.get $__t
+    i32.wrap_i64
+    local.set $i1
+    local.get $i0
+    i32.const 20
+    i32.shr_s
+    i32.const 2047
+    i32.and
+    i32.const 1023
+    i32.sub
+    local.tee $j0
+    i32.const 20
+    i32.lt_s
+    if
+    local.get $j0
+    i32.const 0
+    i32.lt_s
+    if
+    f64.const 1.0000000000000001e+300
+    local.get $x
+    f64.add
+    drop
+    local.get $i0
+    i32.const -2147483648
+    i32.and
+    local.set $i0
+    local.get $j0
+    i32.const -1
+    i32.eq
+    if
+    local.get $i0
+    i32.const 1072693248
+    i32.or
+    local.set $i0
+    end
+    i32.const 0
+    local.set $i1
+    else
+    i32.const 1048575
+    local.get $j0
+    i32.shr_u
+    local.set $i
+    local.get $i0
+    local.get $i
+    i32.and
+    local.get $i1
+    i32.or
+    i32.const 0
+    i32.eq
+    if
+    local.get $x
+    return
+    end
+    f64.const 1.0000000000000001e+300
+    local.get $x
+    f64.add
+    drop
+    local.get $i0
+    i32.const 524288
+    local.get $j0
+    i32.shr_u
+    i32.add
+    local.tee $i0
+    i32.const -1
+    local.get $i
+    i32.xor
+    i32.and
+    local.set $i0
+    i32.const 0
+    local.set $i1
+    end
+    else
+    local.get $j0
+    i32.const 51
+    i32.gt_s
+    if
+    local.get $j0
+    i32.const 1024
+    i32.eq
+    if
+    local.get $x
+    local.get $x
+    f64.add
+    return
+    else
+    local.get $x
+    return
+    end
+    else
+    i32.const -1
+    local.get $j0
+    i32.const 20
+    i32.sub
+    i32.shr_u
+    local.set $i#5
+    local.get $i1
+    local.get $i#5
+    i32.and
+    i32.const 0
+    i32.eq
+    if
+    local.get $x
+    return
+    end
+    f64.const 1.0000000000000001e+300
+    local.get $x
+    f64.add
+    drop
+    local.get $i1
+    i32.const 1
+    i32.const 51
+    local.get $j0
+    i32.sub
+    i32.shl
+    i32.add
+    local.tee $j
+    local.get $i1
+    i32.lt_u
+    if
+    local.get $i0
+    i32.const 1
+    i32.add
+    local.set $i0
+    end
+    local.get $j
+    local.tee $i1
+    i32.const -1
+    local.get $i#5
+    i32.xor
+    i32.and
+    local.set $i1
+    end
+    end
+    local.get $i0
+    i64.extend_i32_s
+    i32.const 32
+    i64.extend_i32_s
+    i64.shl
+    local.get $i1
+    i64.extend_i32_u
+    i64.const 4294967295
+    i64.and
+    i64.or
+    f64.reinterpret_i64
+    local.tee $x
+    return
+  )
+  (func $math:__ieee754_trunc
+    (param $x f64) (result f64) 
+    (local $i0 i32) (local $j0 i32) (local $i1 i32) (local $sx i32) (local $__t i64) 
+    local.get $x
+    i64.reinterpret_f64
+    local.tee $__t
+    i32.const 32
+    i64.extend_i32_s
+    i64.shr_u
+    i32.wrap_i64
+    local.set $i0
+    local.get $__t
+    i32.wrap_i64
+    local.set $i1
+    local.get $i0
+    i32.const -2147483648
+    i32.and
+    local.set $sx
+    local.get $i0
+    i32.const 20
+    i32.shr_s
+    i32.const 2047
+    i32.and
+    i32.const 1023
+    i32.sub
+    local.tee $j0
+    i32.const 20
+    i32.lt_s
+    if
+    local.get $j0
+    i32.const 0
+    i32.lt_s
+    if
+    local.get $sx
+    i64.extend_i32_s
+    i32.const 32
+    i64.extend_i32_s
+    i64.shl
+    i64.const 0
+    i64.or
+    f64.reinterpret_i64
+    local.set $x
+    else
+    local.get $sx
+    local.get $i0
+    i32.const -1
+    i32.const 1048575
+    local.get $j0
+    i32.shr_u
+    i32.xor
+    i32.and
+    i32.or
+    i64.extend_i32_u
+    i32.const 32
+    i64.extend_i32_s
+    i64.shl
+    i64.const 0
+    i64.or
+    f64.reinterpret_i64
+    local.set $x
+    end
+    else
+    local.get $j0
+    i32.const 51
+    i32.gt_s
+    if
+    local.get $j0
+    i32.const 1024
+    i32.eq
+    if
+    local.get $x
+    local.get $x
+    f64.add
+    return
+    end
+    else
+    local.get $i0
+    i64.extend_i32_s
+    i32.const 32
+    i64.extend_i32_s
+    i64.shl
+    local.get $i1
+    i32.const -1
+    i32.const -1
+    local.get $j0
+    i32.const 20
+    i32.sub
+    i32.shr_u
+    i32.xor
+    i32.and
+    i64.extend_i32_u
+    i64.const 4294967295
+    i64.and
+    i64.or
+    f64.reinterpret_i64
+    local.set $x
+    end
+    end
+    local.get $x
     return
   )
   (func $math:__ieee754_modf
@@ -3966,6 +4252,328 @@
     global.set $env:__stack_pointer
     return
   )
+  (func $math:__ieee754_exp
+    (param $x f64) (result f64) 
+    (local $hi f64) (local $lo f64) (local $c f64) (local $t f64) (local $k i32) (local $xsb i32) (local $hx i32) (local $__p i32) (local $__t i64) (local $__p#10 i32) (local $__t#11 i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) 
+    global.get $env:__stack_pointer
+    local.set $bp$
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
+    local.set $fp$
+    local.get $x
+    i64.reinterpret_f64
+    i32.const 32
+    i64.extend_i32_s
+    i64.shr_u
+    i32.wrap_i64
+    local.tee $hx
+    i32.const 31
+    i32.shr_u
+    i32.const 1
+    i32.and
+    local.set $xsb
+    local.get $hx
+    i32.const 2147483647
+    i32.and
+    local.tee $hx
+    i32.const 1082535490
+    i32.ge_u
+    if
+    local.get $hx
+    i32.const 2146435072
+    i32.ge_u
+    if
+    local.get $x
+    i64.reinterpret_f64
+    i32.wrap_i64
+    local.set $k
+    local.get $hx
+    i32.const 1048575
+    i32.and
+    local.get $k
+    i32.or
+    i32.const 0
+    i32.ne
+    if
+    local.get $x
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+    end
+    local.get $x
+    f64.const 0
+    local.get $xsb
+    i32.const 0
+    i32.eq
+    select
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+    end
+    local.get $x
+    global.get $math:o_threshold
+    f64.gt
+    if
+    i32.const 0
+    call $fenv:feraiseexcept
+    f64.const +inf
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+    end
+    local.get $x
+    global.get $math:u_threshold
+    f64.lt
+    if
+    i32.const 0
+    call $fenv:feraiseexcept
+    i32.const 0
+    f64.convert_i32_s
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+    end
+    end
+    local.get $hx
+    i32.const 1071001154
+    i32.gt_u
+    if
+    local.get $hx
+    i32.const 1072734898
+    i32.lt_u
+    if
+    local.get $x
+    ref.data $math:ln2HI
+    local.get $xsb
+    i32.const 8
+    i32.mul
+    i32.add
+    f64.load offset=0 align=8
+    f64.sub
+    local.set $hi
+    ref.data $math:ln2LO
+    local.get $xsb
+    i32.const 8
+    i32.mul
+    i32.add
+    f64.load offset=0 align=8
+    local.set $lo
+    i32.const 1
+    local.get $xsb
+    i32.sub
+    local.get $xsb
+    i32.sub
+    local.set $k
+    else
+    global.get $math:ivln2
+    local.get $x
+    f64.mul
+    ref.data $math:halF
+    local.get $xsb
+    i32.const 8
+    i32.mul
+    i32.add
+    f64.load offset=0 align=8
+    f64.add
+    i32.trunc_f64_s
+    local.tee $k
+    f64.convert_i32_s
+    local.set $t
+    local.get $x
+    local.get $t
+    ref.data $math:ln2HI
+    f64.load offset=0 align=8
+    f64.mul
+    f64.sub
+    local.set $hi
+    local.get $t
+    ref.data $math:ln2LO
+    f64.load offset=0 align=8
+    f64.mul
+    local.set $lo
+    end
+    local.get $hi
+    local.get $lo
+    f64.sub
+    local.set $x
+    else
+    local.get $hx
+    i32.const 1043333120
+    i32.lt_u
+    if
+    f64.const 1.0000000000000001e+300
+    local.get $x
+    f64.add
+    global.get $math:one
+    f64.gt
+    if
+    global.get $math:one
+    local.get $x
+    f64.add
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+    end
+    global.get $math:one
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+    else
+    i32.const 0
+    local.set $k
+    i32.const 0
+    f64.convert_i32_s
+    local.set $lo
+    i32.const 0
+    f64.convert_i32_s
+    local.set $hi
+    end
+    end
+    local.get $x
+    local.get $x
+    f64.mul
+    local.set $t
+    local.get $x
+    local.get $t
+    global.get $math:P1
+    local.get $t
+    global.get $math:P2
+    local.get $t
+    global.get $math:P3
+    local.get $t
+    global.get $math:P4
+    local.get $t
+    global.get $math:P5
+    f64.mul
+    f64.add
+    f64.mul
+    f64.add
+    f64.mul
+    f64.add
+    f64.mul
+    f64.add
+    f64.mul
+    f64.sub
+    local.set $c
+    local.get $k
+    i32.const 0
+    i32.eq
+    if
+    global.get $math:one
+    local.get $x
+    local.get $c
+    f64.mul
+    local.get $c
+    f64.const 2
+    f64.sub
+    f64.div
+    local.get $x
+    f64.sub
+    f64.sub
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+    end
+    local.get $fp$
+    local.tee $i1$
+    global.get $math:one
+    local.get $lo
+    local.get $x
+    local.get $c
+    f64.mul
+    f64.const 2
+    local.get $c
+    f64.sub
+    f64.div
+    f64.sub
+    local.get $hi
+    f64.sub
+    f64.sub
+    f64.store offset=0 align=8
+    local.get $fp$
+    f64.load offset=0 align=8
+    i64.reinterpret_f64
+    i32.const 32
+    i64.extend_i32_s
+    i64.shr_u
+    i32.wrap_i64
+    local.set $hx
+    local.get $k
+    i32.const -1021
+    i32.ge_s
+    if
+    local.get $hx
+    local.get $k
+    i32.const 20
+    i32.shl
+    i32.add
+    local.set $hx
+    local.get $fp$
+    local.tee $__p
+    f64.load offset=0 align=8
+    i64.reinterpret_f64
+    i64.const 4294967295
+    i64.and
+    local.get $hx
+    i64.extend_i32_u
+    i32.const 32
+    i64.extend_i32_s
+    i64.shl
+    i64.or
+    local.set $__t
+    local.get $__p
+    local.tee $i2$
+    local.get $__t
+    f64.reinterpret_i64
+    f64.store offset=0 align=8
+    local.get $fp$
+    f64.load offset=0 align=8
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+    else
+    local.get $hx
+    local.get $k
+    i32.const 1000
+    i32.add
+    i32.const 20
+    i32.shl
+    i32.add
+    local.set $hx
+    local.get $fp$
+    local.tee $__p#10
+    f64.load offset=0 align=8
+    i64.reinterpret_f64
+    i64.const 4294967295
+    i64.and
+    local.get $hx
+    i64.extend_i32_u
+    i32.const 32
+    i64.extend_i32_s
+    i64.shl
+    i64.or
+    local.set $__t#11
+    local.get $__p#10
+    local.tee $i3$
+    local.get $__t#11
+    f64.reinterpret_i64
+    f64.store offset=0 align=8
+    local.get $fp$
+    f64.load offset=0 align=8
+    global.get $math:twom1000
+    f64.mul
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+    end
+    f64.const +nan
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+  )
   (func $math:ceil (export "ceil")
     (param $x f64) (result f64) 
     local.get $x
@@ -3976,6 +4584,18 @@
     (param $x f64) (result f64) 
     local.get $x
     call $math:__ieee754_floor
+    return
+  )
+  (func $math:round (export "round")
+    (param $x f64) (result f64) 
+    local.get $x
+    call $math:__ieee754_round
+    return
+  )
+  (func $math:trunc (export "trunc")
+    (param $x f64) (result f64) 
+    local.get $x
+    call $math:__ieee754_trunc
     return
   )
   (func $math:frexp (export "frexp")
@@ -4052,6 +4672,44 @@
     (param $x f64) (result f64) 
     local.get $x
     call $math:__ieee754_log10
+    return
+  )
+  (func $math:exp (export "exp")
+    (param $x f64) (result f64) 
+    local.get $x
+    call $math:__ieee754_exp
+    return
+  )
+  (func $math:fmax (export "fmax")
+    (param $x f64) (param $y f64) (result f64) 
+    local.get $x
+    local.get $y
+    local.get $x
+    local.get $y
+    f64.ge
+    if (result i32)
+    i32.const 1
+    else
+    local.get $y
+    call $math:isnan
+    end
+    select
+    return
+  )
+  (func $math:fmin (export "fmin")
+    (param $x f64) (param $y f64) (result f64) 
+    local.get $x
+    local.get $y
+    local.get $x
+    local.get $y
+    f64.le
+    if (result i32)
+    i32.const 1
+    else
+    local.get $y
+    call $math:isnan
+    end
+    select
     return
   )
 )

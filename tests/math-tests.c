@@ -762,7 +762,6 @@ void test_math_erfc(void) {
 }
 */
 
-/*
 void test_math_exp(void) {
   start("tests for exp()");
   const char *buffer = "";
@@ -808,7 +807,6 @@ void test_math_exp(void) {
   y = exp(50.0); z = 5184705528587072464087.45332293348538;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_exp10(void) {
@@ -1182,7 +1180,6 @@ void test_math_fma(void) {
 }
 */
 
-/*
 void test_math_fmax(void) {
   start("tests for fmax()");
   const char *buffer = "";
@@ -1288,9 +1285,7 @@ void test_math_fmax(void) {
   y = fmax(NaN, NaN);
   REQUIRE(!(y == y));
 }
-*/
 
-/*
 void test_math_fmin(void) {
   start("tests for fmin()");
   const char *buffer = "";
@@ -1396,7 +1391,6 @@ void test_math_fmin(void) {
   y = fmin(NaN, NaN);
   REQUIRE(!(y == y));
 }
-*/
 
 void test_math_fmod(void) {
   start("tests for fmod()");
@@ -3020,7 +3014,6 @@ void test_math_rint(void) {
 }
 */
 
-/*
 void test_math_round(void) {
   start("tests for round()");
   const char *buffer = "";
@@ -3074,7 +3067,6 @@ void test_math_round(void) {
   y = round(-2097152.5); z = -2097153;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_scalbn(void) {
@@ -3442,7 +3434,6 @@ void test_math_tgamma(void) {
 }
 */
 
-/*
 void test_math_trunc(void) {
   start("tests for trunc()");
   const char *buffer = "";
@@ -3516,7 +3507,6 @@ void test_math_trunc(void) {
   y = trunc(-4294967296.625); z = -4294967296.0;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_y0(void) {
@@ -3790,7 +3780,7 @@ int main()
   //test_math_cosh();
   //test_math_erf();
   //test_math_erfc();
-  //test_math_exp();
+  test_math_exp();
   //test_math_exp10();
   //test_math_exp2();
   //test_math_expm1();
@@ -3798,8 +3788,8 @@ int main()
   //test_math_fdim();
   test_math_floor();
   //test_math_fma();
-  //test_math_fmax();
-  //test_math_fmin();
+  test_math_fmax();
+  test_math_fmin();
   test_math_fmod();
   test_math_frexp();
   //test_math_gamma();
@@ -3822,7 +3812,7 @@ int main()
   //test_math_remainder();
   //test_math_remquo();
   //test_math_rint();
-  //test_math_round();
+  test_math_round();
   //test_math_scalbn();
   //test_math_scalbln();
   //test_math_sin();
@@ -3831,7 +3821,7 @@ int main()
   //test_math_tan();
   //test_math_tanh();
   //test_math_tgamma();
-  //test_math_trunc();
+  test_math_trunc();
   //test_math_y0();
   //test_math_y1();
   //test_math_yn();

@@ -14,6 +14,12 @@
 #define __builtin_nan(s) (asdouble(0x7FF8000000000000ULL)) /* +nan */
 #define math_force_eval(x) ((void)(x)) /* supposed to raise exception but probably won't */
 
+/* wasm raises no exceptions, so these are straightforward */
+#define isgreater(x, y)      ((x) > (y))
+#define isgreaterequal(x, y) ((x) >= (y))
+#define isless(x, y)         ((x) < (y))
+#define islessequal(x, y)    ((x) <= (y))
+
 /* code below is based on fdlibm with the following licensing note:
  * Copyright (C) 2004 by Sun Microsystems, Inc. All rights reserved.
  * Permission to use, copy, modify, and distribute this
@@ -105,7 +111,6 @@ static const double ivln2_h = 1.44269502162933349609e+00; /* 0x3FF71547, 0x60000
 static const double ivln2_l = 1.92596299112661746887e-08; /* 0x3E54AE0B, 0xF85DDF44 =1/ln2 tail */
 static const double ln2_hi = 6.93147180369123816490e-01; /* 3fe62e42 fee00000 */
 static const double ln2_lo = 1.90821492927058770002e-10; /* 3dea39ef 35793c76 */
-//static const double two54 = 1.80143985094819840000e+16; /* 43500000 00000000 */
 static const double Lg1 = 6.666666666666735130e-01; /* 3FE55555 55555593 */
 static const double Lg2 = 3.999999999940941908e-01; /* 3FD99999 9997FA04 */
 static const double Lg3 = 2.857142874366239149e-01; /* 3FD24924 94229359 */
@@ -113,11 +118,30 @@ static const double Lg4 = 2.222219843214978396e-01; /* 3FCC71C5 1D8E78AF */
 static const double Lg5 = 1.818357216161805012e-01; /* 3FC74664 96CB03DE */
 static const double Lg6 = 1.531383769920937332e-01; /* 3FC39A09 D078C69F */
 static const double Lg7 = 1.479819860511658591e-01; /* 3FC2F112 DF3E5244 */
-//static const double hugeval = 1.0e300;
-//static const double two54 = 1.80143985094819840000e+16; /* 0x43500000, 0x00000000 */
 static const double ivln10 = 4.34294481903251816668e-01; /* 0x3FDBCB7B, 0x1526E50E */
 static const double log10_2hi = 3.01029995663611771306e-01; /* 0x3FD34413, 0x509F6000 */
 static const double log10_2lo = 3.69423907715893078616e-13; /* 0x3D59FEF3, 0x11F12B36 */
+/* exp constants */
+static const double halF[2] = { 0.5, -0.5 };
+static const double twom1000 = 9.33263618503218878990e-302;  /* 2**-1000=0x01700000,0 */
+static const double o_threshold = 7.09782712893383973096e+02; /* 0x40862E42, 0xFEFA39EF */
+static const double u_threshold = -7.45133219101941108420e+02; /* 0xc0874910, 0xD52D3051 */
+static const double ln2HI[2] = {
+  6.93147180369123816490e-01, /* 0x3fe62e42, 0xfee00000 */
+  -6.93147180369123816490e-01 /* 0xbfe62e42, 0xfee00000 */
+};
+static const double ln2LO[2] = {
+  1.90821492927058770002e-10, /* 0x3dea39ef, 0x35793c76 */
+  -1.90821492927058770002e-10 /* 0xbdea39ef, 0x35793c76 */
+};
+
+/* check for NaNs */
+static int isnan(double x)
+{
+  uint64_t ux = asuint64(x);
+  return (ux & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL
+      && (ux & 0x000FFFFFFFFFFFFFULL) != 0x0000000000000000ULL;
+}
 
 /* check for signalling NaN */
 static int issignaling(double x)
@@ -304,6 +328,93 @@ double __ieee754_floor(double x)
   return x;
 } 
 
+/* The round() functions round their argument to the nearest integer
+ * value in floating-point format, rounding halfway cases away from zero,
+ * regardless of the current rounding direction.  (While the "inexact"
+ * floating-point exception behavior is unspecified by the C standard, the
+ * <<round>> functions are written so that "inexact" is not raised if the
+ * result does not equal the argument, which behavior is as recommended by
+ * IEEE 754 for its related functions.) */
+static double __ieee754_round(double x)
+{
+  int32_t i0, j0;
+  uint32_t i1;
+
+  GET_DOUBLE_WORDS(i0, i1, x);
+  j0 = ((i0 >> IEEE754_DOUBLE_SHIFT) & IEEE754_DOUBLE_MAXEXP) - IEEE754_DOUBLE_BIAS;
+  if (j0 < IEEE754_DOUBLE_SHIFT) {
+    if (j0 < 0) {
+      math_force_eval(hugeval + x);
+      i0 &= IC(0x80000000U);
+      if (j0 == -1) /* Result is +1.0 or -1.0. */
+        i0 |= IC(0x3ff00000U);
+      i1 = 0;
+    } else {
+      uint32_t i = UC(0x000fffffU) >> j0;
+
+      if (((i0 & i) | i1) == 0) return x; /* X is integral. */
+
+      /* Raise inexact if x != 0.  */
+      math_force_eval(hugeval + x);
+
+      i0 += (int32_t)(UC(0x00080000U) >> j0);
+      i0 &= (int32_t)~i;
+      i1 = 0;
+    }
+  } else if (j0 > 51) {
+    if (j0 == (IEEE754_DOUBLE_MAXEXP - IEEE754_DOUBLE_BIAS))
+      /* Inf or NaN.  */
+      return x + x;
+    else
+      return x;
+  } else {
+    uint32_t i = UC(0xffffffffU) >> (j0 - IEEE754_DOUBLE_SHIFT);
+    uint32_t j;
+
+    if ((i1 & i) == 0) return x; /* X is integral. */
+
+    /* Raise inexact if x != 0.  */
+    math_force_eval(hugeval + x);
+
+    j = i1 + (UC(1) << (51 - j0));
+
+    if (j < i1)
+      i0 += 1;
+    i1 = j;
+    i1 &= ~i;
+  }
+
+  INSERT_WORDS(x, i0, i1);
+  return x;
+}
+
+/* The trunc functions round their argument to the integer value, in floating format,
+ * nearest to but no larger in magnitude than the argument. */
+static double __ieee754_trunc(double x)
+{
+  int32_t i0, j0;
+  uint32_t i1;
+  int32_t sx;
+
+  GET_DOUBLE_WORDS(i0, i1, x);
+  sx = i0 & IC(0x80000000U);
+  j0 = ((i0 >> IEEE754_DOUBLE_SHIFT) & IEEE754_DOUBLE_MAXEXP) - IEEE754_DOUBLE_BIAS;
+  if (j0 < IEEE754_DOUBLE_SHIFT) {
+    if (j0 < 0) /* The magnitude of the number is < 1 so the result is +-0.  */
+      INSERT_WORDS(x, sx, 0);
+    else
+      INSERT_WORDS(x, sx | (i0 & ~(UC(0x000fffffU) >> j0)), 0);
+  } else if (j0 > 51) {
+    if (j0 == (IEEE754_DOUBLE_MAXEXP - IEEE754_DOUBLE_BIAS))
+      return x + x; /* x is inf or NaN.  */
+  } else {
+    INSERT_WORDS(x, i0, i1 & ~(UC(0xffffffffU) >> (j0 - IEEE754_DOUBLE_SHIFT)));
+  }
+
+  return x;
+}
+
+
 /* modf(double x, double *iptr) 
  * return fraction part of x, and return x's integral part in *iptr.
  * Method: Bit twiddling.
@@ -455,8 +566,9 @@ static double __ieee754_fmod(double x, double y)
   }
 
   /* convert back to floating value and restore the sign */
-  if ((hx | lx) == 0) /* return sign(x)*0 */
+  if ((hx | lx) == 0) { /* return sign(x)*0 */
     return Zero[(uint32_t) sx >> 31];
+  }
   while (hx < IC(0x00100000U)) { /* normalize x */
     hx = hx + hx + (int32_t)(lx >> 31);
     lx = lx + lx;
@@ -482,7 +594,6 @@ static double __ieee754_fmod(double x, double y)
   }
   return x; /* exact output */
 }
-
 
 /* __ieee754_sqrt(x)
  * Return correctly rounded sqrt.
@@ -650,7 +761,6 @@ static double __ieee754_sqrt(double x)
   INSERT_WORDS(z, ix0, ix1);
   return z;
 }
- 
 
 /* __ieee754_pow(x,y) return x**y
  *
@@ -1107,6 +1217,128 @@ static double __ieee754_log10(double x)
   return z + y * log10_2hi;
 }
 
+/* __ieee754_exp(x)
+ * Returns the exponential of x.
+ *
+ * Method
+ *   1. Argument reduction:
+ *      Reduce x to an r so that |r| <= 0.5*ln2 ~ 0.34658.
+ *	Given x, find r and integer k such that
+ *
+ *               x = k*ln2 + r,  |r| <= 0.5*ln2.  
+ *
+ *      Here r will be represented as r = hi-lo for better 
+ *	accuracy.
+ *
+ *   2. Approximation of exp(r) by a special rational function on
+ *	the interval [0,0.34658]:
+ *	Write
+ *	    R(r**2) = r*(exp(r)+1)/(exp(r)-1) = 2 + r*r/6 - r**4/360 + ...
+ *      We use a special Reme algorithm on [0,0.34658] to generate 
+ * 	a polynomial of degree 5 to approximate R. The maximum error 
+ *	of this polynomial approximation is bounded by 2**-59. In
+ *	other words,
+ *	    R(z) ~ 2.0 + P1*z + P2*z**2 + P3*z**3 + P4*z**4 + P5*z**5
+ *  	(where z=r*r, and the values of P1 to P5 are listed below)
+ *	and
+ *	    |                  5          |     -59
+ *	    | 2.0+P1*z+...+P5*z   -  R(z) | <= 2 
+ *	    |                             |
+ *	The computation of exp(r) thus becomes
+ *                             2*r
+ *		exp(r) = 1 + -------
+ *		              R - r
+ *                                 r*R1(r)	
+ *		       = 1 + r + ----------- (for better accuracy)
+ *		                  2 - R1(r)
+ *	where
+ *			         2       4             10
+ *		R1(r) = r - (P1*r  + P2*r  + ... + P5*r   ).
+ *	
+ *   3. Scale back to obtain exp(x):
+ *	From step 1, we have
+ *	   exp(x) = 2^k * exp(r)
+ *
+ * Special cases:
+ *	exp(INF) is INF, exp(NaN) is NaN;
+ *	exp(-INF) is 0, and
+ *	for finite argument, only exp(0)=1 is exact.
+ *
+ * Accuracy:
+ *	according to an error analysis, the error is always less than
+ *	1 ulp (unit in the last place).
+ *
+ * Misc. info.
+ *	For IEEE double 
+ *	    if x >  7.09782712893383973096e+02 then exp(x) overflow
+ *	    if x < -7.45133219101941108420e+02 then exp(x) underflow */
+static double __ieee754_exp(double x) 
+{
+  double y, hi, lo, c, t;
+  int32_t k, xsb;
+  uint32_t hx;
+
+  GET_HIGH_WORD(hx, x); /* high word of x */
+  xsb = (int32_t)((hx >> 31) & 1); /* sign bit of x */
+  hx &= IC(0x7fffffffU); /* high word of |x| */
+
+  /* filter out non-finite argument */
+  if (hx >= IC(0x40862E42U)) { /* if |x|>=709.78... */
+    if (hx >= IC(0x7ff00000U)) {
+      GET_LOW_WORD(k, x);
+      if (((hx & IC(0xfffffU)) | k) != 0) return x; /* NaN */
+      return (xsb == 0) ? x : 0.0; /* exp(+-inf)={inf,0} */
+    }
+    if (x > o_threshold) { /* overflow */
+      feraiseexcept(FE_OVERFLOW);
+      return HUGE_VAL;
+    }
+    if (x < u_threshold) { /* underflow */
+      feraiseexcept(FE_UNDERFLOW);
+      return 0;
+    }
+  }
+
+  /* argument reduction */
+  if (hx > IC(0x3fd62e42U)) { /* if  |x| > 0.5 ln2 */
+    if (hx < IC(0x3FF0A2B2U)) { /* and |x| < 1.5 ln2 */
+      hi = x - ln2HI[xsb];
+      lo = ln2LO[xsb];
+      k = 1 - xsb - xsb;
+    } else {
+      k = (int32_t)(ivln2 * x + halF[xsb]);
+      t = k;
+      hi = x - t * ln2HI[0]; /* t*ln2HI is exact here */
+      lo = t * ln2LO[0];
+    }
+    x = hi - lo;
+  } else if (hx < IC(0x3e300000U)) { /* when |x|<2**-28 */
+    if (hugeval + x > one) return one + x; /* trigger inexact */
+    return one;
+  } else {
+    k = 0;
+    lo = 0;
+    hi = 0;
+  }
+
+  /* x is now in primary range */
+  t = x * x;
+  c = x - t * (P1 + t * (P2 + t * (P3 + t * (P4 + t * P5))));
+  if (k == 0)  return one - ((x * c) / (c - 2.0) - x);
+  y = one - ((lo - (x * c) / (2.0 - c)) - hi);
+  GET_HIGH_WORD(hx, y);
+  if (k >= -1021) {
+    hx += (k << IEEE754_DOUBLE_SHIFT); /* add k to y's exponent */
+    SET_HIGH_WORD(y, hx);
+    return y;
+  } else {
+    hx += ((k + 1000) << IEEE754_DOUBLE_SHIFT); /* add k to y's exponent */
+    SET_HIGH_WORD(y, hx);
+    return y * twom1000;
+  }
+  return __builtin_nan(""); /* to silence WCPL */
+}
+
 
 /* public entries: follow IEEE semantics */
 
@@ -1118,6 +1350,16 @@ double ceil(double x)
 double floor(double x)
 {
   return __ieee754_floor(x);
+}
+
+double round(double x)
+{
+  return __ieee754_round(x);
+}
+
+double trunc(double x)
+{
+  return __ieee754_trunc(x);
 }
 
 double frexp(double x, int *eptr)
@@ -1169,5 +1411,21 @@ double log10(double x)
 {
   return __ieee754_log10(x);
 }
+
+double exp(double x)
+{
+  return __ieee754_exp(x);
+}
+
+double fmax(double x, double y)
+{
+  return (isgreaterequal(x, y) || isnan(y)) ? x : y;
+}
+
+double fmin(double x, double y)
+{
+  return (islessequal(x, y) || isnan(y)) ? x : y;
+}
+
 
 /* to be continued.. */
