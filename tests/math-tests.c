@@ -11,7 +11,7 @@ static int testno = 0;
 static int failcnt = 0;
 static void fail(int tno, const char *buf)
 {
-  printf("  test %d failed: buffer is [%s]\n", testno, buf);
+  printf("  test %d (%s) failed -- see above\n", testno, buf);
   ++failcnt;
 }
 
@@ -25,8 +25,8 @@ static int feq(double got, double exp)
 {
   if (got == exp) return 1;
   printf("\n");
-  printf(">>> expected result was %.9g\n", exp);
-  printf(">>>>>> actual result is %.9g\n", got);
+  printf(">>> expected result was %a (%.9g)\n", exp, exp);
+  printf(">>>>>> actual result is %a (%.9g)\n", got, got);
   return 0;
 }
 
@@ -2242,8 +2242,8 @@ void test_math_modf(void) {
   REQUIRE(!(y == y));
 
   buffer = "modf (NaN, &x) sets x to nan_value";
-  modf(NaN, &x); z = NaN;
-  REQUIRE(FEQ(x, z));
+  modf(NaN, &x);
+  REQUIRE(!(x == x));
 
   buffer = "modf (0, &x) == 0";
   y = modf(0, &x); z = 0;
