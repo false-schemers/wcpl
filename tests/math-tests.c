@@ -35,6 +35,12 @@ static int feq(double got, double exp)
 #define inf (asdouble(0x7FF0000000000000ULL)) // INFINITY
 #define NaN (asdouble(0x7FF8000000000000ULL)) // NAN
 
+#define M_PI		3.1415926535897932384626433832795029  /* pi */
+#define M_PI_2	1.5707963267948966192313216916397514  /* pi/2 */
+#define M_PI_4	0.7853981633974483096156608458198757  /* pi/4 */
+#define M_1_PI	0.3183098861837906715377675267450287  /* 1/pi */
+#define M_2_PI	0.6366197723675813430755350534900574  /* 2/pi */
+#define M_2_SQRTPI	1.1283791670955125738961589031215452 /* 2/sqrt(pi) */
 #define M_PI_6          0.52359877559829887307710723054658383
 #define M_E2            7.389056098930650227230427460575008
 #define M_E3            20.085536923187667740928529654581719
@@ -47,22 +53,14 @@ static int feq(double got, double exp)
 #define M_PI2_LOG10E    (M_PI_2 * M_LOG10E)
 #define M_PI4_LOG10E    (M_PI_4 * M_LOG10E)
 #define M_PI_LOG10E     (M_PI * M_LOG10E)
-
 #define M_E		2.7182818284590452353602874713526625  /* e */
 #define M_LOG2E	1.4426950408889634073599246810018922  /* log_2 e */
 #define M_LOG10E	0.4342944819032518276511289189166051  /* log_10 e */
 #define M_LN2		0.6931471805599453094172321214581766  /* log_e 2 */
 #define M_LN10	2.3025850929940456840179914546843642  /* log_e 10 */
-#define M_PI		3.1415926535897932384626433832795029  /* pi */
-#define M_PI_2	1.5707963267948966192313216916397514  /* pi/2 */
-#define M_PI_4	0.7853981633974483096156608458198757  /* pi/4 */
-#define M_1_PI	0.3183098861837906715377675267450287  /* 1/pi */
-#define M_2_PI	0.6366197723675813430755350534900574  /* 2/pi */
-#define M_2_SQRTPI	1.1283791670955125738961589031215452 /* 2/sqrt(pi) */
 #define M_SQRT2	1.4142135623730950488016887242096981  /* sqrt(2) */
 #define M_SQRT1_2	0.7071067811865475244008443621048490  /* 1/sqrt(2) */
 
-/*
 void test_math_acos(void) {
   start("tests for acos()");
   const char *buffer = "";
@@ -116,7 +114,6 @@ void test_math_acos(void) {
   y = acos(0.7); z = 0.79539883018414355549096833892476432;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_acosh(void) {
@@ -146,7 +143,6 @@ void test_math_acosh(void) {
 }
 */
 
-/*
 void test_math_asin(void) {
   start("tests for asin()");
   const char *buffer = "";
@@ -200,7 +196,6 @@ void test_math_asin(void) {
   y = asin(0.7); z = 0.77539749661075306374035335271498708;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_asinh(void) {
@@ -234,7 +229,6 @@ void test_math_asinh(void) {
 }
 */
 
-/*
 void test_math_atan(void) {
   start("tests for atan()");
   const char *buffer = "";
@@ -272,7 +266,6 @@ void test_math_atan(void) {
   y = atan(0.7); z = 0.61072596438920861654375887649023613;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_atanh(void) {
@@ -314,7 +307,6 @@ void test_math_atanh(void) {
 }
 */
 
-/*
 void test_math_atan2(void) {
   start("tests for atan2()");
   const char *buffer = "";
@@ -436,7 +428,6 @@ void test_math_atan2(void) {
   y = atan2(1.4, -0.93); z = 2.1571487668237843754887415992772736;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_cbrt(void) {
@@ -3760,13 +3751,13 @@ void test_math_yn(void) {
 
 int main()
 {
-  //test_math_acos();
+  test_math_acos();
   //test_math_acosh();
-  //test_math_asin();
+  test_math_asin();
   //test_math_asinh();
-  //test_math_atan();
+  test_math_atan();
   //test_math_atanh();
-  //test_math_atan2();
+  test_math_atan2();
   //test_math_cbrt();
   test_math_ceil();
   test_math_copysign();

@@ -146,12 +146,12 @@ static const double S3 = -1.98412698298579493134e-04;  /* 0xBF2A01A019C161D5 */
 static const double S4 = 2.75573137070700676789e-06;   /* 0x3EC71DE357B1FE7D */
 static const double S5 = -2.50507602534068634195e-08;  /* 0xBE5AE5E68A2B9CEB */
 static const double S6 = 1.58969099521155010221e-10;   /* 0x3DE5D93A5ACFD57C */
-static const double C1 = 4.16666666666666019037e-02;	/* 0x3FA55555, 0x5555554C */
-static const double C2 = -1.38888888888741095749e-03;	/* 0xBF56C16C, 0x16C15177 */
-static const double C3 = 2.48015872894767294178e-05;	/* 0x3EFA01A0, 0x19CB1590 */
-static const double C4 = -2.75573143513906633035e-07;	/* 0xBE927E4F, 0x809C52AD */
-static const double C5 = 2.08757232129817482790e-09;	/* 0x3E21EE9E, 0xBDB4B1C4 */
-static const double C6 = -1.13596475577881948265e-11;	/* 0xBDA8FAE9, 0xBE8838D4 */
+static const double C1 = 4.16666666666666019037e-02;	 /* 0x3FA555555555554C */
+static const double C2 = -1.38888888888741095749e-03;	 /* 0xBF56C16C16C15177 */
+static const double C3 = 2.48015872894767294178e-05;	 /* 0x3EFA01A019CB1590 */
+static const double C4 = -2.75573143513906633035e-07;	 /* 0xBE927E4F809C52AD */
+static const double C5 = 2.08757232129817482790e-09;	 /* 0x3E21EE9EBDB4B1C4 */
+static const double C6 = -1.13596475577881948265e-11;	 /* 0xBDA8FAE9BE8838D4 */
 static const double T[] = {
   3.33333333333334091986e-01,			/* 0x3FD5555555555563 */
   1.33333333333201242699e-01,			/* 0x3FC111111110FE7A */
@@ -204,21 +204,60 @@ static const int32_t npio2_hw[] = {
   IC(0x4043A28CU), IC(0x40446B9CU), IC(0x404534ACU), IC(0x4045FDBBU), IC(0x4046C6CBU), IC(0x40478FDBU),
   IC(0x404858EBU), IC(0x404921FBU)
 };
+static const double invpio2 = 6.36619772367581382433e-01;	/* 0x3FE45F306DC9C883 */ /* 53 bits of 2/pi */
+static const double pio2_1 = 1.57079632673412561417e+00;	/* 0x3FF921FB54400000 */ /* first  33 bit of pi/2 */
+static const double pio2_1t = 6.07710050650619224932e-11;	/* 0x3DD0B4611A626331 */ /* pi/2 - pio2_1 */
+static const double pio2_2 = 6.07710050630396597660e-11;	/* 0x3DD0B4611A600000 */ /* 33 bit of pi/2 */
+static const double pio2_2t = 2.02226624879595063154e-21;	/* 0x3BA3198A2E037073 */ /* pi/2 - (pio2_1+pio2_2) */
+static const double pio2_3 = 2.02226624871116645580e-21;	/* 0x3BA3198A2E000000 */ /* third  33 bit of pi/2 */
+static const double pio2_3t = 8.47842766036889956997e-32;	/* 0x397B839A252049C1 */ /* pi/2 - (pio2_1+pio2_2+pio2_3) */
 
-/* invpio2:  53 bits of 2/pi
- * pio2_1:   first  33 bit of pi/2
- * pio2_1t:  pi/2 - pio2_1
- * pio2_2:   second 33 bit of pi/2
- * pio2_2t:  pi/2 - (pio2_1+pio2_2)
- * pio2_3:   third  33 bit of pi/2
- * pio2_3t:  pi/2 - (pio2_1+pio2_2+pio2_3) */
-static const double invpio2 = 6.36619772367581382433e-01;	/* 0x3FE45F306DC9C883 */
-static const double pio2_1 = 1.57079632673412561417e+00;	/* 0x3FF921FB54400000 */
-static const double pio2_1t = 6.07710050650619224932e-11;	/* 0x3DD0B4611A626331 */
-static const double pio2_2 = 6.07710050630396597660e-11;	/* 0x3DD0B4611A600000 */
-static const double pio2_2t = 2.02226624879595063154e-21;	/* 0x3BA3198A2E037073 */
-static const double pio2_3 = 2.02226624871116645580e-21;	/* 0x3BA3198A2E000000 */
-static const double pio2_3t = 8.47842766036889956997e-32;	/* 0x397B839A252049C1 */
+/* asin/acos constants */
+static const double pi = 3.14159265358979311600e+00;	    /* 0x400921FB54442D18 */
+static const double pio2_hi = 1.57079632679489655800e+00;	/* 0x3FF921FB54442D18 */
+static const double pio2_lo = 6.12323399573676603587e-17;	/* 0x3C91A62633145C07 */
+static const double pio4_hi = 7.85398163397448278999e-01;	/* 0x3FE921FB54442D18 */
+/* coefficient for R(x^2) */
+static const double pS0 = 1.66666666666666657415e-01;   /* 0x3FC5555555555555 */
+static const double pS1 = -3.25565818622400915405e-01;  /* 0xBFD4D61203EB6F7D */
+static const double pS2 = 2.01212532134862925881e-01;   /* 0x3FC9C1550E884455 */
+static const double pS3 = -4.00555345006794114027e-02;  /* 0xBFA48228B5688F3B */
+static const double pS4 = 7.91534994289814532176e-04;   /* 0x3F49EFE07501B288 */
+static const double pS5 = 3.47933107596021167570e-05;   /* 0x3F023DE10DFDF709 */
+static const double qS1 = -2.40339491173441421878e+00;  /* 0xC0033A271C8A2D4B */
+static const double qS2 = 2.02094576023350569471e+00;   /* 0x40002AE59C598AC8 */
+static const double qS3 = -6.88283971605453293030e-01;  /* 0xBFE6066C1B8D0159 */
+static const double qS4 = 7.70381505559019352791e-02;   /* 0x3FB3B8C5B12E9282 */
+
+/* atan/atan2 constants */
+static const double atanhi[] = {
+  4.63647609000806093515e-01,			/* atan(0.5)hi 0x3FDDAC670561BB4F */
+  7.85398163397448278999e-01,			/* atan(1.0)hi 0x3FE921FB54442D18 */
+  9.82793723247329054082e-01,			/* atan(1.5)hi 0x3FEF730BD281F69B */
+  1.57079632679489655800e+00			/* atan(inf)hi 0x3FF921FB54442D18 */
+};
+static const double atanlo[] = {
+  2.26987774529616870924e-17,			/* atan(0.5)lo 0x3C7A2B7F222F65E2 */
+  3.06161699786838301793e-17,			/* atan(1.0)lo 0x3C81A62633145C07 */
+  1.39033110312309984516e-17,			/* atan(1.5)lo 0x3C7007887AF0CBBD */
+  6.12323399573676603587e-17			/* atan(inf)lo 0x3C91A62633145C07 */
+};
+static const double aT[] = {
+  3.33333333333329318027e-01,			/* 0x3FD555555555550D */
+  -1.99999999998764832476e-01,		/* 0xBFC999999998EBC4 */
+  1.42857142725034663711e-01,			/* 0x3FC24924920083FF */
+  -1.11111104054623557880e-01,		/* 0xBFBC71C6FE231671 */
+  9.09088713343650656196e-02,			/* 0x3FB745CDC54C206E */
+  -7.69187620504482999495e-02,		/* 0xBFB3B0F2AF749A6D */
+  6.66107313738753120669e-02,			/* 0x3FB10D66A0D03D51 */
+  -5.83357013379057348645e-02,		/* 0xBFADDE2D52DEFD9A */
+  4.97687799461593236017e-02,			/* 0x3FA97B4B24760DEB */
+  -3.65315727442169155270e-02,		/* 0xBFA2B4442C6A6C2F */
+  1.62858201153657823623e-02			/* 0x3F90AD3AE322DA11 */
+};
+static const double pi_o_4 = 7.8539816339744827900E-01;	/* 0x3FE921FB54442D18 */
+static const double pi_o_2 = 1.5707963267948965580E+00;	/* 0x3FF921FB54442D18 */
+static const double pi_lo = 1.2246467991473531772E-16;	/* 0x3CA1A62633145C07 */
 
 
 /* check for NaNs */
@@ -1921,6 +1960,243 @@ static double __ieee754_tan(double x)
   return __kernel_tan(y[0], y[1], (int)(1 - ((n & 1) << 1)));	/*   1 -- n even -1 -- n odd */
 }
 
+static double __ieee754_asin(double x)
+{
+  double t, w, p, q, c, r, s;
+  int32_t hx, ix;
+
+  GET_HIGH_WORD(hx, x);
+  ix = hx & IC(0x7fffffffU);
+  if (ix >= IC(0x3ff00000U)) { /* |x|>= 1 */
+    uint32_t lx;
+    GET_LOW_WORD(lx, x);
+    if (((ix - IC(0x3ff00000U)) | lx) == 0)
+      /* asin(1)=+-pi/2 with inexact */
+      return x * pio2_hi + x * pio2_lo;
+    return (x - x) / (x - x);		/* asin(|x|>1) is NaN */
+  } else if (ix < IC(0x3fe00000U)) { /* |x|<0.5 */
+    if (ix < IC(0x3e400000U)) { /* if |x| < 2**-27 */
+      if (hugeval + x > one)
+        return x; /* return x with inexact if x!=0 */
+    } else {
+      t = x * x;
+      p = t * (pS0 + t * (pS1 + t * (pS2 + t * (pS3 + t * (pS4 + t * pS5)))));
+      q = one + t * (qS1 + t * (qS2 + t * (qS3 + t * qS4)));
+      w = p / q;
+      return x + x * w;
+    }
+  }
+  /* 1> |x|>= 0.5 */
+  w = one - __ieee754_fabs(x);
+  t = w * 0.5;
+  p = t * (pS0 + t * (pS1 + t * (pS2 + t * (pS3 + t * (pS4 + t * pS5)))));
+  q = one + t * (qS1 + t * (qS2 + t * (qS3 + t * qS4)));
+  s = __ieee754_sqrt(t);
+  if (ix >= IC(0x3FEF3333U)) { /* if |x| > 0.975 */
+    w = p / q;
+    t = pio2_hi - (2.0 * (s + s * w) - pio2_lo);
+  } else {
+    w = s;
+    SET_LOW_WORD(w, 0);
+    c = (t - w * w) / (s + w);
+    r = p / q;
+    p = 2.0 * s * r - (pio2_lo - 2.0 * c);
+    q = pio4_hi - 2.0 * w;
+    t = pio4_hi - (p - q);
+  }
+  if (hx > 0) return t;
+  return -t;
+}
+
+static double __ieee754_acos(double x)
+{
+  double z, p, q, r, w, s, c, df;
+  int32_t hx, ix;
+  
+  GET_HIGH_WORD(hx, x);
+  ix = hx & IC(0x7fffffffU);
+  if (ix >= IC(0x3ff00000U)) { /* |x| >= 1 */
+    uint32_t lx;
+    GET_LOW_WORD(lx, x);
+    if (((ix - IC(0x3ff00000U)) | lx) == 0) { /* |x|==1 */
+      if (hx > 0)
+        return 0.0; /* acos(1) = 0  */
+      else
+        return pi + 2.0 * pio2_lo; /* acos(-1)= pi */
+    }
+    return (x - x) / (x - x); /* acos(|x|>1) is NaN */
+  }
+
+  if (ix < IC(0x3fe00000U)) { /* |x| < 0.5 */
+    if (ix <= IC(0x3c600000U))
+      return pio2_hi + pio2_lo; /* if |x| < 2**-57 */
+    z = x * x;
+    p = z * (pS0 + z * (pS1 + z * (pS2 + z * (pS3 + z * (pS4 + z * pS5)))));
+    q = one + z * (qS1 + z * (qS2 + z * (qS3 + z * qS4)));
+    r = p / q;
+    return pio2_hi - (x - (pio2_lo - x * r));
+  } else if (hx < 0) { /* x < -0.5 */
+    z = (one + x) * 0.5;
+    p = z * (pS0 + z * (pS1 + z * (pS2 + z * (pS3 + z * (pS4 + z * pS5)))));
+    q = one + z * (qS1 + z * (qS2 + z * (qS3 + z * qS4)));
+    s = __ieee754_sqrt(z);
+    r = p / q;
+    w = r * s - pio2_lo;
+    return pi - 2.0 * (s + w);
+  } else { /* x > 0.5 */
+    z = (one - x) * 0.5;
+    s = __ieee754_sqrt(z);
+    df = s;
+    SET_LOW_WORD(df, 0);
+    c = (z - df * df) / (s + df);
+    p = z * (pS0 + z * (pS1 + z * (pS2 + z * (pS3 + z * (pS4 + z * pS5)))));
+    q = one + z * (qS1 + z * (qS2 + z * (qS3 + z * qS4)));
+    r = p / q;
+    w = r * s + c;
+    return 2.0 * (df + w);
+  }
+  return __builtin_nan(""); /* to silence WCPL */
+}
+
+static double __ieee754_atan(double x)
+{
+  double w, s1, s2, z;
+  int32_t ix, hx, id;
+
+  GET_HIGH_WORD(hx, x);
+  ix = hx & IC(0x7fffffffU);
+  if (ix >= IC(0x44100000U)) { /* if |x| >= 2^66 */
+    uint32_t low;
+    GET_LOW_WORD(low, x);
+    if (ix > IC(0x7ff00000) || (ix == IC(0x7ff00000) && (low != 0)))
+      return x + x; /* NaN */
+    if (hx > 0)
+      return atanhi[3] + atanlo[3];
+    else
+      return -atanhi[3] - atanlo[3];
+  }
+  if (ix < IC(0x3fdc0000)) { /* |x| < 0.4375 */
+    if (ix < IC(0x3e200000)) { /* |x| < 2^-29 */
+      if (hugeval + x > one)
+        return x; /* raise inexact */
+    }
+    id = -1;
+  } else {
+    x = __ieee754_fabs(x);
+    if (ix < IC(0x3ff30000)) { /* |x| < 1.1875 */
+      if (ix < IC(0x3fe60000)) {/* 7/16 <=|x|<11/16 */
+        id = 0;
+        x = (2.0 * x - one) / (2.0 + x);
+      } else { /* 11/16<=|x|< 19/16 */
+        id = 1;
+        x = (x - one) / (x + one);
+      }
+    } else {
+      if (ix < IC(0x40038000)) { /* |x| < 2.4375 */
+        id = 2;
+        x = (x - 1.5) / (one + 1.5 * x);
+      } else { /* 2.4375 <= |x| < 2^66 */
+        id = 3;
+        x = -1.0 / x;
+      }
+    }
+  }
+  /* end of argument reduction */
+  z = x * x;
+  w = z * z;
+  /* break sum from i=0 to 10 aT[i]z**(i+1) into odd and even poly */
+  s1 = z * (aT[0] + w * (aT[2] + w * (aT[4] + w * (aT[6] + w * (aT[8] + w * aT[10])))));
+  s2 = w * (aT[1] + w * (aT[3] + w * (aT[5] + w * (aT[7] + w * aT[9]))));
+  if (id < 0)  return x - x * (s1 + s2);
+  z = atanhi[id] - ((x * (s1 + s2) - atanlo[id]) - x);
+  return (hx < 0) ? -z : z;
+}
+
+static double __ieee754_atan2(double y, double x)
+{
+  double z;
+  int32_t k, m, hx, hy, ix, iy;
+  uint32_t lx, ly;
+
+  GET_DOUBLE_WORDS(hx, lx, x);
+  ix = hx & IC(0x7fffffff);
+  GET_DOUBLE_WORDS(hy, ly, y);
+  iy = hy & IC(0x7fffffff);
+  if (((ix | ((lx | -lx) >> 31)) > IC(0x7ff00000)) || ((iy | ((ly | -ly) >> 31)) > IC(0x7ff00000))) /* x or y is NaN */
+    return x + y;
+  if (((hx - IC(0x3ff00000)) | lx) == 0) return __ieee754_atan(y); /* x=1.0 */
+  m = ((hy >> 31) & 1) | ((hx >> 30) & 2); /* 2*sign(x)+sign(y) */
+
+  /* when y = 0 */
+  if ((iy | ly) == 0) {
+    switch ((int)m) {
+      case 0:
+      case 1:
+        return y; /* atan(+-0,+anything)=+-0 */
+      case 2:
+        return pi + tiny; /* atan(+0,-anything) = pi */
+      case 3:
+        return -pi - tiny; /* atan(-0,-anything) =-pi */
+    }
+  }
+  /* when x = 0 */
+  if ((ix | lx) == 0)
+    return (hy < 0) ? -pi_o_2 - tiny : pi_o_2 + tiny;
+
+  /* when x is INF */
+  if (ix == IC(0x7ff00000U)) {
+    if (iy == IC(0x7ff00000U)) {
+      switch ((int)m) {
+        case 0:
+          return pi_o_4 + tiny;	/* atan(+INF,+INF) */
+        case 1:
+          return -pi_o_4 - tiny;	/* atan(-INF,+INF) */
+        case 2:
+          return 3.0 * pi_o_4 + tiny;	/*atan(+INF,-INF) */
+        case 3:
+          return -3.0 * pi_o_4 - tiny;	/*atan(-INF,-INF) */
+      }
+    } else {
+      switch ((int)m) {
+        case 0:
+          return zero;			/* atan(+...,+INF) */
+        case 1:
+          return -zero;			/* atan(-...,+INF) */
+        case 2:
+          return pi + tiny;		/* atan(+...,-INF) */
+        case 3:
+          return -pi - tiny;		/* atan(-...,-INF) */
+      }
+    }
+  }
+  /* when y is INF */
+  if (iy == IC(0x7ff00000U))
+    return (hy < 0) ? -pi_o_2 - tiny : pi_o_2 + tiny;
+
+  /* compute y/x */
+  k = (iy - ix) >> 20;
+  if (k > 60)
+    z = pi_o_2 + 0.5 * pi_lo; /* |y/x| >  2**60 */
+  else if (hx < 0 && k < -60)
+    z = 0.0; /* |y|/x < -2**60 */
+  else
+    z = __ieee754_atan(__ieee754_fabs(y / x)); /* safe to do y/x */
+  switch ((int)m) {
+    case 0:
+      return z; /* atan(+,+) */
+    case 1: {
+        uint32_t zh;
+        GET_HIGH_WORD(zh, z);
+        SET_HIGH_WORD(z, zh ^ UC(0x80000000U));
+      }
+      return z; /* atan(-,+) */
+    case 2:
+      return pi - (z - pi_lo); /* atan(+,-) */
+  }
+  /* case 3 */
+  return (z - pi_lo) - pi; /* atan(-,-) */
+}
+
 /* public entries: follow IEEE semantics */
 
 double ceil(double x)
@@ -2023,5 +2299,23 @@ double tan(double x)
   return __ieee754_tan(x);
 }
 
+double asin(double x)
+{
+  return __ieee754_asin(x);
+}
 
-/* to be continued.. */
+double acos(double x)
+{
+  return __ieee754_acos(x);
+}
+
+double atan(double x)
+{
+  return __ieee754_atan(x);
+}
+
+double atan2(double y, double x)
+{
+  return __ieee754_atan2(y, x);
+}
+

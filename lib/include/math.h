@@ -8,10 +8,10 @@
 /* uint32_t asuint32(float) is built-in */
 /* double asfloat(uint32_t) is built-in */
 
-extern double acos(double x);
-extern double asin(double x);
-extern double atan(double x);
-extern double atan2(double x, double y);
+extern double acos(double x); /* + */
+extern double asin(double x); /* + */
+extern double atan(double x); /* + */
+extern double atan2(double x, double y); /* + */
 extern double cos(double x); /* + */
 extern double sin(double x); /* + */
 extern double tan(double x); /* + */
