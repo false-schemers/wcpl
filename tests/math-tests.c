@@ -590,7 +590,6 @@ void test_math_copysign(void) {
   REQUIRE(!(y == y));
 }
 
-/*
 void test_math_cos(void) {
   start("tests for cos()");
   const char *buffer = "";
@@ -632,7 +631,6 @@ void test_math_cos(void) {
   y = cos(0.7); z = 0.76484218728448842625585999019186495;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_cosh(void) {
@@ -3148,7 +3146,6 @@ void test_math_scalbln(void) {
 }
 */
 
-/*
 void test_math_sin(void) {
   start("tests for sin()");
   const char *buffer = "";
@@ -3194,7 +3191,6 @@ void test_math_sin(void) {
   y = sin(0.7); z = 0.64421768723769105367261435139872014;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_sinh(void) {
@@ -3294,7 +3290,6 @@ void test_math_sqrt(void) {
   REQUIRE(FEQ(y, z));
 }
 
-/*
 void test_math_tan(void) {
   start("tests for tan()");
   const char *buffer = "";
@@ -3328,7 +3323,6 @@ void test_math_tan(void) {
   y = tan(0.7); z = 0.84228838046307944812813500221293775;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_tanh(void) {
@@ -3776,7 +3770,7 @@ int main()
   //test_math_cbrt();
   test_math_ceil();
   test_math_copysign();
-  //test_math_cos();
+  test_math_cos();
   //test_math_cosh();
   //test_math_erf();
   //test_math_erfc();
@@ -3815,10 +3809,10 @@ int main()
   test_math_round();
   //test_math_scalbn();
   //test_math_scalbln();
-  //test_math_sin();
+  test_math_sin();
   //test_math_sinh();
   test_math_sqrt();
-  //test_math_tan();
+  test_math_tan();
   //test_math_tanh();
   //test_math_tgamma();
   test_math_trunc();

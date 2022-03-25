@@ -5,14 +5,16 @@
 /* HUGE_VAL is built-in */
 /* uint64_t asuint64(double) is built-in */
 /* double asdouble(uint64_t) is built-in */
+/* uint32_t asuint32(float) is built-in */
+/* double asfloat(uint32_t) is built-in */
 
 extern double acos(double x);
 extern double asin(double x);
 extern double atan(double x);
 extern double atan2(double x, double y);
-extern double cos(double x);
-extern double sin(double x);
-extern double tan(double x);
+extern double cos(double x); /* + */
+extern double sin(double x); /* + */
+extern double tan(double x); /* + */
 extern double cosh(double x);
 extern double sinh(double x);
 extern double tanh(double x);
