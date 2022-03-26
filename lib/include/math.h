@@ -8,17 +8,16 @@
 /* uint32_t asuint32(float) is built-in */
 /* double asfloat(uint32_t) is built-in */
 
-extern double acos(double x); /* + */
-extern double asin(double x); /* + */
-extern double atan(double x); /* + */
-extern double atan2(double x, double y); /* + */
-extern double cos(double x); /* + */
-extern double sin(double x); /* + */
-extern double tan(double x); /* + */
+extern double acos(double x);
+extern double asin(double x);
+extern double atan(double x);
+extern double atan2(double x, double y);
+extern double cos(double x);
+extern double sin(double x);
+extern double tan(double x);
 extern double cosh(double x);
 extern double sinh(double x);
 extern double tanh(double x);
-/* functions below are already implemented */
 extern double exp(double x); 
 extern double frexp(double value, int *exp);
 extern double ldexp(double x, int exp);
@@ -37,5 +36,6 @@ extern double round(double x);
 extern double trunc(double x);
 extern double fmax(double x, double y);
 extern double fmin(double x, double y);
+extern double expm1(double x); 
 
 

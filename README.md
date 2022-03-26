@@ -75,11 +75,11 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly (mostly 
 - `<sys/stat.h>` (POSIX-like, abridged)
 - `<unistd.h>` (POSIX-like, abridged)
 - `<wasi/api.h>` (header only, implemented by host)
+- `<math.h>` (C90 + some C99 extras)
  
 # Libaries yet to be implemented
 
 - `<time.h>`
-- `<math.h>` (just a few functions for now)
 
 # Libaries that won't be supported
 

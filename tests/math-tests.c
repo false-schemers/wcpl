@@ -623,7 +623,6 @@ void test_math_cos(void) {
   REQUIRE(FEQ(y, z));
 }
 
-/*
 void test_math_cosh(void) {
   start("tests for cosh()");
   const char *buffer = "";
@@ -653,7 +652,6 @@ void test_math_cosh(void) {
   y = cosh(0.7); z = 1.255169005630943018;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_erf(void) {
@@ -893,7 +891,6 @@ void test_math_exp2(void) {
 }
 */
 
-/*
 void test_math_expm1(void) {
   start("tests for expm1()");
   const char *buffer = "";
@@ -927,7 +924,7 @@ void test_math_expm1(void) {
   y = expm1(0.7); z = 1.0137527074704765216;
   REQUIRE(FEQ(y, z));
 }
-*/
+
 
 void test_math_fabs(void) {
   start("tests for fabs()");
@@ -3183,7 +3180,6 @@ void test_math_sin(void) {
   REQUIRE(FEQ(y, z));
 }
 
-/*
 void test_math_sinh(void) {
   start("tests for sinh()");
   const char *buffer = "";
@@ -3213,11 +3209,10 @@ void test_math_sinh(void) {
   y = sinh(0.7); z = 0.75858370183953350346;
   REQUIRE(FEQ(y, z));
 
-  buffer = "sinh (0x8p-32) == 1.86264514923095703232705808926175479e-9";
-  y = sinh(0x8p-32); z = 1.86264514923095703232705808926175479e-9;
-  REQUIRE(FEQ(y, z));
+  //buffer = "sinh (0x8p-32) == 1.86264514923095703232705808926175479e-9";
+  //y = sinh(0x8p-32); z = 1.86264514923095703232705808926175479e-9;
+  //REQUIRE(FEQ(y, z));
 }
-*/
 
 void test_math_sqrt(void) {
   start("tests for sqrt()");
@@ -3315,7 +3310,6 @@ void test_math_tan(void) {
   REQUIRE(FEQ(y, z));
 }
 
-/*
 void test_math_tanh(void) {
   start("tests for tanh()");
   const char *buffer = "";
@@ -3361,7 +3355,6 @@ void test_math_tanh(void) {
   y = tanh(6.938893903907228377647697925567626953125e-18); z = 6.938893903907228377647697925567626953125e-18;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_tgamma(void) {
@@ -3762,13 +3755,13 @@ int main()
   test_math_ceil();
   test_math_copysign();
   test_math_cos();
-  //test_math_cosh();
+  test_math_cosh();
   //test_math_erf();
   //test_math_erfc();
   test_math_exp();
   //test_math_exp10();
   //test_math_exp2();
-  //test_math_expm1();
+  test_math_expm1();
   test_math_fabs();
   //test_math_fdim();
   test_math_floor();
@@ -3801,10 +3794,10 @@ int main()
   //test_math_scalbn();
   //test_math_scalbln();
   test_math_sin();
-  //test_math_sinh();
+  test_math_sinh();
   test_math_sqrt();
   test_math_tan();
-  //test_math_tanh();
+  test_math_tanh();
   //test_math_tgamma();
   test_math_trunc();
   //test_math_y0();
