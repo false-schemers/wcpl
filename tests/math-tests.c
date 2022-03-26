@@ -32,8 +32,8 @@ static int feq(double got, double exp)
 
 #define FEQ(x, y) (feq((x), (y))) //(((x) == (y)) ? 1 : ((x)), 0))
 
-#define inf (asdouble(0x7FF0000000000000ULL)) // INFINITY
-#define NaN (asdouble(0x7FF8000000000000ULL)) // NAN
+#define inf INFINITY // (asdouble(0x7FF0000000000000ULL))
+#define NaN NAN // (asdouble(0x7FF8000000000000ULL))
 
 #define M_PI		3.1415926535897932384626433832795029  /* pi */
 #define M_PI_2	1.5707963267948966192313216916397514  /* pi/2 */
@@ -932,7 +932,7 @@ void test_math_fabs(void) {
   double x, y, z;
 
   buffer = "fabs (0) == 0";
-  y = fabs(0); z = 0;
+  y = fabs(0.0); z = 0;
   REQUIRE(FEQ(y, z));
 
   buffer = "fabs (-0.0) == 0";
@@ -3054,7 +3054,6 @@ void test_math_round(void) {
   REQUIRE(FEQ(y, z));
 }
 
-/*
 void test_math_scalbn(void) {
   start("tests for scalbn()");
   const char *buffer = "";
@@ -3092,7 +3091,6 @@ void test_math_scalbn(void) {
   y = scalbn(1, 0); z = 1;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_scalbln(void) {
@@ -3791,7 +3789,7 @@ int main()
   //test_math_remquo();
   //test_math_rint();
   test_math_round();
-  //test_math_scalbn();
+  test_math_scalbn();
   //test_math_scalbln();
   test_math_sin();
   test_math_sinh();

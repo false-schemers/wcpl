@@ -13,7 +13,7 @@
 #define __ieee754_copysign(x, y) (asdouble((asuint64(x) & 0x7FFFFFFFFFFFFFFFULL) | (asuint64(y) & 0x8000000000000000ULL)))
 
 #define __builtin_nan(s) (asdouble(0x7FF8000000000000ULL)) /* +nan */
-#define math_force_eval(x) ((void)(x)) /* supposed to raise exception but probably won't */
+#define math_force_eval(x) ((void)(x)) /* supposed to raise exception but won't */
 
 /* wasm raises no exceptions, so these are straightforward */
 #define isgreater(x, y)      ((x) > (y))
@@ -64,14 +64,6 @@ do { double *__p = &(d);                     \
 #define IC(x) ((int32_t) x)
 #define UC(x) ((uint32_t) x)
 
-enum {
-  FP_NAN,
-  FP_INFINITE,
-  FP_ZERO,
-  FP_SUBNORMAL,
-  FP_NORMAL
-};
-
 /* Constants:
  * The hexadecimal values are the intended ones for most of the 
  * constants. The decimal values may be used, provided that the 
@@ -89,8 +81,7 @@ static const double dp_l[] = { 0.0, 1.35003920212974897128e-08 }; /* 0x3E4CFDEB4
 static const double Zero[] = { 0.0, -0.0 };
 static const double zero = 0.0;
 static const double half = 5.00000000000000000000e-01; /* 0x3FE0000000000000 */
-//static const double one = 1.0;
-static const double one = 1.00000000000000000000e+00;	/* 0x3FF0000000000000 */
+static const double one = 1.00000000000000000000e+00; /* 0x3FF0000000000000 */
 static const double two = 2.0;
 static const double two53 = 9007199254740992.0; /* 0x4340000000000000 */
 /* poly coefs for (3/2)*(log(x)-2s-2/3*s**3 */
@@ -143,11 +134,11 @@ static const double ln2LO[2] = { /* ln2_lo, -ln2_lo */
 /* scaled coefficients related to expm1 */
 static const double Q[] = {
   1.0,
-  -3.33333333333331316428e-02,		/* BFA11111 111110F4 */
-  1.58730158725481460165e-03,			/* 3F5A01A0 19FE5585 */
-  -7.93650757867487942473e-05,		/* BF14CE19 9EAADBB7 */
-  4.00821782732936239552e-06,			/* 3ED0CFCA 86E65239 */
-  -2.01099218183624371326e-07			/* BE8AFDB7 6E09C32D */
+  -3.33333333333331316428e-02,  /* BFA11111 111110F4 */
+  1.58730158725481460165e-03,   /* 3F5A01A0 19FE5585 */
+  -7.93650757867487942473e-05,  /* BF14CE19 9EAADBB7 */
+  4.00821782732936239552e-06,   /* 3ED0CFCA 86E65239 */
+  -2.01099218183624371326e-07   /* BE8AFDB7 6E09C32D */
 };
 /* trig constants */
 static const double S1 = -1.66666666666666324348e-01;  /* 0xBFC5555555555549 */
@@ -156,39 +147,39 @@ static const double S3 = -1.98412698298579493134e-04;  /* 0xBF2A01A019C161D5 */
 static const double S4 = 2.75573137070700676789e-06;   /* 0x3EC71DE357B1FE7D */
 static const double S5 = -2.50507602534068634195e-08;  /* 0xBE5AE5E68A2B9CEB */
 static const double S6 = 1.58969099521155010221e-10;   /* 0x3DE5D93A5ACFD57C */
-static const double C1 = 4.16666666666666019037e-02;	 /* 0x3FA555555555554C */
-static const double C2 = -1.38888888888741095749e-03;	 /* 0xBF56C16C16C15177 */
-static const double C3 = 2.48015872894767294178e-05;	 /* 0x3EFA01A019CB1590 */
-static const double C4 = -2.75573143513906633035e-07;	 /* 0xBE927E4F809C52AD */
-static const double C5 = 2.08757232129817482790e-09;	 /* 0x3E21EE9EBDB4B1C4 */
-static const double C6 = -1.13596475577881948265e-11;	 /* 0xBDA8FAE9BE8838D4 */
+static const double C1 = 4.16666666666666019037e-02;   /* 0x3FA555555555554C */
+static const double C2 = -1.38888888888741095749e-03;  /* 0xBF56C16C16C15177 */
+static const double C3 = 2.48015872894767294178e-05;   /* 0x3EFA01A019CB1590 */
+static const double C4 = -2.75573143513906633035e-07;  /* 0xBE927E4F809C52AD */
+static const double C5 = 2.08757232129817482790e-09;   /* 0x3E21EE9EBDB4B1C4 */
+static const double C6 = -1.13596475577881948265e-11;  /* 0xBDA8FAE9BE8838D4 */
 static const double T[] = {
-  3.33333333333334091986e-01,			/* 0x3FD5555555555563 */
-  1.33333333333201242699e-01,			/* 0x3FC111111110FE7A */
-  5.39682539762260521377e-02,			/* 0x3FABA1BA1BB341FE */
-  2.18694882948595424599e-02,			/* 0x3F9664F48406D637 */
-  8.86323982359930005737e-03,			/* 0x3F8226E3E96E8493 */
-  3.59207910759131235356e-03,			/* 0x3F6D6D22C9560328 */
-  1.45620945432529025516e-03,			/* 0x3F57DBC8FEE08315 */
-  5.88041240820264096874e-04,			/* 0x3F4344D8F2F26501 */
-  2.46463134818469906812e-04,			/* 0x3F3026F71A8D1068 */
-  7.81794442939557092300e-05,			/* 0x3F147E88A03792A6 */
-  7.14072491382608190305e-05,			/* 0x3F12B80F32F0A7E9 */
-  -1.85586374855275456654e-05,		/* 0xBEF375CBDB605373 */
-  2.59073051863633712884e-05			/* 0x3EFB2A7074BF7AD4 */
+  3.33333333333334091986e-01,   /* 0x3FD5555555555563 */
+  1.33333333333201242699e-01,   /* 0x3FC111111110FE7A */
+  5.39682539762260521377e-02,   /* 0x3FABA1BA1BB341FE */
+  2.18694882948595424599e-02,   /* 0x3F9664F48406D637 */
+  8.86323982359930005737e-03,   /* 0x3F8226E3E96E8493 */
+  3.59207910759131235356e-03,   /* 0x3F6D6D22C9560328 */
+  1.45620945432529025516e-03,   /* 0x3F57DBC8FEE08315 */
+  5.88041240820264096874e-04,   /* 0x3F4344D8F2F26501 */
+  2.46463134818469906812e-04,   /* 0x3F3026F71A8D1068 */
+  7.81794442939557092300e-05,   /* 0x3F147E88A03792A6 */
+  7.14072491382608190305e-05,   /* 0x3F12B80F32F0A7E9 */
+  -1.85586374855275456654e-05,  /* 0xBEF375CBDB605373 */
+  2.59073051863633712884e-05    /* 0x3EFB2A7074BF7AD4 */
 };
-static const double pio4 = 7.85398163397448278999e-01;		/* 0x3FE921FB54442D18 */
-static const double pio4lo = 3.06161699786838301793e-17;	/* 0x3C81A62633145C07 */
-static const int init_jk[] = { 2, 3, 4, 6 };	/* initial value for jk */
+static const double pio4 = 7.85398163397448278999e-01;   /* 0x3FE921FB54442D18 */
+static const double pio4lo = 3.06161699786838301793e-17; /* 0x3C81A62633145C07 */
+static const int init_jk[] = { 2, 3, 4, 6 }; /* initial value for jk */
 static const double PIo2[] = {
-  1.57079625129699707031e+00,			/* 0x3FF921FB40000000 */
-  7.54978941586159635335e-08,			/* 0x3E74442D00000000 */
-  5.39030252995776476554e-15,			/* 0x3CF8469880000000 */
-  3.28200341580791294123e-22,			/* 0x3B78CC5160000000 */
-  1.27065575308067607349e-29,			/* 0x39F01B8380000000 */
-  1.22933308981111328932e-36,			/* 0x387A252040000000 */
-  2.73370053816464559624e-44,			/* 0x36E3822280000000 */
-  2.16741683877804819444e-51			/* 0x3569F31D00000000 */
+  1.57079625129699707031e+00,   /* 0x3FF921FB40000000 */
+  7.54978941586159635335e-08,   /* 0x3E74442D00000000 */
+  5.39030252995776476554e-15,   /* 0x3CF8469880000000 */
+  3.28200341580791294123e-22,   /* 0x3B78CC5160000000 */
+  1.27065575308067607349e-29,   /* 0x39F01B8380000000 */
+  1.22933308981111328932e-36,   /* 0x387A252040000000 */
+  2.73370053816464559624e-44,   /* 0x36E3822280000000 */
+  2.16741683877804819444e-51    /* 0x3569F31D00000000 */
 };
 /* Table of constants for 2/pi, 396 Hex digits (476 decimal) of 2/pi */
 static const int32_t two_over_pi[] = {
@@ -204,8 +195,8 @@ static const int32_t two_over_pi[] = {
   IC(0x91615EU), IC(0xE61B08U), IC(0x659985U), IC(0x5F14A0U), IC(0x68408DU), IC(0xFFD880U),
   IC(0x4D7327U), IC(0x310606U), IC(0x1556CAU), IC(0x73A8C9U), IC(0x60E27BU), IC(0xC08C6BU)
 };
-static const double two24 = 1.67772160000000000000e+07;		/* 0x4170000000000000 */
-static const double twon24 = 5.96046447753906250000e-08;	/* 0x3E70000000000000 */
+static const double two24 = 1.67772160000000000000e+07;  /* 0x4170000000000000 */
+static const double twon24 = 5.96046447753906250000e-08; /* 0x3E70000000000000 */
 static const int32_t npio2_hw[] = {
   IC(0x3FF921FBU), IC(0x400921FBU), IC(0x4012D97CU), IC(0x401921FBU), IC(0x401F6A7AU), IC(0x4022D97CU),
   IC(0x4025FDBBU), IC(0x402921FBU), IC(0x402C463AU), IC(0x402F6A7AU), IC(0x4031475CU), IC(0x4032D97CU),
@@ -214,19 +205,19 @@ static const int32_t npio2_hw[] = {
   IC(0x4043A28CU), IC(0x40446B9CU), IC(0x404534ACU), IC(0x4045FDBBU), IC(0x4046C6CBU), IC(0x40478FDBU),
   IC(0x404858EBU), IC(0x404921FBU)
 };
-static const double invpio2 = 6.36619772367581382433e-01;	/* 0x3FE45F306DC9C883 */ /* 53 bits of 2/pi */
-static const double pio2_1 = 1.57079632673412561417e+00;	/* 0x3FF921FB54400000 */ /* first  33 bit of pi/2 */
-static const double pio2_1t = 6.07710050650619224932e-11;	/* 0x3DD0B4611A626331 */ /* pi/2 - pio2_1 */
-static const double pio2_2 = 6.07710050630396597660e-11;	/* 0x3DD0B4611A600000 */ /* 33 bit of pi/2 */
-static const double pio2_2t = 2.02226624879595063154e-21;	/* 0x3BA3198A2E037073 */ /* pi/2 - (pio2_1+pio2_2) */
-static const double pio2_3 = 2.02226624871116645580e-21;	/* 0x3BA3198A2E000000 */ /* third  33 bit of pi/2 */
-static const double pio2_3t = 8.47842766036889956997e-32;	/* 0x397B839A252049C1 */ /* pi/2 - (pio2_1+pio2_2+pio2_3) */
+static const double invpio2 = 6.36619772367581382433e-01; /* 0x3FE45F306DC9C883 */ /* 53 bits of 2/pi */
+static const double pio2_1 = 1.57079632673412561417e+00;  /* 0x3FF921FB54400000 */ /* first  33 bit of pi/2 */
+static const double pio2_1t = 6.07710050650619224932e-11; /* 0x3DD0B4611A626331 */ /* pi/2 - pio2_1 */
+static const double pio2_2 = 6.07710050630396597660e-11;  /* 0x3DD0B4611A600000 */ /* 33 bit of pi/2 */
+static const double pio2_2t = 2.02226624879595063154e-21; /* 0x3BA3198A2E037073 */ /* pi/2 - (pio2_1+pio2_2) */
+static const double pio2_3 = 2.02226624871116645580e-21;  /* 0x3BA3198A2E000000 */ /* third  33 bit of pi/2 */
+static const double pio2_3t = 8.47842766036889956997e-32; /* 0x397B839A252049C1 */ /* pi/2 - (pio2_1+pio2_2+pio2_3) */
 
 /* asin/acos constants */
-static const double pi = 3.14159265358979311600e+00;	    /* 0x400921FB54442D18 */
-static const double pio2_hi = 1.57079632679489655800e+00;	/* 0x3FF921FB54442D18 */
-static const double pio2_lo = 6.12323399573676603587e-17;	/* 0x3C91A62633145C07 */
-static const double pio4_hi = 7.85398163397448278999e-01;	/* 0x3FE921FB54442D18 */
+static const double pi = 3.14159265358979311600e+00;      /* 0x400921FB54442D18 */
+static const double pio2_hi = 1.57079632679489655800e+00; /* 0x3FF921FB54442D18 */
+static const double pio2_lo = 6.12323399573676603587e-17; /* 0x3C91A62633145C07 */
+static const double pio4_hi = 7.85398163397448278999e-01; /* 0x3FE921FB54442D18 */
 /* coefficient for R(x^2) */
 static const double pS0 = 1.66666666666666657415e-01;   /* 0x3FC5555555555555 */
 static const double pS1 = -3.25565818622400915405e-01;  /* 0xBFD4D61203EB6F7D */
@@ -241,59 +232,94 @@ static const double qS4 = 7.70381505559019352791e-02;   /* 0x3FB3B8C5B12E9282 */
 
 /* atan/atan2 constants */
 static const double atanhi[] = {
-  4.63647609000806093515e-01,			/* atan(0.5)hi 0x3FDDAC670561BB4F */
-  7.85398163397448278999e-01,			/* atan(1.0)hi 0x3FE921FB54442D18 */
-  9.82793723247329054082e-01,			/* atan(1.5)hi 0x3FEF730BD281F69B */
-  1.57079632679489655800e+00			/* atan(inf)hi 0x3FF921FB54442D18 */
+  4.63647609000806093515e-01,   /* atan(0.5)hi 0x3FDDAC670561BB4F */
+  7.85398163397448278999e-01,   /* atan(1.0)hi 0x3FE921FB54442D18 */
+  9.82793723247329054082e-01,   /* atan(1.5)hi 0x3FEF730BD281F69B */
+  1.57079632679489655800e+00    /* atan(inf)hi 0x3FF921FB54442D18 */
 };
 static const double atanlo[] = {
-  2.26987774529616870924e-17,			/* atan(0.5)lo 0x3C7A2B7F222F65E2 */
-  3.06161699786838301793e-17,			/* atan(1.0)lo 0x3C81A62633145C07 */
-  1.39033110312309984516e-17,			/* atan(1.5)lo 0x3C7007887AF0CBBD */
-  6.12323399573676603587e-17			/* atan(inf)lo 0x3C91A62633145C07 */
+  2.26987774529616870924e-17,   /* atan(0.5)lo 0x3C7A2B7F222F65E2 */
+  3.06161699786838301793e-17,   /* atan(1.0)lo 0x3C81A62633145C07 */
+  1.39033110312309984516e-17,   /* atan(1.5)lo 0x3C7007887AF0CBBD */
+  6.12323399573676603587e-17    /* atan(inf)lo 0x3C91A62633145C07 */
 };
 static const double aT[] = {
-  3.33333333333329318027e-01,			/* 0x3FD555555555550D */
-  -1.99999999998764832476e-01,		/* 0xBFC999999998EBC4 */
-  1.42857142725034663711e-01,			/* 0x3FC24924920083FF */
-  -1.11111104054623557880e-01,		/* 0xBFBC71C6FE231671 */
-  9.09088713343650656196e-02,			/* 0x3FB745CDC54C206E */
-  -7.69187620504482999495e-02,		/* 0xBFB3B0F2AF749A6D */
-  6.66107313738753120669e-02,			/* 0x3FB10D66A0D03D51 */
-  -5.83357013379057348645e-02,		/* 0xBFADDE2D52DEFD9A */
-  4.97687799461593236017e-02,			/* 0x3FA97B4B24760DEB */
-  -3.65315727442169155270e-02,		/* 0xBFA2B4442C6A6C2F */
-  1.62858201153657823623e-02			/* 0x3F90AD3AE322DA11 */
+  3.33333333333329318027e-01,   /* 0x3FD555555555550D */
+  -1.99999999998764832476e-01,  /* 0xBFC999999998EBC4 */
+  1.42857142725034663711e-01,   /* 0x3FC24924920083FF */
+  -1.11111104054623557880e-01,  /* 0xBFBC71C6FE231671 */
+  9.09088713343650656196e-02,   /* 0x3FB745CDC54C206E */
+  -7.69187620504482999495e-02,  /* 0xBFB3B0F2AF749A6D */
+  6.66107313738753120669e-02,   /* 0x3FB10D66A0D03D51 */
+  -5.83357013379057348645e-02,  /* 0xBFADDE2D52DEFD9A */
+  4.97687799461593236017e-02,   /* 0x3FA97B4B24760DEB */
+  -3.65315727442169155270e-02,  /* 0xBFA2B4442C6A6C2F */
+  1.62858201153657823623e-02    /* 0x3F90AD3AE322DA11 */
 };
-static const double pi_o_4 = 7.8539816339744827900E-01;	/* 0x3FE921FB54442D18 */
-static const double pi_o_2 = 1.5707963267948965580E+00;	/* 0x3FF921FB54442D18 */
-static const double pi_lo = 1.2246467991473531772E-16;	/* 0x3CA1A62633145C07 */
+static const double pi_o_4 = 7.8539816339744827900E-01; /* 0x3FE921FB54442D18 */
+static const double pi_o_2 = 1.5707963267948965580E+00; /* 0x3FF921FB54442D18 */
+static const double pi_lo = 1.2246467991473531772E-16;  /* 0x3CA1A62633145C07 */
 /* hyperbolic trig. constants */
 static const double shuge = 1.0e307;
 
+/* classify double */
+int fpclassify(double x)
+{
+	int retval = FP_NORMAL;
+	uint32_t msw, lsw;
+	GET_DOUBLE_WORDS(msw, lsw, x);
+	lsw |= msw & UC(0xfffffU);
+	msw &= UC(0x7ff00000U);
+	if ((msw | lsw) == 0) 
+	  retval = FP_ZERO;
+	else if (msw == 0)
+		retval = FP_SUBNORMAL;
+	else if (msw == UC(0x7ff00000))
+		retval = lsw != 0 ? FP_NAN : FP_INFINITE;
+	return retval;
+}
 
-/* check for NaNs */
-static int isnan(double x)
+int isfinite(double x)
+{
+  return (asuint64(x) & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL;  
+}
+
+int isinf(double x)
+{
+  return (asuint64(x) & 0x7FFFFFFFFFFFFFFFULL) == 0x7FF0000000000000ULL;  
+}
+
+int isnan(double x)
 {
   uint64_t ux = asuint64(x);
   return (ux & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL
       && (ux & 0x000FFFFFFFFFFFFFULL) != 0x0000000000000000ULL;
 }
 
-/* check for signalling NaN */
+int isnormal(double x)
+{
+  return fpclassify(x) == FP_NORMAL;
+}
+
+/* internal: check for signalling NaN */
 static int issignaling(double x)
 {
  uint32_t hxi, lxi;
  GET_DOUBLE_WORDS(hxi, lxi, x);
  /* To keep the following comparison simple, toggle the quiet/signaling bit,
-    so that it is set for sNaNs.  This is inverse to IEEE 754-2008 (as well as
-    common practice for IEEE 754-1985).  */
+  * so that it is set for sNaNs.  This is inverse to IEEE 754-2008 (as well as
+  * common practice for IEEE 754-1985).  */
  hxi ^= UC(0x00080000);
  /* If lxi != 0, then set any suitable bit of the significand in hxi.  */
  hxi |= (lxi | -lxi) >> 31;
  /* We have to compare for greater (instead of greater or equal), because x's
     significand being all-zero designates infinity not NaN.  */
  return (hxi & UC(0x7FFFFFFF)) > UC(0x7FF80000);
+}
+
+int signbit(double x)
+{
+  return (asuint64(x) & 0x8000000000000000ULL) != 0ULL;
 }
 
 /* scalbn (double x, int n)
@@ -551,7 +577,6 @@ static double __ieee754_trunc(double x)
   return x;
 }
 
-
 /* modf(double x, double *iptr) 
  * return fraction part of x, and return x's integral part in *iptr.
  * Method: Bit twiddling.
@@ -732,69 +757,10 @@ static double __ieee754_fmod(double x, double y)
   return x; /* exact output */
 }
 
+
 /* __ieee754_sqrt(x)
  * Return correctly rounded sqrt.
- *
- * Method: 
- *   Bit by bit method using integer arithmetic. (Slow, but portable) 
- *   1. Normalization
- * Scale x to y in [1,4) with even powers of 2: 
- * find an integer k such that  1 <= (y=x*2^(2k)) < 4, then
- *  sqrt(x) = 2^k * sqrt(y)
- *   2. Bit by bit computation
- * Let q  = sqrt(y) truncated to i bit after binary point (q = 1),
- *      i        0
- *                                     i+1         2
- *     s  = 2*q , and y  =  2   * ( y - q  ).  (1)
- *      i      i            i                 i
- *                                                        
- * To compute q    from q , one checks whether 
- *      i+1       i                       
- *
- *         -(i+1) 2
- *   (q + 2      ) <= y.   (2)
- *          i
- *             -(i+1)
- * If (2) is false, then q   = q ; otherwise q   = q  + 2      .
- *           i+1   i             i+1   i
- *
- * With some algebric manipulation, it is not difficult to see
- * that (2) is equivalent to 
- *                             -(i+1)
- *   s  +  2       <= y   (3)
- *    i                i
- *
- * The advantage of (3) is that s  and y  can be computed by 
- *          i      i
- * the following recurrence formula:
- *     if (3) is false
- *
- *     s     =  s  , y    = y   ;   (4)
- *      i+1      i   i+1    i
- *
- *     otherwise,
- *                         -i                     -(i+1)
- *     s   =  s  + 2  ,  y    = y  -  s  - 2    (5)
- *           i+1      i          i+1    i     i
- *    
- * One may easily use induction to prove (4) and (5). 
- * Note. Since the left hand side of (3) contain only i+2 bits,
- *       it does not necessary to do a full (53-bit) comparison 
- *       in (3).
- *   3. Final rounding
- * After generating the 53 bits result, we compute one more bit.
- * Together with the remainder, we can decide whether the
- * result is exact, bigger than 1/2ulp, or less than 1/2ulp
- * (it will never equal to 1/2ulp).
- * The rounding mode can be detected by checking whether
- * huge + tiny is equal to huge, and whether huge - tiny is
- * equal to huge for some floating point number "huge" and "tiny".
- *  
- * Special cases:
- * sqrt(+-0) = +-0  ... exact
- * sqrt(inf) = inf
- * sqrt(-ve) = NaN  ... with invalid signal
- * sqrt(NaN) = NaN  ... with invalid signal for signaling NaN */
+ * Method: Bit by bit method using integer arithmetic. (Slow, but portable) */
 static double __ieee754_sqrt(double x)
 {
   double z;
@@ -900,43 +866,8 @@ static double __ieee754_sqrt(double x)
 }
 
 /* __ieee754_pow(x,y) return x**y
- *
- *        n
- * Method:  Let x =  2   * (1+f)
- * 1. Compute and return log2(x) in two pieces:
- *  log2(x) = w1 + w2,
- *    where w1 has 53-24 = 29 bit trailing zeros.
- * 2. Perform y*log2(x) = n+y' by simulating multi-precision 
- *    arithmetic, where |y'|<=0.5.
- * 3. Return x**y = 2**n*exp(y'*log2)
- *
- * Special cases:
- * 1.  (anything) ** 0  is 1
- * 2.  (anything) ** 1  is itself
- * 3a. (anything) ** NAN is NAN except
- * 3b. +1         ** NAN is 1
- * 4.  NAN ** (anything except 0) is NAN
- * 5.  +-(|x| > 1) **  +INF is +INF
- * 6.  +-(|x| > 1) **  -INF is +0
- * 7.  +-(|x| < 1) **  +INF is +0
- * 8.  +-(|x| < 1) **  -INF is +INF
- * 9.  +-1         ** +-INF is 1
- * 10. +0 ** (+anything except 0, NAN)               is +0
- * 11. -0 ** (+anything except 0, NAN, odd integer)  is +0
- * 12. +0 ** (-anything except 0, NAN)               is +INF
- * 13. -0 ** (-anything except 0, NAN, odd integer)  is +INF
- * 14. -0 ** (odd integer) = -( +0 ** (odd integer) )
- * 15. +INF ** (+anything except 0,NAN) is +INF
- * 16. +INF ** (-anything except 0,NAN) is +0
- * 17. -INF ** (anything)  = -0 ** (-anything)
- * 18. (-anything) ** (integer) is (-1)**(integer)*(+anything**integer)
- * 19. (-anything except 0 and inf) ** (non-integer) is NAN
- *
- * Accuracy:
- * pow(x,y) returns x**y nearly rounded. In particular
- *   pow(integer,integer)
- * always returns the correct integer provided it is 
- * representable. */
+ * pow(x,y) returns x**y nearly rounded. In particular pow(integer,integer)
+ * always returns the correct integer provided it is representable. */
 static double __ieee754_pow(double x, double y)
 {
   double z, ax, z_h, z_l, p_h, p_l;
@@ -1205,45 +1136,6 @@ static double __ieee754_pow(double x, double y)
 
 /* __ieee754_log(x)
  * Return the logrithm of x
- *
- * Method :                  
- *   1. Argument Reduction: find k and f such that 
- *   x = 2^k * (1+f), 
- *    where  sqrt(2)/2 < 1+f < sqrt(2) .
- *
- *   2. Approximation of log(1+f).
- * Let s = f/(2+f) ; based on log(1+f) = log(1+s) - log(1-s)
- *   = 2s + 2/3 s**3 + 2/5 s**5 + .....,
- *        = 2s + s*R
- *      We use a special Reme algorithm on [0,0.1716] to generate 
- *  a polynomial of degree 14 to approximate R The maximum error 
- * of this polynomial approximation is bounded by 2**-58.45. In
- * other words,
- *          2      4      6      8      10      12      14
- *     R(z) ~ Lg1*s +Lg2*s +Lg3*s +Lg4*s +Lg5*s  +Lg6*s  +Lg7*s
- *   (the values of Lg1 to Lg7 are listed in the program)
- * and
- *     |      2          14          |     -58.45
- *     | Lg1*s +...+Lg7*s    -  R(z) | <= 2 
- *     |                             |
- * Note that 2s = f - s*f = f - hfsq + s*hfsq, where hfsq = f*f/2.
- * In order to guarantee error in log below 1ulp, we compute log
- * by
- *  log(1+f) = f - s*(f - R) (if f is not too large)
- *  log(1+f) = f - (hfsq - s*(hfsq+R)). (better accuracy)
- * 
- * 3. Finally,  log(x) = k*ln2 + log(1+f).  
- *       = k*ln2_hi+(f-(hfsq-(s*(hfsq+R)+k*ln2_lo)))
- *    Here ln2 is split into two floating point number: 
- *   ln2_hi + ln2_lo,
- *    where n*ln2_hi is always exact for |n| < 2000.
- *
- * Special cases:
- * log(x) is NaN with signal if x < 0 (including -INF) ; 
- * log(+INF) is +INF; log(0) is -INF with signal;
- * log(NaN) is that NaN with no signal.
- *
- * Accuracy:
  * according to an error analysis, the error is always less than
  * 1 ulp (unit in the last place). */
 static double __ieee754_log(double x)
@@ -1302,30 +1194,7 @@ static double __ieee754_log(double x)
 }
 
 /* __ieee754_log10(x)
- * Return the base 10 logarithm of x
- *
- * Method :
- * Let log10_2hi = leading 40 bits of log10(2) and
- *     log10_2lo = log10(2) - log10_2hi,
- *     ivln10   = 1/log(10) rounded.
- * Then
- *  n = ilogb(x),
- *  if(n<0)  n = n+1;
- *  x = scalbn(x,-n);
- *  log10(x) := n*log10_2hi + (n*log10_2lo + ivln10*log(x))
- *
- * Note 1:
- * To guarantee log10(10**n)=n, where 10**n is normal, the rounding
- * mode must set to Round-to-Nearest.
- * Note 2:
- * [1/log(10)] rounded to 53 bits has error  .198   ulps;
- * log10 is monotonic at all binary break points.
- *
- * Special cases:
- * log10(x) is NaN with signal if x < 0;
- * log10(+INF) is +INF with no signal; log10(0) is -INF with signal;
- * log10(NaN) is that NaN with no signal;
- * log10(10**N) = N  for N=0,1,...,22. */
+ * Return the base 10 logarithm of x */
 static double __ieee754_log10(double x)
 {
   double y, z;
@@ -1356,59 +1225,8 @@ static double __ieee754_log10(double x)
 
 /* __ieee754_exp(x)
  * Returns the exponential of x.
- *
- * Method
- *   1. Argument reduction:
- *      Reduce x to an r so that |r| <= 0.5*ln2 ~ 0.34658.
- *	Given x, find r and integer k such that
- *
- *               x = k*ln2 + r,  |r| <= 0.5*ln2.  
- *
- *      Here r will be represented as r = hi-lo for better 
- *	accuracy.
- *
- *   2. Approximation of exp(r) by a special rational function on
- *	the interval [0,0.34658]:
- *	Write
- *	    R(r**2) = r*(exp(r)+1)/(exp(r)-1) = 2 + r*r/6 - r**4/360 + ...
- *      We use a special Reme algorithm on [0,0.34658] to generate 
- * 	a polynomial of degree 5 to approximate R. The maximum error 
- *	of this polynomial approximation is bounded by 2**-59. In
- *	other words,
- *	    R(z) ~ 2.0 + P1*z + P2*z**2 + P3*z**3 + P4*z**4 + P5*z**5
- *  	(where z=r*r, and the values of P1 to P5 are listed below)
- *	and
- *	    |                  5          |     -59
- *	    | 2.0+P1*z+...+P5*z   -  R(z) | <= 2 
- *	    |                             |
- *	The computation of exp(r) thus becomes
- *                             2*r
- *		exp(r) = 1 + -------
- *		              R - r
- *                                 r*R1(r)	
- *		       = 1 + r + ----------- (for better accuracy)
- *		                  2 - R1(r)
- *	where
- *			         2       4             10
- *		R1(r) = r - (P1*r  + P2*r  + ... + P5*r   ).
- *	
- *   3. Scale back to obtain exp(x):
- *	From step 1, we have
- *	   exp(x) = 2^k * exp(r)
- *
- * Special cases:
- *	exp(INF) is INF, exp(NaN) is NaN;
- *	exp(-INF) is 0, and
- *	for finite argument, only exp(0)=1 is exact.
- *
- * Accuracy:
- *	according to an error analysis, the error is always less than
- *	1 ulp (unit in the last place).
- *
- * Misc. info.
- *	For IEEE double 
- *	    if x >  7.09782712893383973096e+02 then exp(x) overflow
- *	    if x < -7.45133219101941108420e+02 then exp(x) underflow */
+ * according to an error analysis, the error is always less than
+ * 1 ulp (unit in the last place). */
 static double __ieee754_exp(double x) 
 {
   double y, hi, lo, c, t;
@@ -1506,7 +1324,7 @@ static double __ieee754_expm1(double x)
       }
     }
     if (xsb != 0) { /* x < -56*ln2, return -1.0 with inexact */
-      feraiseexcept(FE_INEXACT);	/* raise inexact */
+      feraiseexcept(FE_INEXACT); /* raise inexact */
       return -one; /* return -1 */
     }
   }
@@ -1542,20 +1360,16 @@ static double __ieee754_expm1(double x)
   /* x is now in primary range */
   hfx = 0.5 * x;
   hxs = x * hfx;
- //DO_NOT_USE_THIS
- // r1 = one + hxs * (Q1 + hxs * (Q2 + hxs * (Q3 + hxs * (Q4 + hxs * Q5))));
- // use this...
   R1 = one + hxs * Q[1];
   h2 = hxs * hxs;
   R2 = Q[2] + hxs * Q[3];
   h4 = h2 * h2;
   R3 = Q[4] + hxs * Q[5];
   r1 = R1 + h2 * R2 + h4 * R3;
- // ... instead
   t = 3.0 - r1 * hfx;
   e = hxs * ((r1 - t) / (6.0 - x * t));
   if (k == 0) {
-    return x - (x * e - hxs);		/* c is 0 */
+    return x - (x * e - hxs); /* c is 0 */
   } else {
     e = (x * (e - c) - c);
     e -= hxs;
@@ -1630,7 +1444,7 @@ static double __kernel_cos(double x, double y)
     if (ix > IC(0x3fe90000U)) { /* x > 0.78125 */
       qx = 0.28125;
     } else {
-      INSERT_WORDS(qx, ix - IC(0x00200000U), 0);	/* x/4 */
+      INSERT_WORDS(qx, ix - IC(0x00200000U), 0); /* x/4 */
     }
     hz = 0.5 * z - qx;
     a = one - qx;
@@ -1697,7 +1511,7 @@ static double __kernel_tan(double x, double y, int iy)
 }
 
 /* __kernel_rem_pio2 returns the last three digits of N with
- *		y = x - N*pi/2 so that |y| < pi/2. */
+ *  y = x - N*pi/2 so that |y| < pi/2. */
 static int32_t __kernel_rem_pio2(double *x, double *y, int32_t e0, int32_t nx, int prec)
 {
   int32_t jz, jx, jv, jp, jk, carry, n, iq[20], i, j, k, m, q0, ih;
@@ -1857,7 +1671,7 @@ static int32_t __kernel_rem_pio2(double *x, double *y, int32_t e0, int32_t nx, i
         y[1] = (ih == 0) ? fv : -fv;
       }
       break;
-    case 3:							/* painful */
+    case 3:       /* painful */
       for (i = jz; i > 0; i--) {
         volatile double fv = (double) (fq[i - 1] + fq[i]);
         fq[i] += fq[i - 1] - fv;
@@ -1974,7 +1788,7 @@ static int32_t __ieee754_rem_pio2(double x, double *y)
   }
   /* set z = scalbn(|x|,ilogb(x)-23) */
   GET_LOW_WORD(low, x);
-  e0 = (ix >> IEEE754_DOUBLE_SHIFT) - (IEEE754_DOUBLE_BIAS + 23);			/* e0 = ilogb(z)-23; */
+  e0 = (ix >> IEEE754_DOUBLE_SHIFT) - (IEEE754_DOUBLE_BIAS + 23);   /* e0 = ilogb(z)-23; */
   INSERT_WORDS(z, ix - (e0 << IEEE754_DOUBLE_SHIFT), low);
   for (i = 0; i < 2; i++) {
     tx[i] = (double) ((int32_t) (z));
@@ -2086,7 +1900,7 @@ static double __ieee754_tan(double x)
 
   /* argument reduction needed */
   n = __ieee754_rem_pio2(x, y);
-  return __kernel_tan(y[0], y[1], (int)(1 - ((n & 1) << 1)));	/*   1 -- n even -1 -- n odd */
+  return __kernel_tan(y[0], y[1], (int)(1 - ((n & 1) << 1))); /*   1 -- n even -1 -- n odd */
 }
 
 static double __ieee754_asin(double x)
@@ -2102,7 +1916,7 @@ static double __ieee754_asin(double x)
     if (((ix - IC(0x3ff00000U)) | lx) == 0)
       /* asin(1)=+-pi/2 with inexact */
       return x * pio2_hi + x * pio2_lo;
-    return (x - x) / (x - x);		/* asin(|x|>1) is NaN */
+    return (x - x) / (x - x);  /* asin(|x|>1) is NaN */
   } else if (ix < IC(0x3fe00000U)) { /* |x|<0.5 */
     if (ix < IC(0x3e400000U)) { /* if |x| < 2**-27 */
       if (hugeval + x > one)
@@ -2277,24 +2091,24 @@ static double __ieee754_atan2(double y, double x)
     if (iy == IC(0x7ff00000U)) {
       switch ((int)m) {
         case 0:
-          return pi_o_4 + tiny;	/* atan(+INF,+INF) */
+          return pi_o_4 + tiny; /* atan(+INF,+INF) */
         case 1:
-          return -pi_o_4 - tiny;	/* atan(-INF,+INF) */
+          return -pi_o_4 - tiny; /* atan(-INF,+INF) */
         case 2:
-          return 3.0 * pi_o_4 + tiny;	/*atan(+INF,-INF) */
+          return 3.0 * pi_o_4 + tiny; /*atan(+INF,-INF) */
         case 3:
-          return -3.0 * pi_o_4 - tiny;	/*atan(-INF,-INF) */
+          return -3.0 * pi_o_4 - tiny; /*atan(-INF,-INF) */
       }
     } else {
       switch ((int)m) {
         case 0:
-          return zero;			/* atan(+...,+INF) */
+          return zero;   /* atan(+...,+INF) */
         case 1:
-          return -zero;			/* atan(-...,+INF) */
+          return -zero;   /* atan(-...,+INF) */
         case 2:
-          return pi + tiny;		/* atan(+...,-INF) */
+          return pi + tiny;  /* atan(+...,-INF) */
         case 3:
-          return -pi - tiny;		/* atan(-...,-INF) */
+          return -pi - tiny;  /* atan(-...,-INF) */
       }
     }
   }
@@ -2481,6 +2295,11 @@ double frexp(double x, int *eptr)
 }
 
 double ldexp(double x, int n)
+{
+ return __ieee754_scalbn(x, n);
+}
+
+double scalbn(double x, int n)
 {
  return __ieee754_scalbn(x, n);
 }

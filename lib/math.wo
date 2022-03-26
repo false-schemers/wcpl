@@ -101,7 +101,84 @@
   (data $math:atanhi var align=8 "O\bba\05g\ac\dd?\18-DT\fb!\e9?\9b\f6\81\d2\0bs\ef?\18-DT\fb!\f9?")
   (data $math:atanlo var align=8 "\e2e/\"\7f+z<\07\\\143&\a6\81<\bd\cb\f0z\88\07p<\07\\\143&\a6\91<")
   (data $math:aT var align=8 "\rUUUUU\d5?\c4\eb\98\99\99\99\c9\bf\ff\83\00\92$I\c2?q\16#\fe\c6q\bc\bfn L\c5\cdE\b7?m\9at\af\f2\b0\b3\bfQ=\d0\a0f\r\b1?\9a\fd\deR-\de\ad\bf\eb\rv$K{\a9?/lj,D\b4\a2\bf\11\da\"\e3:\ad\90?")
-  (func $math:isnan
+  (func $math:fpclassify (export "fpclassify")
+    (param $x f64) (result i32) 
+    (local $retval i32) (local $msw i32) (local $lsw i32) (local $__t i64) 
+    i32.const 4
+    local.set $retval
+    local.get $x
+    i64.reinterpret_f64
+    local.tee $__t
+    i32.const 32
+    i64.extend_i32_s
+    i64.shr_u
+    i32.wrap_i64
+    local.set $msw
+    local.get $__t
+    i32.wrap_i64
+    local.tee $lsw
+    local.get $msw
+    i32.const 1048575
+    i32.and
+    i32.or
+    local.set $lsw
+    local.get $msw
+    i32.const 2146435072
+    i32.and
+    local.tee $msw
+    local.get $lsw
+    i32.or
+    i32.const 0
+    i32.eq
+    if
+    i32.const 2
+    local.set $retval
+    else
+    local.get $msw
+    i32.const 0
+    i32.eq
+    if
+    i32.const 3
+    local.set $retval
+    else
+    local.get $msw
+    i32.const 2146435072
+    i32.eq
+    if
+    i32.const 0
+    i32.const 1
+    local.get $lsw
+    i32.const 0
+    i32.ne
+    select
+    local.set $retval
+    end
+    end
+    end
+    local.get $retval
+    return
+  )
+  (func $math:isfinite (export "isfinite")
+    (param $x f64) (result i32) 
+    local.get $x
+    i64.reinterpret_f64
+    i64.const 9218868437227405312
+    i64.and
+    i64.const 9218868437227405312
+    i64.eq
+    return
+  )
+  (func $math:isinf (export "isinf")
+    (param $x f64) (result i32) 
+    local.get $x
+    i64.reinterpret_f64
+    i64.const 9223372036854775807
+    i64.and
+    i64.const 9218868437227405312
+    i64.eq
+    return
+  )
+  (func $math:isnan (export "isnan")
     (param $x f64) (result i32) 
     (local $ux i64) 
     local.get $x
@@ -120,6 +197,14 @@
     else
     i32.const 0
     end
+    return
+  )
+  (func $math:isnormal (export "isnormal")
+    (param $x f64) (result i32) 
+    local.get $x
+    call $math:fpclassify
+    i32.const 4
+    i32.eq
     return
   )
   (func $math:issignaling
@@ -153,6 +238,16 @@
     i32.and
     i32.const 2146959360
     i32.gt_u
+    return
+  )
+  (func $math:signbit (export "signbit")
+    (param $x f64) (result i32) 
+    local.get $x
+    i64.reinterpret_f64
+    i64.const -9223372036854775808
+    i64.and
+    i64.const 0
+    i64.ne
     return
   )
   (func $math:__ieee754_scalbn
@@ -9450,6 +9545,13 @@
     return
   )
   (func $math:ldexp (export "ldexp")
+    (param $x f64) (param $n i32) (result f64) 
+    local.get $x
+    local.get $n
+    call $math:__ieee754_scalbn
+    return
+  )
+  (func $math:scalbn (export "scalbn")
     (param $x f64) (param $n i32) (result f64) 
     local.get $x
     local.get $n
