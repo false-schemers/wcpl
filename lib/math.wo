@@ -250,7 +250,7 @@
     i64.ne
     return
   )
-  (func $math:__ieee754_scalbn
+  (func $math:ieee754_scalbn
     (param $x# f64) (param $n i32) (result f64) 
     (local $k i32) (local $hx i32) (local $lx i32) (local $__t i64) (local $__p i32) (local $__t#5 i64) (local $__p#6 i32) (local $__t#7 i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
     global.get $env:__stack_pointer
@@ -471,7 +471,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_frexp
+  (func $math:ieee754_frexp
     (param $x# f64) (param $eptr i32) (result f64) 
     (local $hx i32) (local $ix i32) (local $lx i32) (local $__t i64) (local $__p i32) (local $__t#5 i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) 
     global.get $env:__stack_pointer
@@ -592,7 +592,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_ceil
+  (func $math:ieee754_ceil
     (param $x f64) (result f64) 
     (local $i0 i32) (local $j0 i32) (local $i i32) (local $j i32) (local $i1 i32) (local $__t i64) 
     local.get $x
@@ -778,7 +778,7 @@
     local.tee $x
     return
   )
-  (func $math:__ieee754_floor (export "__ieee754_floor")
+  (func $math:ieee754_floor (export "ieee754_floor")
     (param $x f64) (result f64) 
     (local $i0 i32) (local $j0 i32) (local $i i32) (local $j i32) (local $i1 i32) (local $__t i64) 
     local.get $x
@@ -966,7 +966,7 @@
     local.tee $x
     return
   )
-  (func $math:__ieee754_round
+  (func $math:ieee754_round
     (param $x f64) (result f64) 
     (local $i0 i32) (local $j0 i32) (local $i1 i32) (local $__t i64) (local $i i32) (local $i#5 i32) (local $j i32) 
     local.get $x
@@ -1124,7 +1124,7 @@
     local.tee $x
     return
   )
-  (func $math:__ieee754_trunc
+  (func $math:ieee754_trunc
     (param $x f64) (result f64) 
     (local $i0 i32) (local $j0 i32) (local $i1 i32) (local $sx i32) (local $__t i64) 
     local.get $x
@@ -1225,7 +1225,7 @@
     local.get $x
     return
   )
-  (func $math:__ieee754_modf
+  (func $math:ieee754_modf
     (param $x f64) (param $iptr i32) (result f64) 
     (local $i0 i32) (local $i1 i32) (local $j0 i32) (local $i i32) (local $__t i64) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) 
     local.get $x
@@ -1423,7 +1423,7 @@
     f64.const +nan
     return
   )
-  (func $math:__ieee754_fmod
+  (func $math:ieee754_fmod
     (param $x f64) (param $y f64) (result f64) 
     (local $n i32) (local $hx i32) (local $hy i32) (local $hz i32) (local $ix i32) (local $iy i32) (local $sx i32) (local $i i32) (local $lx i32) (local $ly i32) (local $lz i32) (local $__t i64) (local $__t#12 i64) 
     local.get $x
@@ -1996,7 +1996,7 @@
     local.get $x
     return
   )
-  (func $math:__ieee754_sqrt
+  (func $math:ieee754_sqrt
     (param $x f64) (result f64) 
     (local $z f64) (local $sign i32) (local $r i32) (local $t1 i32) (local $s1 i32) (local $ix1 i32) (local $q1 i32) (local $ix0 i32) (local $s0 i32) (local $q i32) (local $m i32) (local $t i32) (local $i i32) (local $__t i64) 
     i32.const -2147483648
@@ -2431,7 +2431,7 @@
     local.tee $z
     return
   )
-  (func $math:__ieee754_pow
+  (func $math:ieee754_pow
     (param $x f64) (param $y f64) (result f64) 
     (local $z_h f64) (local $z_l f64) (local $p_l f64) (local $t2 f64) (local $r f64) (local $s f64) (local $u f64) (local $v f64) (local $w f64) (local $i i32) (local $j i32) (local $k i32) (local $yisint i32) (local $n i32) (local $hx i32) (local $hy i32) (local $ix i32) (local $iy i32) (local $lx i32) (local $ly i32) (local $__t i64) (local $__t#27 i64) (local $__p i32) (local $__t#29 i64) (local $s2 f64) (local $s_l f64) (local $t_l f64) (local $__p#35 i32) (local $__t#36 i64) (local $__p#37 i32) (local $__t#38 i64) (local $__p#39 i32) (local $__t#40 i64) (local $__p#41 i32) (local $__t#42 i64) (local $__p#43 i32) (local $__t#44 i64) (local $__p#45 i32) (local $__t#46 i64) (local $__p#47 i32) (local $__t#48 i64) (local $__t#49 i64) (local $__p#50 i32) (local $__t#51 i64) (local $__p#52 i32) (local $__t#53 i64) (local $__p#54 i32) (local $__t#55 i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) (local $i10$ i32) (local $i11$ i32) (local $i12$ i32) (local $i13$ i32) (local $i14$ i32) (local $i15$ i32) (local $i16$ i32) (local $i17$ i32) (local $i18$ i32) (local $i19$ i32) (local $i20$ i32) (local $i21$ i32) (local $i22$ i32) (local $i23$ i32) (local $i24$ i32) (local $i25$ i32) (local $i26$ i32) (local $i27$ i32) (local $i28$ i32) (local $i29$ i32) (local $i30$ i32) (local $i31$ i32) (local $i32$ i32) (local $i33$ i32) (local $i34$ i32) (local $i35$ i32) (local $i36$ i32) 
     global.get $env:__stack_pointer
@@ -2723,7 +2723,7 @@
     i32.ge_s
     if
     local.get $x
-    call $math:__ieee754_sqrt
+    call $math:ieee754_sqrt
     local.get $bp$
     global.set $env:__stack_pointer
     return
@@ -3849,7 +3849,7 @@
     local.get $fp$
     f64.load offset=0 align=8
     local.get $n
-    call $math:__ieee754_scalbn
+    call $math:ieee754_scalbn
     f64.store offset=0 align=8
     else
     local.get $fp$
@@ -3879,7 +3879,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_log
+  (func $math:ieee754_log
     (param $x# f64) (result f64) 
     (local $hfsq f64) (local $f f64) (local $s f64) (local $z f64) (local $R f64) (local $w f64) (local $t1 f64) (local $t2 f64) (local $dk f64) (local $k i32) (local $hx i32) (local $i i32) (local $j i32) (local $lx i32) (local $__t i64) (local $__p i32) (local $__t#16 i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) 
     global.get $env:__stack_pointer
@@ -4239,7 +4239,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_log10
+  (func $math:ieee754_log10
     (param $x# f64) (result f64) 
     (local $y f64) (local $z f64) (local $i i32) (local $k i32) (local $hx i32) (local $lx i32) (local $__t i64) (local $__p i32) (local $__t#8 i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) 
     global.get $env:__stack_pointer
@@ -4386,7 +4386,7 @@
     global.get $math:ivln10
     local.get $fp$
     f64.load offset=0 align=8
-    call $math:__ieee754_log
+    call $math:ieee754_log
     f64.mul
     f64.add
     local.tee $z
@@ -4398,7 +4398,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_exp
+  (func $math:ieee754_exp
     (param $x f64) (result f64) 
     (local $hi f64) (local $lo f64) (local $c f64) (local $t f64) (local $k i32) (local $xsb i32) (local $hx i32) (local $__p i32) (local $__t i64) (local $__p#10 i32) (local $__t#11 i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) 
     global.get $env:__stack_pointer
@@ -4720,7 +4720,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_expm1
+  (func $math:ieee754_expm1
     (param $x f64) (result f64) 
     (local $hi f64) (local $lo f64) (local $c f64) (local $e f64) (local $hxs f64) (local $hfx f64) (local $r1 f64) (local $h2 f64) (local $h4 f64) (local $R1 f64) (local $R2 f64) (local $R3 f64) (local $k i32) (local $xsb i32) (local $hx i32) (local $low i32) (local $high i32) (local $__p i32) (local $__t i64) (local $high#21 i32) (local $__p#22 i32) (local $__t#23 i64) (local $__p#24 i32) (local $__t#25 i64) (local $high#26 i32) (local $__p#27 i32) (local $__t#28 i64) (local $__p#29 i32) (local $__t#30 i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) (local $i10$ i32) (local $i11$ i32) (local $i12$ i32) (local $i13$ i32) (local $i14$ i32) (local $i15$ i32) 
     global.get $env:__stack_pointer
@@ -6054,13 +6054,13 @@
     end $11$
     local.get $z
     local.get $q0
-    call $math:__ieee754_scalbn
+    call $math:ieee754_scalbn
     local.tee $z
     f64.const 8
     local.get $z
     f64.const 0.125
     f64.mul
-    call $math:__ieee754_floor
+    call $math:ieee754_floor
     f64.mul
     f64.sub
     local.tee $z
@@ -6278,7 +6278,7 @@
     local.get $z
     global.get $math:one
     local.get $q0
-    call $math:__ieee754_scalbn
+    call $math:ieee754_scalbn
     f64.sub
     local.set $z
     end
@@ -6500,7 +6500,7 @@
     i32.const 0
     local.get $q0
     i32.sub
-    call $math:__ieee754_scalbn
+    call $math:ieee754_scalbn
     local.tee $z
     global.get $math:two24
     f64.ge
@@ -6555,7 +6555,7 @@
     end
     global.get $math:one
     local.get $q0
-    call $math:__ieee754_scalbn
+    call $math:ieee754_scalbn
     local.set $fw
     block $34$
     local.get $jz
@@ -7073,7 +7073,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_rem_pio2
+  (func $math:ieee754_rem_pio2
     (param $x f64) (param $y i32) (result i32) 
     (local $z f64) (local $w f64) (local $t f64) (local $r f64) (local $fn f64) (local $e0 i32) (local $i i32) (local $j i32) (local $nx i32) (local $n i32) (local $ix i32) (local $hx i32) (local $low i32) (local $high i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) (local $i10$ i32) (local $i11$ i32) (local $i12$ i32) (local $i13$ i32) (local $i14$ i32) (local $i15$ i32) (local $i16$ i32) (local $i17$ i32) (local $i19$ i32) (local $i18$ i32) (local $i20$ i32) (local $i21$ i32) (local $i22$ i32) (local $i23$ i32) 
     global.get $env:__stack_pointer
@@ -7581,7 +7581,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_sin
+  (func $math:ieee754_sin
     (param $x f64) (result f64) 
     (local $z f64) (local $n i32) (local $ix i32) (local $bp$ i32) (local $fp$ i32) 
     global.get $env:__stack_pointer
@@ -7628,7 +7628,7 @@
     else
     local.get $x
     local.get $fp$
-    call $math:__ieee754_rem_pio2
+    call $math:ieee754_rem_pio2
     local.set $n
     block $1$
     block $5$
@@ -7687,7 +7687,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_cos
+  (func $math:ieee754_cos
     (param $x f64) (result f64) 
     (local $z f64) (local $n i32) (local $ix i32) (local $bp$ i32) (local $fp$ i32) 
     global.get $env:__stack_pointer
@@ -7733,7 +7733,7 @@
     else
     local.get $x
     local.get $fp$
-    call $math:__ieee754_rem_pio2
+    call $math:ieee754_rem_pio2
     local.set $n
     block $1$
     block $5$
@@ -7792,7 +7792,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_tan
+  (func $math:ieee754_tan
     (param $x f64) (result f64) 
     (local $z f64) (local $n i32) (local $ix i32) (local $bp$ i32) (local $fp$ i32) 
     global.get $env:__stack_pointer
@@ -7840,7 +7840,7 @@
     end
     local.get $x
     local.get $fp$
-    call $math:__ieee754_rem_pio2
+    call $math:ieee754_rem_pio2
     local.set $n
     local.get $fp$
     f64.load offset=0 align=8
@@ -7858,7 +7858,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_asin
+  (func $math:ieee754_asin
     (param $x f64) (result f64) 
     (local $t f64) (local $p f64) (local $q f64) (local $c f64) (local $r f64) (local $s f64) (local $hx i32) (local $ix i32) (local $lx i32) (local $__p i32) (local $__t i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) 
     global.get $env:__stack_pointer
@@ -8056,7 +8056,7 @@
     f64.add
     local.set $q
     local.get $t
-    call $math:__ieee754_sqrt
+    call $math:ieee754_sqrt
     local.set $s
     local.get $ix
     i32.const 1072640819
@@ -8158,7 +8158,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_acos
+  (func $math:ieee754_acos
     (param $x f64) (result f64) 
     (local $z f64) (local $p f64) (local $q f64) (local $r f64) (local $w f64) (local $s f64) (local $c f64) (local $hx i32) (local $ix i32) (local $lx i32) (local $__p i32) (local $__t i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
     global.get $env:__stack_pointer
@@ -8353,7 +8353,7 @@
     f64.add
     local.set $q
     local.get $z
-    call $math:__ieee754_sqrt
+    call $math:ieee754_sqrt
     local.set $s
     local.get $p
     local.get $q
@@ -8381,7 +8381,7 @@
     f64.const 0.5
     f64.mul
     local.tee $z
-    call $math:__ieee754_sqrt
+    call $math:ieee754_sqrt
     local.set $s
     local.get $fp$
     local.tee $i1$
@@ -8481,7 +8481,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_atan
+  (func $math:ieee754_atan
     (param $x f64) (result f64) 
     (local $w f64) (local $s1 f64) (local $s2 f64) (local $z f64) (local $ix i32) (local $hx i32) (local $id i32) (local $low i32) 
     local.get $x
@@ -8738,7 +8738,7 @@
     end
     return
   )
-  (func $math:__ieee754_atan2
+  (func $math:ieee754_atan2
     (param $y f64) (param $x f64) (result f64) 
     (local $k i32) (local $m i32) (local $hx i32) (local $hy i32) (local $ix i32) (local $iy i32) (local $lx i32) (local $ly i32) (local $__t i64) (local $__t#10 i64) (local $zh i32) (local $__p i32) (local $__t#13 i64) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
     global.get $env:__stack_pointer
@@ -8822,7 +8822,7 @@
     i32.eq
     if
     local.get $y
-    call $math:__ieee754_atan
+    call $math:ieee754_atan
     local.get $bp$
     global.set $env:__stack_pointer
     return
@@ -9048,7 +9048,7 @@
     i64.const 9223372036854775807
     i64.and
     f64.reinterpret_i64
-    call $math:__ieee754_atan
+    call $math:ieee754_atan
     f64.store offset=0 align=8
     end
     end
@@ -9119,7 +9119,7 @@
     global.set $env:__stack_pointer
     return
   )
-  (func $math:__ieee754_sinh
+  (func $math:ieee754_sinh
     (param $x f64) (result f64) 
     (local $t f64) (local $w f64) (local $h f64) (local $ix i32) (local $jx i32) (local $lx i32) 
     local.get $x
@@ -9173,7 +9173,7 @@
     i64.const 9223372036854775807
     i64.and
     f64.reinterpret_i64
-    call $math:__ieee754_expm1
+    call $math:ieee754_expm1
     local.set $t
     local.get $ix
     i32.const 1072693248
@@ -9215,7 +9215,7 @@
     i64.const 9223372036854775807
     i64.and
     f64.reinterpret_i64
-    call $math:__ieee754_exp
+    call $math:ieee754_exp
     f64.mul
     return
     end
@@ -9248,7 +9248,7 @@
     i64.and
     f64.reinterpret_i64
     f64.mul
-    call $math:__ieee754_exp
+    call $math:ieee754_exp
     local.set $w
     local.get $h
     local.get $w
@@ -9263,7 +9263,7 @@
     f64.mul
     return
   )
-  (func $math:__ieee754_cosh
+  (func $math:ieee754_cosh
     (param $x f64) (result f64) 
     (local $t f64) (local $w f64) (local $ix i32) (local $lx i32) 
     local.get $x
@@ -9297,7 +9297,7 @@
     i64.const 9223372036854775807
     i64.and
     f64.reinterpret_i64
-    call $math:__ieee754_expm1
+    call $math:ieee754_expm1
     local.set $t
     global.get $math:one
     local.get $t
@@ -9326,7 +9326,7 @@
     i64.const 9223372036854775807
     i64.and
     f64.reinterpret_i64
-    call $math:__ieee754_exp
+    call $math:ieee754_exp
     local.set $t
     global.get $math:half
     local.get $t
@@ -9347,7 +9347,7 @@
     i64.const 9223372036854775807
     i64.and
     f64.reinterpret_i64
-    call $math:__ieee754_exp
+    call $math:ieee754_exp
     f64.mul
     return
     end
@@ -9380,7 +9380,7 @@
     i64.and
     f64.reinterpret_i64
     f64.mul
-    call $math:__ieee754_exp
+    call $math:ieee754_exp
     local.set $w
     global.get $math:half
     local.get $w
@@ -9393,7 +9393,7 @@
     f64.const +inf
     return
   )
-  (func $math:__ieee754_tanh
+  (func $math:ieee754_tanh
     (param $x f64) (result f64) 
     (local $t f64) (local $z f64) (local $jx i32) (local $ix i32) (local $lx i32) (local $__t i64) 
     local.get $x
@@ -9468,7 +9468,7 @@
     i64.and
     f64.reinterpret_i64
     f64.mul
-    call $math:__ieee754_expm1
+    call $math:ieee754_expm1
     local.set $t
     global.get $math:one
     global.get $math:two
@@ -9487,7 +9487,7 @@
     i64.and
     f64.reinterpret_i64
     f64.mul
-    call $math:__ieee754_expm1
+    call $math:ieee754_expm1
     local.tee $t
     f64.neg
     local.get $t
@@ -9516,60 +9516,60 @@
   (func $math:ceil (export "ceil")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_ceil
+    call $math:ieee754_ceil
     return
   )
   (func $math:floor (export "floor")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_floor
+    call $math:ieee754_floor
     return
   )
   (func $math:round (export "round")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_round
+    call $math:ieee754_round
     return
   )
   (func $math:trunc (export "trunc")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_trunc
+    call $math:ieee754_trunc
     return
   )
   (func $math:frexp (export "frexp")
     (param $x f64) (param $eptr i32) (result f64) 
     local.get $x
     local.get $eptr
-    call $math:__ieee754_frexp
+    call $math:ieee754_frexp
     return
   )
   (func $math:ldexp (export "ldexp")
     (param $x f64) (param $n i32) (result f64) 
     local.get $x
     local.get $n
-    call $math:__ieee754_scalbn
+    call $math:ieee754_scalbn
     return
   )
   (func $math:scalbn (export "scalbn")
     (param $x f64) (param $n i32) (result f64) 
     local.get $x
     local.get $n
-    call $math:__ieee754_scalbn
+    call $math:ieee754_scalbn
     return
   )
   (func $math:modf (export "modf")
     (param $x f64) (param $iptr i32) (result f64) 
     local.get $x
     local.get $iptr
-    call $math:__ieee754_modf
+    call $math:ieee754_modf
     return
   )
   (func $math:fmod (export "fmod")
     (param $x f64) (param $y f64) (result f64) 
     local.get $x
     local.get $y
-    call $math:__ieee754_fmod
+    call $math:ieee754_fmod
     return
   )
   (func $math:fabs (export "fabs")
@@ -9598,38 +9598,38 @@
   (func $math:sqrt (export "sqrt")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_sqrt
+    call $math:ieee754_sqrt
     return
   )
   (func $math:pow (export "pow")
     (param $x f64) (param $y f64) (result f64) 
     local.get $x
     local.get $y
-    call $math:__ieee754_pow
+    call $math:ieee754_pow
     return
   )
   (func $math:log (export "log")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_log
+    call $math:ieee754_log
     return
   )
   (func $math:log10 (export "log10")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_log10
+    call $math:ieee754_log10
     return
   )
   (func $math:exp (export "exp")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_exp
+    call $math:ieee754_exp
     return
   )
   (func $math:expm1 (export "expm1")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_expm1
+    call $math:ieee754_expm1
     return
   )
   (func $math:fmax (export "fmax")
@@ -9667,62 +9667,62 @@
   (func $math:sin (export "sin")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_sin
+    call $math:ieee754_sin
     return
   )
   (func $math:cos (export "cos")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_cos
+    call $math:ieee754_cos
     return
   )
   (func $math:tan (export "tan")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_tan
+    call $math:ieee754_tan
     return
   )
   (func $math:asin (export "asin")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_asin
+    call $math:ieee754_asin
     return
   )
   (func $math:acos (export "acos")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_acos
+    call $math:ieee754_acos
     return
   )
   (func $math:atan (export "atan")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_atan
+    call $math:ieee754_atan
     return
   )
   (func $math:atan2 (export "atan2")
     (param $y f64) (param $x f64) (result f64) 
     local.get $y
     local.get $x
-    call $math:__ieee754_atan2
+    call $math:ieee754_atan2
     return
   )
   (func $math:sinh (export "sinh")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_sinh
+    call $math:ieee754_sinh
     return
   )
   (func $math:cosh (export "cosh")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_cosh
+    call $math:ieee754_cosh
     return
   )
   (func $math:tanh (export "tanh")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:__ieee754_tanh
+    call $math:ieee754_tanh
     return
   )
 )

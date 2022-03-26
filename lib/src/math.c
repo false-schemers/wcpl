@@ -9,8 +9,8 @@
 #define FE_UNDERFLOW 0
 #define FE_INEXACT 0
 
-#define __ieee754_fabs(x) (asdouble(asuint64(x) & 0x7FFFFFFFFFFFFFFFULL))
-#define __ieee754_copysign(x, y) (asdouble((asuint64(x) & 0x7FFFFFFFFFFFFFFFULL) | (asuint64(y) & 0x8000000000000000ULL)))
+#define ieee754_fabs(x) (asdouble(asuint64(x) & 0x7FFFFFFFFFFFFFFFULL))
+#define ieee754_copysign(x, y) (asdouble((asuint64(x) & 0x7FFFFFFFFFFFFFFFULL) | (asuint64(y) & 0x8000000000000000ULL)))
 
 #define __builtin_nan(s) (asdouble(0x7FF8000000000000ULL)) /* +nan */
 #define math_force_eval(x) ((void)(x)) /* supposed to raise exception but won't */
@@ -76,110 +76,110 @@ do { double *__p = &(d);                     \
 #define tiny    (1.0e-300)
 
 static const double bp[] = { 1.0, 1.5 };
-static const double dp_h[] = { 0.0, 5.84962487220764160156e-01 }; /* 0x3FE2B80340000000 */
-static const double dp_l[] = { 0.0, 1.35003920212974897128e-08 }; /* 0x3E4CFDEB43CFD006 */
+static const double dp_h[] = { 0.0, 5.84962487220764160156e-01 }; /* (asdouble(0x3FE2B80340000000ULL)) */
+static const double dp_l[] = { 0.0, 1.35003920212974897128e-08 }; /* (asdouble(0x3E4CFDEB43CFD006ULL)) */
 static const double Zero[] = { 0.0, -0.0 };
 static const double zero = 0.0;
-static const double half = 5.00000000000000000000e-01; /* 0x3FE0000000000000 */
-static const double one = 1.00000000000000000000e+00; /* 0x3FF0000000000000 */
+static const double half = 5.00000000000000000000e-01; /* (asdouble(0x3FE0000000000000ULL)) */
+static const double one = 1.00000000000000000000e+00; /* (asdouble(0x3FF0000000000000ULL)) */
 static const double two = 2.0;
-static const double two53 = 9007199254740992.0; /* 0x4340000000000000 */
+static const double two53 = 9007199254740992.0; /* (asdouble(0x4340000000000000ULL)) */
 /* poly coefs for (3/2)*(log(x)-2s-2/3*s**3 */
-static const double L1 = 5.99999999999994648725e-01;        /* 0x3FE3333333333303 */
-static const double L2 = 4.28571428578550184252e-01;        /* 0x3FDB6DB6DB6FABFF */
-static const double L3 = 3.33333329818377432918e-01;        /* 0x3FD55555518F264D */
-static const double L4 = 2.72728123808534006489e-01;        /* 0x3FD17460A91D4101 */
-static const double L5 = 2.30660745775561754067e-01;        /* 0x3FCD864A93C9DB65 */
-static const double L6 = 2.06975017800338417784e-01;        /* 0x3FCA7E284A454EEF */
-static const double P1 = 1.66666666666666019037e-01;        /* 0x3FC555555555553E */
-static const double P2 = -2.77777777770155933842e-03;       /* 0xBF66C16C16BEBD93 */
-static const double P3 = 6.61375632143793436117e-05;        /* 0x3F11566AAF25DE2C */
-static const double P4 = -1.65339022054652515390e-06;       /* 0xBEBBBD41C5D26BF1 */
-static const double P5 = 4.13813679705723846039e-08;        /* 0x3E66376972BEA4D0 */
-static const double lg2 = 6.93147180559945286227e-01;       /* 0x3FE62E42FEFA39EF */
-static const double lg2_h = 6.93147182464599609375e-01;     /* 0x3FE62E4300000000 */
-static const double lg2_l = -1.90465429995776804525e-09;    /* 0xBE205C610CA86C39 */
+static const double L1 = 5.99999999999994648725e-01;        /* (asdouble(0x3FE3333333333303ULL)) */
+static const double L2 = 4.28571428578550184252e-01;        /* (asdouble(0x3FDB6DB6DB6FABFFULL)) */
+static const double L3 = 3.33333329818377432918e-01;        /* (asdouble(0x3FD55555518F264DULL)) */
+static const double L4 = 2.72728123808534006489e-01;        /* (asdouble(0x3FD17460A91D4101ULL)) */
+static const double L5 = 2.30660745775561754067e-01;        /* (asdouble(0x3FCD864A93C9DB65ULL)) */
+static const double L6 = 2.06975017800338417784e-01;        /* (asdouble(0x3FCA7E284A454EEFULL)) */
+static const double P1 = 1.66666666666666019037e-01;        /* (asdouble(0x3FC555555555553EULL)) */
+static const double P2 = -2.77777777770155933842e-03;       /* (asdouble(0xBF66C16C16BEBD93ULL)) */
+static const double P3 = 6.61375632143793436117e-05;        /* (asdouble(0x3F11566AAF25DE2CULL)) */
+static const double P4 = -1.65339022054652515390e-06;       /* (asdouble(0xBEBBBD41C5D26BF1ULL)) */
+static const double P5 = 4.13813679705723846039e-08;        /* (asdouble(0x3E66376972BEA4D0ULL)) */
+static const double lg2 = 6.93147180559945286227e-01;       /* (asdouble(0x3FE62E42FEFA39EFULL)) */
+static const double lg2_h = 6.93147182464599609375e-01;     /* (asdouble(0x3FE62E4300000000ULL)) */
+static const double lg2_l = -1.90465429995776804525e-09;    /* (asdouble(0xBE205C610CA86C39ULL)) */
 static const double ovt = 8.0085662595372944372e-0017;      /* -(1024-log2(ovfl+.5ulp)) */
-static const double cp = 9.61796693925975554329e-01;        /* 0x3FEEC709DC3A03FD =2/(3ln2) */
-static const double cp_h = 9.61796700954437255859e-01;      /* 0x3FEEC709E0000000 =(float)cp */
-static const double cp_l = -7.02846165095275826516e-09;     /* 0xBE3E2FE0145B01F5 =tail of cp_h */
-static const double ivln2 = 1.44269504088896338700e+00;     /* 0x3FF71547652B82FE =1/ln2 */
-static const double ivln2_h = 1.44269502162933349609e+00;   /* 0x3FF7154760000000 =24b 1/ln2 */
-static const double ivln2_l = 1.92596299112661746887e-08;   /* 0x3E54AE0BF85DDF44 =1/ln2 tail */
-static const double ln2_hi = 6.93147180369123816490e-01;    /* 0x3FE62E42FEE00000 */
-static const double ln2_lo = 1.90821492927058770002e-10;    /* 0x3DEA39EF35793C76 */
-static const double Lg1 = 6.666666666666735130e-01;         /* 0x3FE5555555555593 */
-static const double Lg2 = 3.999999999940941908e-01;         /* 0x3FD999999997FA04 */
-static const double Lg3 = 2.857142874366239149e-01;         /* 0x3FD2492494229359 */
-static const double Lg4 = 2.222219843214978396e-01;         /* 0x3FCC71C51D8E78AF */
-static const double Lg5 = 1.818357216161805012e-01;         /* 0x3FC7466496CB03DE */
-static const double Lg6 = 1.531383769920937332e-01;         /* 0x3FC39A09D078C69F */
-static const double Lg7 = 1.479819860511658591e-01;         /* 0x3FC2F112DF3E5244 */
-static const double ivln10 = 4.34294481903251816668e-01;    /* 0x3FDBCB7B1526E50E */
-static const double log10_2hi = 3.01029995663611771306e-01; /* 0x3FD34413509F6000 */
-static const double log10_2lo = 3.69423907715893078616e-13; /* 0x3D59FEF311F12B36 */
+static const double cp = 9.61796693925975554329e-01;        /* (asdouble(0x3FEEC709DC3A03FDULL)) =2/(3ln2) */
+static const double cp_h = 9.61796700954437255859e-01;      /* (asdouble(0x3FEEC709E0000000ULL)) =(float)cp */
+static const double cp_l = -7.02846165095275826516e-09;     /* (asdouble(0xBE3E2FE0145B01F5ULL)) =tail of cp_h */
+static const double ivln2 = 1.44269504088896338700e+00;     /* (asdouble(0x3FF71547652B82FEULL)) =1/ln2 */
+static const double ivln2_h = 1.44269502162933349609e+00;   /* (asdouble(0x3FF7154760000000ULL)) =24b 1/ln2 */
+static const double ivln2_l = 1.92596299112661746887e-08;   /* (asdouble(0x3E54AE0BF85DDF44ULL)) =1/ln2 tail */
+static const double ln2_hi = 6.93147180369123816490e-01;    /* (asdouble(0x3FE62E42FEE00000ULL)) */
+static const double ln2_lo = 1.90821492927058770002e-10;    /* (asdouble(0x3DEA39EF35793C76ULL)) */
+static const double Lg1 = 6.666666666666735130e-01;         /* (asdouble(0x3FE5555555555593ULL)) */
+static const double Lg2 = 3.999999999940941908e-01;         /* (asdouble(0x3FD999999997FA04ULL)) */
+static const double Lg3 = 2.857142874366239149e-01;         /* (asdouble(0x3FD2492494229359ULL)) */
+static const double Lg4 = 2.222219843214978396e-01;         /* (asdouble(0x3FCC71C51D8E78AFULL)) */
+static const double Lg5 = 1.818357216161805012e-01;         /* (asdouble(0x3FC7466496CB03DEULL)) */
+static const double Lg6 = 1.531383769920937332e-01;         /* (asdouble(0x3FC39A09D078C69FULL)) */
+static const double Lg7 = 1.479819860511658591e-01;         /* (asdouble(0x3FC2F112DF3E5244ULL)) */
+static const double ivln10 = 4.34294481903251816668e-01;    /* (asdouble(0x3FDBCB7B1526E50EULL)) */
+static const double log10_2hi = 3.01029995663611771306e-01; /* (asdouble(0x3FD34413509F6000ULL)) */
+static const double log10_2lo = 3.69423907715893078616e-13; /* (asdouble(0x3D59FEF311F12B36ULL)) */
 /* exp constants */
 static const double halF[2] = { 0.5, -0.5 };
-static const double twom1000 = 9.33263618503218878990e-302;  /* 2**-1000=0x01700000,0 */
-static const double o_threshold = 7.09782712893383973096e+02;  /* 0x40862E42FEFA39EF */
-static const double u_threshold = -7.45133219101941108420e+02; /* 0xC0874910D52D3051 */
+static const double twom1000 = 9.33263618503218878990e-302;  /* 2**-1000= (asdouble(0x0170000000000000ULL)) */
+static const double o_threshold = 7.09782712893383973096e+02;  /* (asdouble(0x40862E42FEFA39EFULL)) */
+static const double u_threshold = -7.45133219101941108420e+02; /* (asdouble(0xC0874910D52D3051ULL)) */
 static const double ln2HI[2] = { /* ln2_hi, -ln2_hi */
-  +6.93147180369123816490e-01, /* 0x3FE62E42FEE00000 */
-  -6.93147180369123816490e-01  /* 0xBFE62E42FEE00000 */
+  +6.93147180369123816490e-01, /* (asdouble(0x3FE62E42FEE00000ULL)) */
+  -6.93147180369123816490e-01  /* (asdouble(0xBFE62E42FEE00000ULL)) */
 };
 static const double ln2LO[2] = { /* ln2_lo, -ln2_lo */
-  +1.90821492927058770002e-10, /* 0x3DEA39EF35793C76 */
-  -1.90821492927058770002e-10  /* 0xBDEA39EF35793C76 */
+  +1.90821492927058770002e-10, /* (asdouble(0x3DEA39EF35793C76ULL)) */
+  -1.90821492927058770002e-10  /* (asdouble(0xBDEA39EF35793C76ULL)) */
 };
 /* scaled coefficients related to expm1 */
 static const double Q[] = {
-  1.0,
-  -3.33333333333331316428e-02,  /* BFA11111 111110F4 */
-  1.58730158725481460165e-03,   /* 3F5A01A0 19FE5585 */
-  -7.93650757867487942473e-05,  /* BF14CE19 9EAADBB7 */
-  4.00821782732936239552e-06,   /* 3ED0CFCA 86E65239 */
-  -2.01099218183624371326e-07   /* BE8AFDB7 6E09C32D */
+  1.0,                          /* (asdouble(0x3FF0000000000000ULL)) */
+  -3.33333333333331316428e-02,  /* (asdouble(0xBFA11111111110F4ULL)) */
+  1.58730158725481460165e-03,   /* (asdouble(0x3F5A01A019FE5585ULL)) */
+  -7.93650757867487942473e-05,  /* (asdouble(0xBF14CE199EAADBB7ULL)) */
+  4.00821782732936239552e-06,   /* (asdouble(0x3ED0CFCA86E65239ULL)) */
+  -2.01099218183624371326e-07   /* (asdouble(0xBE8AFDB76E09C32DULL)) */
 };
 /* trig constants */
-static const double S1 = -1.66666666666666324348e-01;  /* 0xBFC5555555555549 */
-static const double S2 = 8.33333333332248946124e-03;   /* 0x3F8111111110F8A6 */
-static const double S3 = -1.98412698298579493134e-04;  /* 0xBF2A01A019C161D5 */
-static const double S4 = 2.75573137070700676789e-06;   /* 0x3EC71DE357B1FE7D */
-static const double S5 = -2.50507602534068634195e-08;  /* 0xBE5AE5E68A2B9CEB */
-static const double S6 = 1.58969099521155010221e-10;   /* 0x3DE5D93A5ACFD57C */
-static const double C1 = 4.16666666666666019037e-02;   /* 0x3FA555555555554C */
-static const double C2 = -1.38888888888741095749e-03;  /* 0xBF56C16C16C15177 */
-static const double C3 = 2.48015872894767294178e-05;   /* 0x3EFA01A019CB1590 */
-static const double C4 = -2.75573143513906633035e-07;  /* 0xBE927E4F809C52AD */
-static const double C5 = 2.08757232129817482790e-09;   /* 0x3E21EE9EBDB4B1C4 */
-static const double C6 = -1.13596475577881948265e-11;  /* 0xBDA8FAE9BE8838D4 */
+static const double S1 = -1.66666666666666324348e-01;  /* (asdouble(0xBFC5555555555549ULL)) */
+static const double S2 = 8.33333333332248946124e-03;   /* (asdouble(0x3F8111111110F8A6ULL)) */
+static const double S3 = -1.98412698298579493134e-04;  /* (asdouble(0xBF2A01A019C161D5ULL)) */
+static const double S4 = 2.75573137070700676789e-06;   /* (asdouble(0x3EC71DE357B1FE7DULL)) */
+static const double S5 = -2.50507602534068634195e-08;  /* (asdouble(0xBE5AE5E68A2B9CEBULL)) */
+static const double S6 = 1.58969099521155010221e-10;   /* (asdouble(0x3DE5D93A5ACFD57CULL)) */
+static const double C1 = 4.16666666666666019037e-02;   /* (asdouble(0x3FA555555555554CULL)) */
+static const double C2 = -1.38888888888741095749e-03;  /* (asdouble(0xBF56C16C16C15177ULL)) */
+static const double C3 = 2.48015872894767294178e-05;   /* (asdouble(0x3EFA01A019CB1590ULL)) */
+static const double C4 = -2.75573143513906633035e-07;  /* (asdouble(0xBE927E4F809C52ADULL)) */
+static const double C5 = 2.08757232129817482790e-09;   /* (asdouble(0x3E21EE9EBDB4B1C4ULL)) */
+static const double C6 = -1.13596475577881948265e-11;  /* (asdouble(0xBDA8FAE9BE8838D4ULL)) */
 static const double T[] = {
-  3.33333333333334091986e-01,   /* 0x3FD5555555555563 */
-  1.33333333333201242699e-01,   /* 0x3FC111111110FE7A */
-  5.39682539762260521377e-02,   /* 0x3FABA1BA1BB341FE */
-  2.18694882948595424599e-02,   /* 0x3F9664F48406D637 */
-  8.86323982359930005737e-03,   /* 0x3F8226E3E96E8493 */
-  3.59207910759131235356e-03,   /* 0x3F6D6D22C9560328 */
-  1.45620945432529025516e-03,   /* 0x3F57DBC8FEE08315 */
-  5.88041240820264096874e-04,   /* 0x3F4344D8F2F26501 */
-  2.46463134818469906812e-04,   /* 0x3F3026F71A8D1068 */
-  7.81794442939557092300e-05,   /* 0x3F147E88A03792A6 */
-  7.14072491382608190305e-05,   /* 0x3F12B80F32F0A7E9 */
-  -1.85586374855275456654e-05,  /* 0xBEF375CBDB605373 */
-  2.59073051863633712884e-05    /* 0x3EFB2A7074BF7AD4 */
+  3.33333333333334091986e-01,   /* (asdouble(0x3FD5555555555563ULL)) */
+  1.33333333333201242699e-01,   /* (asdouble(0x3FC111111110FE7AULL)) */
+  5.39682539762260521377e-02,   /* (asdouble(0x3FABA1BA1BB341FEULL)) */
+  2.18694882948595424599e-02,   /* (asdouble(0x3F9664F48406D637ULL)) */
+  8.86323982359930005737e-03,   /* (asdouble(0x3F8226E3E96E8493ULL)) */
+  3.59207910759131235356e-03,   /* (asdouble(0x3F6D6D22C9560328ULL)) */
+  1.45620945432529025516e-03,   /* (asdouble(0x3F57DBC8FEE08315ULL)) */
+  5.88041240820264096874e-04,   /* (asdouble(0x3F4344D8F2F26501ULL)) */
+  2.46463134818469906812e-04,   /* (asdouble(0x3F3026F71A8D1068ULL)) */
+  7.81794442939557092300e-05,   /* (asdouble(0x3F147E88A03792A6ULL)) */
+  7.14072491382608190305e-05,   /* (asdouble(0x3F12B80F32F0A7E9ULL)) */
+  -1.85586374855275456654e-05,  /* (asdouble(0xBEF375CBDB605373ULL)) */
+  2.59073051863633712884e-05    /* (asdouble(0x3EFB2A7074BF7AD4ULL)) */
 };
-static const double pio4 = 7.85398163397448278999e-01;   /* 0x3FE921FB54442D18 */
-static const double pio4lo = 3.06161699786838301793e-17; /* 0x3C81A62633145C07 */
+static const double pio4 = 7.85398163397448278999e-01;   /* (asdouble(0x3FE921FB54442D18ULL)) */
+static const double pio4lo = 3.06161699786838301793e-17; /* (asdouble(0x3C81A62633145C07ULL)) */
 static const int init_jk[] = { 2, 3, 4, 6 }; /* initial value for jk */
 static const double PIo2[] = {
-  1.57079625129699707031e+00,   /* 0x3FF921FB40000000 */
-  7.54978941586159635335e-08,   /* 0x3E74442D00000000 */
-  5.39030252995776476554e-15,   /* 0x3CF8469880000000 */
-  3.28200341580791294123e-22,   /* 0x3B78CC5160000000 */
-  1.27065575308067607349e-29,   /* 0x39F01B8380000000 */
-  1.22933308981111328932e-36,   /* 0x387A252040000000 */
-  2.73370053816464559624e-44,   /* 0x36E3822280000000 */
-  2.16741683877804819444e-51    /* 0x3569F31D00000000 */
+  1.57079625129699707031e+00,   /* (asdouble(0x3FF921FB40000000ULL)) */
+  7.54978941586159635335e-08,   /* (asdouble(0x3E74442D00000000ULL)) */
+  5.39030252995776476554e-15,   /* (asdouble(0x3CF8469880000000ULL)) */
+  3.28200341580791294123e-22,   /* (asdouble(0x3B78CC5160000000ULL)) */
+  1.27065575308067607349e-29,   /* (asdouble(0x39F01B8380000000ULL)) */
+  1.22933308981111328932e-36,   /* (asdouble(0x387A252040000000ULL)) */
+  2.73370053816464559624e-44,   /* (asdouble(0x36E3822280000000ULL)) */
+  2.16741683877804819444e-51    /* (asdouble(0x3569F31D00000000ULL)) */
 };
 /* Table of constants for 2/pi, 396 Hex digits (476 decimal) of 2/pi */
 static const int32_t two_over_pi[] = {
@@ -195,8 +195,8 @@ static const int32_t two_over_pi[] = {
   IC(0x91615EU), IC(0xE61B08U), IC(0x659985U), IC(0x5F14A0U), IC(0x68408DU), IC(0xFFD880U),
   IC(0x4D7327U), IC(0x310606U), IC(0x1556CAU), IC(0x73A8C9U), IC(0x60E27BU), IC(0xC08C6BU)
 };
-static const double two24 = 1.67772160000000000000e+07;  /* 0x4170000000000000 */
-static const double twon24 = 5.96046447753906250000e-08; /* 0x3E70000000000000 */
+static const double two24 = 1.67772160000000000000e+07;  /* (asdouble(0x4170000000000000ULL)) */
+static const double twon24 = 5.96046447753906250000e-08; /* (asdouble(0x3E70000000000000ULL)) */
 static const int32_t npio2_hw[] = {
   IC(0x3FF921FBU), IC(0x400921FBU), IC(0x4012D97CU), IC(0x401921FBU), IC(0x401F6A7AU), IC(0x4022D97CU),
   IC(0x4025FDBBU), IC(0x402921FBU), IC(0x402C463AU), IC(0x402F6A7AU), IC(0x4031475CU), IC(0x4032D97CU),
@@ -205,60 +205,60 @@ static const int32_t npio2_hw[] = {
   IC(0x4043A28CU), IC(0x40446B9CU), IC(0x404534ACU), IC(0x4045FDBBU), IC(0x4046C6CBU), IC(0x40478FDBU),
   IC(0x404858EBU), IC(0x404921FBU)
 };
-static const double invpio2 = 6.36619772367581382433e-01; /* 0x3FE45F306DC9C883 */ /* 53 bits of 2/pi */
-static const double pio2_1 = 1.57079632673412561417e+00;  /* 0x3FF921FB54400000 */ /* first  33 bit of pi/2 */
-static const double pio2_1t = 6.07710050650619224932e-11; /* 0x3DD0B4611A626331 */ /* pi/2 - pio2_1 */
-static const double pio2_2 = 6.07710050630396597660e-11;  /* 0x3DD0B4611A600000 */ /* 33 bit of pi/2 */
-static const double pio2_2t = 2.02226624879595063154e-21; /* 0x3BA3198A2E037073 */ /* pi/2 - (pio2_1+pio2_2) */
-static const double pio2_3 = 2.02226624871116645580e-21;  /* 0x3BA3198A2E000000 */ /* third  33 bit of pi/2 */
-static const double pio2_3t = 8.47842766036889956997e-32; /* 0x397B839A252049C1 */ /* pi/2 - (pio2_1+pio2_2+pio2_3) */
+static const double invpio2 = 6.36619772367581382433e-01; /* (asdouble(0x3FE45F306DC9C883ULL)) */ /* 53 bits of 2/pi */
+static const double pio2_1 = 1.57079632673412561417e+00;  /* (asdouble(0x3FF921FB54400000ULL)) */ /* first  33 bit of pi/2 */
+static const double pio2_1t = 6.07710050650619224932e-11; /* (asdouble(0x3DD0B4611A626331ULL)) */ /* pi/2 - pio2_1 */
+static const double pio2_2 = 6.07710050630396597660e-11;  /* (asdouble(0x3DD0B4611A600000ULL)) */ /* 33 bit of pi/2 */
+static const double pio2_2t = 2.02226624879595063154e-21; /* (asdouble(0x3BA3198A2E037073ULL)) */ /* pi/2 - (pio2_1+pio2_2) */
+static const double pio2_3 = 2.02226624871116645580e-21;  /* (asdouble(0x3BA3198A2E000000ULL)) */ /* third  33 bit of pi/2 */
+static const double pio2_3t = 8.47842766036889956997e-32; /* (asdouble(0x397B839A252049C1ULL)) */ /* pi/2 - (pio2_1+pio2_2+pio2_3) */
 
 /* asin/acos constants */
-static const double pi = 3.14159265358979311600e+00;      /* 0x400921FB54442D18 */
-static const double pio2_hi = 1.57079632679489655800e+00; /* 0x3FF921FB54442D18 */
-static const double pio2_lo = 6.12323399573676603587e-17; /* 0x3C91A62633145C07 */
-static const double pio4_hi = 7.85398163397448278999e-01; /* 0x3FE921FB54442D18 */
+static const double pi = 3.14159265358979311600e+00;      /* (asdouble(0x400921FB54442D18ULL)) */
+static const double pio2_hi = 1.57079632679489655800e+00; /* (asdouble(0x3FF921FB54442D18ULL)) */
+static const double pio2_lo = 6.12323399573676603587e-17; /* (asdouble(0x3C91A62633145C07ULL)) */
+static const double pio4_hi = 7.85398163397448278999e-01; /* (asdouble(0x3FE921FB54442D18ULL)) */
 /* coefficient for R(x^2) */
-static const double pS0 = 1.66666666666666657415e-01;   /* 0x3FC5555555555555 */
-static const double pS1 = -3.25565818622400915405e-01;  /* 0xBFD4D61203EB6F7D */
-static const double pS2 = 2.01212532134862925881e-01;   /* 0x3FC9C1550E884455 */
-static const double pS3 = -4.00555345006794114027e-02;  /* 0xBFA48228B5688F3B */
-static const double pS4 = 7.91534994289814532176e-04;   /* 0x3F49EFE07501B288 */
-static const double pS5 = 3.47933107596021167570e-05;   /* 0x3F023DE10DFDF709 */
-static const double qS1 = -2.40339491173441421878e+00;  /* 0xC0033A271C8A2D4B */
-static const double qS2 = 2.02094576023350569471e+00;   /* 0x40002AE59C598AC8 */
-static const double qS3 = -6.88283971605453293030e-01;  /* 0xBFE6066C1B8D0159 */
-static const double qS4 = 7.70381505559019352791e-02;   /* 0x3FB3B8C5B12E9282 */
+static const double pS0 = 1.66666666666666657415e-01;   /* (asdouble(0x3FC5555555555555ULL)) */
+static const double pS1 = -3.25565818622400915405e-01;  /* (asdouble(0xBFD4D61203EB6F7DULL)) */
+static const double pS2 = 2.01212532134862925881e-01;   /* (asdouble(0x3FC9C1550E884455ULL)) */
+static const double pS3 = -4.00555345006794114027e-02;  /* (asdouble(0xBFA48228B5688F3BULL)) */
+static const double pS4 = 7.91534994289814532176e-04;   /* (asdouble(0x3F49EFE07501B288ULL)) */
+static const double pS5 = 3.47933107596021167570e-05;   /* (asdouble(0x3F023DE10DFDF709ULL)) */
+static const double qS1 = -2.40339491173441421878e+00;  /* (asdouble(0xC0033A271C8A2D4BULL)) */
+static const double qS2 = 2.02094576023350569471e+00;   /* (asdouble(0x40002AE59C598AC8ULL)) */
+static const double qS3 = -6.88283971605453293030e-01;  /* (asdouble(0xBFE6066C1B8D0159ULL)) */
+static const double qS4 = 7.70381505559019352791e-02;   /* (asdouble(0x3FB3B8C5B12E9282ULL)) */
 
 /* atan/atan2 constants */
 static const double atanhi[] = {
-  4.63647609000806093515e-01,   /* atan(0.5)hi 0x3FDDAC670561BB4F */
-  7.85398163397448278999e-01,   /* atan(1.0)hi 0x3FE921FB54442D18 */
-  9.82793723247329054082e-01,   /* atan(1.5)hi 0x3FEF730BD281F69B */
-  1.57079632679489655800e+00    /* atan(inf)hi 0x3FF921FB54442D18 */
+  4.63647609000806093515e-01,   /* atan(0.5)hi (asdouble(0x3FDDAC670561BB4FULL)) */
+  7.85398163397448278999e-01,   /* atan(1.0)hi (asdouble(0x3FE921FB54442D18ULL)) */
+  9.82793723247329054082e-01,   /* atan(1.5)hi (asdouble(0x3FEF730BD281F69BULL)) */
+  1.57079632679489655800e+00    /* atan(inf)hi (asdouble(0x3FF921FB54442D18ULL)) */
 };
 static const double atanlo[] = {
-  2.26987774529616870924e-17,   /* atan(0.5)lo 0x3C7A2B7F222F65E2 */
-  3.06161699786838301793e-17,   /* atan(1.0)lo 0x3C81A62633145C07 */
-  1.39033110312309984516e-17,   /* atan(1.5)lo 0x3C7007887AF0CBBD */
-  6.12323399573676603587e-17    /* atan(inf)lo 0x3C91A62633145C07 */
+  2.26987774529616870924e-17,   /* atan(0.5)lo (asdouble(0x3C7A2B7F222F65E2ULL)) */
+  3.06161699786838301793e-17,   /* atan(1.0)lo (asdouble(0x3C81A62633145C07ULL)) */
+  1.39033110312309984516e-17,   /* atan(1.5)lo (asdouble(0x3C7007887AF0CBBDULL)) */
+  6.12323399573676603587e-17    /* atan(inf)lo (asdouble(0x3C91A62633145C07ULL)) */
 };
 static const double aT[] = {
-  3.33333333333329318027e-01,   /* 0x3FD555555555550D */
-  -1.99999999998764832476e-01,  /* 0xBFC999999998EBC4 */
-  1.42857142725034663711e-01,   /* 0x3FC24924920083FF */
-  -1.11111104054623557880e-01,  /* 0xBFBC71C6FE231671 */
-  9.09088713343650656196e-02,   /* 0x3FB745CDC54C206E */
-  -7.69187620504482999495e-02,  /* 0xBFB3B0F2AF749A6D */
-  6.66107313738753120669e-02,   /* 0x3FB10D66A0D03D51 */
-  -5.83357013379057348645e-02,  /* 0xBFADDE2D52DEFD9A */
-  4.97687799461593236017e-02,   /* 0x3FA97B4B24760DEB */
-  -3.65315727442169155270e-02,  /* 0xBFA2B4442C6A6C2F */
-  1.62858201153657823623e-02    /* 0x3F90AD3AE322DA11 */
+  3.33333333333329318027e-01,   /* (asdouble(0x3FD555555555550DULL)) */
+  -1.99999999998764832476e-01,  /* (asdouble(0xBFC999999998EBC4ULL)) */
+  1.42857142725034663711e-01,   /* (asdouble(0x3FC24924920083FFULL)) */
+  -1.11111104054623557880e-01,  /* (asdouble(0xBFBC71C6FE231671ULL)) */
+  9.09088713343650656196e-02,   /* (asdouble(0x3FB745CDC54C206EULL)) */
+  -7.69187620504482999495e-02,  /* (asdouble(0xBFB3B0F2AF749A6DULL)) */
+  6.66107313738753120669e-02,   /* (asdouble(0x3FB10D66A0D03D51ULL)) */
+  -5.83357013379057348645e-02,  /* (asdouble(0xBFADDE2D52DEFD9AULL)) */
+  4.97687799461593236017e-02,   /* (asdouble(0x3FA97B4B24760DEBULL)) */
+  -3.65315727442169155270e-02,  /* (asdouble(0xBFA2B4442C6A6C2FULL)) */
+  1.62858201153657823623e-02    /* (asdouble(0x3F90AD3AE322DA11ULL)) */
 };
-static const double pi_o_4 = 7.8539816339744827900E-01; /* 0x3FE921FB54442D18 */
-static const double pi_o_2 = 1.5707963267948965580E+00; /* 0x3FF921FB54442D18 */
-static const double pi_lo = 1.2246467991473531772E-16;  /* 0x3CA1A62633145C07 */
+static const double pi_o_4 = 7.8539816339744827900E-01; /* (asdouble(0x3FE921FB54442D18ULL)) */
+static const double pi_o_2 = 1.5707963267948965580E+00; /* (asdouble(0x3FF921FB54442D18ULL)) */
+static const double pi_lo = 1.2246467991473531772E-16;  /* (asdouble(0x3CA1A62633145C07ULL)) */
 /* hyperbolic trig. constants */
 static const double shuge = 1.0e307;
 
@@ -326,7 +326,7 @@ int signbit(double x)
  * scalbn(x,n) returns x* 2**n  computed by  exponent  
  * manipulation rather than by actually performing an 
  * exponentiation or a multiplication. */
-static double __ieee754_scalbn(double x, int n)
+static double ieee754_scalbn(double x, int n)
 {
   int32_t k, hx, lx;
 
@@ -341,16 +341,16 @@ static double __ieee754_scalbn(double x, int n)
   if (k == IEEE754_DOUBLE_MAXEXP)
     return x + x; /* NaN or Inf */
   if ((int32_t)n < IC(-30000))
-    return tiny * __ieee754_copysign(tiny, x); /* underflow */
+    return tiny * ieee754_copysign(tiny, x); /* underflow */
   if ((int32_t)n > IC(30000) || k + n > 0x7fe)
-    return hugeval * __ieee754_copysign(hugeval, x); /* overflow  */
+    return hugeval * ieee754_copysign(hugeval, x); /* overflow  */
   /* Now k and n are bounded we know that k = k+n does not overflow */
   k = k + n;
   if (k > 0) { /* normal result */
     SET_HIGH_WORD(x, (hx & UC(0x800FFFFFU)) | (k << IEEE754_DOUBLE_SHIFT));
     return x;
   }
-  if (k <= -54) return tiny * __ieee754_copysign(tiny, x); /*underflow */
+  if (k <= -54) return tiny * ieee754_copysign(tiny, x); /*underflow */
   k += 54; /* subnormal result */
   SET_HIGH_WORD(x, (hx & UC(0x800FFFFFU)) | (k << IEEE754_DOUBLE_SHIFT));
   return x * twom54;
@@ -361,7 +361,7 @@ static double __ieee754_scalbn(double x, int n)
  * and the corresponding binary exponent "exp". That is arg = x*2^exp.
  * If arg is inf, 0.0, or NaN, then frexp(arg,&exp) returns arg 
  * with *exp=0. */
-static double __ieee754_frexp(double x, int *eptr)
+static double ieee754_frexp(double x, int *eptr)
 {
   int32_t hx, ix, lx;
 
@@ -386,7 +386,7 @@ static double __ieee754_frexp(double x, int *eptr)
  * Return x rounded toward -inf to integral value
  * Method: Bit twiddling.
  * Exception: Inexact flag raised if x not equal to ceil(x). */
-static double __ieee754_ceil(double x)
+static double ieee754_ceil(double x)
 {
   int32_t i0, j0;
   uint32_t i, j, i1;
@@ -442,7 +442,7 @@ static double __ieee754_ceil(double x)
  * Return x rounded toward -inf to integral value
  * Method: Bit twiddling.
  * Exception: Inexact flag raised if x not equal to floor(x). */
-double __ieee754_floor(double x)
+double ieee754_floor(double x)
 {
   int32_t i0, j0;
   uint32_t i, j, i1;
@@ -498,7 +498,7 @@ double __ieee754_floor(double x)
  * <<round>> functions are written so that "inexact" is not raised if the
  * result does not equal the argument, which behavior is as recommended by
  * IEEE 754 for its related functions.) */
-static double __ieee754_round(double x)
+static double ieee754_round(double x)
 {
   int32_t i0, j0;
   uint32_t i1;
@@ -553,7 +553,7 @@ static double __ieee754_round(double x)
 
 /* The trunc functions round their argument to the integer value, in floating format,
  * nearest to but no larger in magnitude than the argument. */
-static double __ieee754_trunc(double x)
+static double ieee754_trunc(double x)
 {
   int32_t i0, j0;
   uint32_t i1;
@@ -581,7 +581,7 @@ static double __ieee754_trunc(double x)
  * return fraction part of x, and return x's integral part in *iptr.
  * Method: Bit twiddling.
  * Exception: No exception. */
-static double __ieee754_modf(double x, double *iptr)
+static double ieee754_modf(double x, double *iptr)
 {
   int32_t i0, i1, j0;
   uint32_t i;
@@ -624,10 +624,10 @@ static double __ieee754_modf(double x, double *iptr)
   return __builtin_nan(""); /* to silence WCPL */
 }
 
-/* __ieee754_fmod(x,y)
+/* ieee754_fmod(x,y)
  * Return x mod y in exact arithmetic
  * Method: shift and subtract */
-static double __ieee754_fmod(double x, double y)
+static double ieee754_fmod(double x, double y)
 {
   int32_t n, hx, hy, hz, ix, iy, sx, i;
   uint32_t lx, ly, lz;
@@ -758,10 +758,10 @@ static double __ieee754_fmod(double x, double y)
 }
 
 
-/* __ieee754_sqrt(x)
+/* ieee754_sqrt(x)
  * Return correctly rounded sqrt.
  * Method: Bit by bit method using integer arithmetic. (Slow, but portable) */
-static double __ieee754_sqrt(double x)
+static double ieee754_sqrt(double x)
 {
   double z;
   int32_t sign = IC(0x80000000U);
@@ -865,10 +865,10 @@ static double __ieee754_sqrt(double x)
   return z;
 }
 
-/* __ieee754_pow(x,y) return x**y
+/* ieee754_pow(x,y) return x**y
  * pow(x,y) returns x**y nearly rounded. In particular pow(integer,integer)
  * always returns the correct integer provided it is representable. */
-static double __ieee754_pow(double x, double y)
+static double ieee754_pow(double x, double y)
 {
   double z, ax, z_h, z_l, p_h, p_l;
   double y1, t1, t2, r, s, t, u, v, w;
@@ -940,11 +940,11 @@ static double __ieee754_pow(double x, double y)
       return x * x; /* y is  2 */
     if (hy == IC(0x3fe00000)) { /* y is  0.5 */
       if (hx >= 0) /* x >= +0 */
-        return __ieee754_sqrt(x);
+        return ieee754_sqrt(x);
     }
   }
 
-  ax = __ieee754_fabs(x);
+  ax = ieee754_fabs(x);
   /* special value of x */
   if (lx == 0) {
     if (ix == IC(0x7ff00000) || ix == 0 || ix == IC(0x3ff00000)) {
@@ -1084,20 +1084,20 @@ static double __ieee754_pow(double x, double y)
   if (j >= IC(0x40900000)) { /* z >= 1024 */
     if (((j - IC(0x40900000)) | i) != 0) { /* if z > 1024 */
       feraiseexcept(FE_OVERFLOW);
-      return __ieee754_copysign(HUGE_VAL, s);
+      return ieee754_copysign(HUGE_VAL, s);
     }
     if (p_l + ovt > z - p_h) {
       feraiseexcept(FE_OVERFLOW);
-      return __ieee754_copysign(HUGE_VAL, s);
+      return ieee754_copysign(HUGE_VAL, s);
     }
   } else if ((j & IC(0x7fffffff)) >= IC(0x4090cc00)) { /* z <= -1075 */
     if (((j - IC(0xc090cc00U)) | i) != 0) { /* z < -1075 */
       feraiseexcept(FE_UNDERFLOW);
-      return __ieee754_copysign(0.0, s);
+      return ieee754_copysign(0.0, s);
     }
     if (p_l <= z - p_h) {
       feraiseexcept(FE_UNDERFLOW);
-      return __ieee754_copysign(0.0, s);
+      return ieee754_copysign(0.0, s);
     }
   }
   /* compute 2**(p_h+p_l) */
@@ -1127,18 +1127,18 @@ static double __ieee754_pow(double x, double y)
   GET_HIGH_WORD(j, z);
   j += (n << IEEE754_DOUBLE_SHIFT);
   if ((j >> IEEE754_DOUBLE_SHIFT) <= 0) {
-    z = __ieee754_scalbn(z, (int) n); /* subnormal output */
+    z = ieee754_scalbn(z, (int) n); /* subnormal output */
   } else {
     SET_HIGH_WORD(z, j);
   }
   return s * z;
 }
 
-/* __ieee754_log(x)
+/* ieee754_log(x)
  * Return the logrithm of x
  * according to an error analysis, the error is always less than
  * 1 ulp (unit in the last place). */
-static double __ieee754_log(double x)
+static double ieee754_log(double x)
 {
   double hfsq, f, s, z, R, w, t1, t2, dk;
   int32_t k, hx, i, j;
@@ -1193,9 +1193,9 @@ static double __ieee754_log(double x)
   return dk * ln2_hi - ((s * (f - R) - dk * ln2_lo) - f);
 }
 
-/* __ieee754_log10(x)
+/* ieee754_log10(x)
  * Return the base 10 logarithm of x */
-static double __ieee754_log10(double x)
+static double ieee754_log10(double x)
 {
   double y, z;
   int32_t i, k, hx;
@@ -1219,15 +1219,15 @@ static double __ieee754_log10(double x)
   hx = (hx & IC(0x000fffffU)) | ((0x3ff - i) << 20);
   y = (double) (k + i);
   SET_HIGH_WORD(x, hx);
-  z = y * log10_2lo + ivln10 * __ieee754_log(x);
+  z = y * log10_2lo + ivln10 * ieee754_log(x);
   return z + y * log10_2hi;
 }
 
-/* __ieee754_exp(x)
+/* ieee754_exp(x)
  * Returns the exponential of x.
  * according to an error analysis, the error is always less than
  * 1 ulp (unit in the last place). */
-static double __ieee754_exp(double x) 
+static double ieee754_exp(double x) 
 {
   double y, hi, lo, c, t;
   int32_t k, xsb;
@@ -1296,7 +1296,7 @@ static double __ieee754_exp(double x)
 
 /* expm1(x)
  * Returns exp(x)-1, the exponential of x minus 1. */
-static double __ieee754_expm1(double x)
+static double ieee754_expm1(double x)
 {
   double y, hi, lo, c, t, e, hxs, hfx, r1, h2, h4, R1, R2, R3;
   int32_t k, xsb;
@@ -1465,7 +1465,7 @@ static double __kernel_tan(double x, double y, int iy)
       uint32_t low;
       GET_LOW_WORD(low, x);
       if (((ix | low) | (iy + 1)) == 0)
-        return one / __ieee754_fabs(x);
+        return one / ieee754_fabs(x);
       else
         return (iy == 1) ? x : -one / x;
     }
@@ -1550,8 +1550,8 @@ static int32_t __kernel_rem_pio2(double *x, double *y, int32_t e0, int32_t nx, i
     }
 
     /* compute n */
-    z = __ieee754_scalbn(z, (int)q0); /* actual value of z */
-    z -= 8.0 * __ieee754_floor(z * 0.125); /* trim off integer >= 8 */
+    z = ieee754_scalbn(z, (int)q0); /* actual value of z */
+    z -= 8.0 * ieee754_floor(z * 0.125); /* trim off integer >= 8 */
     n = (int32_t) z;
     z -= (double) n;
     ih = 0;
@@ -1592,7 +1592,7 @@ static int32_t __kernel_rem_pio2(double *x, double *y, int32_t e0, int32_t nx, i
       if (ih == 2) {
         z = one - z;
         if (carry != 0)
-          z -= __ieee754_scalbn(one, (int)q0);
+          z -= ieee754_scalbn(one, (int)q0);
       }
     }
 
@@ -1625,7 +1625,7 @@ static int32_t __kernel_rem_pio2(double *x, double *y, int32_t e0, int32_t nx, i
       q0 -= 24;
     }
   } else { /* break z into 24-bit if necessary */
-    z = __ieee754_scalbn(z, (int)-q0);
+    z = ieee754_scalbn(z, (int)-q0);
     if (z >= two24) {
       fw = (double) ((int32_t) (twon24 * z));
       iq[jz] = (int32_t) (z - two24 * fw);
@@ -1638,7 +1638,7 @@ static int32_t __kernel_rem_pio2(double *x, double *y, int32_t e0, int32_t nx, i
   }
 
   /* convert integer "bit" chunk to floating-point value */
-  fw = __ieee754_scalbn(one, (int)q0);
+  fw = ieee754_scalbn(one, (int)q0);
   for (i = jz; i >= 0; i--) {
     q[i] = fw * (double) iq[i];
     fw *= twon24;
@@ -1697,10 +1697,10 @@ static int32_t __kernel_rem_pio2(double *x, double *y, int32_t e0, int32_t nx, i
   return n & 7;
 }
 
-/* __ieee754_rem_pio2(x,y)
+/* ieee754_rem_pio2(x,y)
  * return the remainder of x rem pi/2 in y[0]+y[1]
  * use __kernel_rem_pio2() */
-static int32_t __ieee754_rem_pio2(double x, double *y)
+static int32_t ieee754_rem_pio2(double x, double *y)
 {
   double z, w, t, r, fn;
   double tx[3];
@@ -1742,7 +1742,7 @@ static int32_t __ieee754_rem_pio2(double x, double *y)
   }
 
   if (ix <= IC(0x413921fbU)) { /* |x| ~<= 2^19*(pi/2), medium size */
-    t = __ieee754_fabs(x);
+    t = ieee754_fabs(x);
     n = (int32_t)(t * invpio2 + half);
     fn = (double)n;
     r = t - fn * pio2_1;
@@ -1808,7 +1808,7 @@ static int32_t __ieee754_rem_pio2(double x, double *y)
 
 /* sin(x)
  * Return sine function of x. */
-static double __ieee754_sin(double x)
+static double ieee754_sin(double x)
 {
   double y[2], z = 0.0;
   int32_t n, ix;
@@ -1827,7 +1827,7 @@ static double __ieee754_sin(double x)
 
   /* argument reduction needed */
   else {
-    n = __ieee754_rem_pio2(x, y);
+    n = ieee754_rem_pio2(x, y);
     switch ((int)(n & 3)) {
       case 0:
         return __kernel_sin(y[0], y[1], 1);
@@ -1844,7 +1844,7 @@ static double __ieee754_sin(double x)
 
 /* cos(x)
  * Return cosine function of x.*/
-static double __ieee754_cos(double x)
+static double ieee754_cos(double x)
 {
   double y[2];
   double z = 0.0;
@@ -1864,7 +1864,7 @@ static double __ieee754_cos(double x)
 
   /* argument reduction needed */
   else {
-    n = __ieee754_rem_pio2(x, y);
+    n = ieee754_rem_pio2(x, y);
     switch ((int)(n & 3)) {
       case 0:
         return __kernel_cos(y[0], y[1]);
@@ -1881,7 +1881,7 @@ static double __ieee754_cos(double x)
 
 /* tan(x)
  * Return tangent function of x. */
-static double __ieee754_tan(double x)
+static double ieee754_tan(double x)
 {
   double y[2], z = 0.0;
   int32_t n, ix;
@@ -1899,11 +1899,11 @@ static double __ieee754_tan(double x)
     return x - x; /* NaN */
 
   /* argument reduction needed */
-  n = __ieee754_rem_pio2(x, y);
+  n = ieee754_rem_pio2(x, y);
   return __kernel_tan(y[0], y[1], (int)(1 - ((n & 1) << 1))); /*   1 -- n even -1 -- n odd */
 }
 
-static double __ieee754_asin(double x)
+static double ieee754_asin(double x)
 {
   double t, w, p, q, c, r, s;
   int32_t hx, ix;
@@ -1930,11 +1930,11 @@ static double __ieee754_asin(double x)
     }
   }
   /* 1> |x|>= 0.5 */
-  w = one - __ieee754_fabs(x);
+  w = one - ieee754_fabs(x);
   t = w * 0.5;
   p = t * (pS0 + t * (pS1 + t * (pS2 + t * (pS3 + t * (pS4 + t * pS5)))));
   q = one + t * (qS1 + t * (qS2 + t * (qS3 + t * qS4)));
-  s = __ieee754_sqrt(t);
+  s = ieee754_sqrt(t);
   if (ix >= IC(0x3FEF3333U)) { /* if |x| > 0.975 */
     w = p / q;
     t = pio2_hi - (2.0 * (s + s * w) - pio2_lo);
@@ -1951,7 +1951,7 @@ static double __ieee754_asin(double x)
   return -t;
 }
 
-static double __ieee754_acos(double x)
+static double ieee754_acos(double x)
 {
   double z, p, q, r, w, s, c, df;
   int32_t hx, ix;
@@ -1982,13 +1982,13 @@ static double __ieee754_acos(double x)
     z = (one + x) * 0.5;
     p = z * (pS0 + z * (pS1 + z * (pS2 + z * (pS3 + z * (pS4 + z * pS5)))));
     q = one + z * (qS1 + z * (qS2 + z * (qS3 + z * qS4)));
-    s = __ieee754_sqrt(z);
+    s = ieee754_sqrt(z);
     r = p / q;
     w = r * s - pio2_lo;
     return pi - 2.0 * (s + w);
   } else { /* x > 0.5 */
     z = (one - x) * 0.5;
-    s = __ieee754_sqrt(z);
+    s = ieee754_sqrt(z);
     df = s;
     SET_LOW_WORD(df, 0);
     c = (z - df * df) / (s + df);
@@ -2001,7 +2001,7 @@ static double __ieee754_acos(double x)
   return __builtin_nan(""); /* to silence WCPL */
 }
 
-static double __ieee754_atan(double x)
+static double ieee754_atan(double x)
 {
   double w, s1, s2, z;
   int32_t ix, hx, id;
@@ -2025,7 +2025,7 @@ static double __ieee754_atan(double x)
     }
     id = -1;
   } else {
-    x = __ieee754_fabs(x);
+    x = ieee754_fabs(x);
     if (ix < IC(0x3ff30000)) { /* |x| < 1.1875 */
       if (ix < IC(0x3fe60000)) {/* 7/16 <=|x|<11/16 */
         id = 0;
@@ -2055,7 +2055,7 @@ static double __ieee754_atan(double x)
   return (hx < 0) ? -z : z;
 }
 
-static double __ieee754_atan2(double y, double x)
+static double ieee754_atan2(double y, double x)
 {
   double z;
   int32_t k, m, hx, hy, ix, iy;
@@ -2067,7 +2067,7 @@ static double __ieee754_atan2(double y, double x)
   iy = hy & IC(0x7fffffff);
   if (((ix | ((lx | -lx) >> 31)) > IC(0x7ff00000)) || ((iy | ((ly | -ly) >> 31)) > IC(0x7ff00000))) /* x or y is NaN */
     return x + y;
-  if (((hx - IC(0x3ff00000)) | lx) == 0) return __ieee754_atan(y); /* x=1.0 */
+  if (((hx - IC(0x3ff00000)) | lx) == 0) return ieee754_atan(y); /* x=1.0 */
   m = ((hy >> 31) & 1) | ((hx >> 30) & 2); /* 2*sign(x)+sign(y) */
 
   /* when y = 0 */
@@ -2123,7 +2123,7 @@ static double __ieee754_atan2(double y, double x)
   else if (hx < 0 && k < -60)
     z = 0.0; /* |y|/x < -2**60 */
   else
-    z = __ieee754_atan(__ieee754_fabs(y / x)); /* safe to do y/x */
+    z = ieee754_atan(ieee754_fabs(y / x)); /* safe to do y/x */
   switch ((int)m) {
     case 0:
       return z; /* atan(+,+) */
@@ -2140,7 +2140,7 @@ static double __ieee754_atan2(double y, double x)
   return (z - pi_lo) - pi; /* atan(-,-) */
 }
 
-static double __ieee754_sinh(double x)
+static double ieee754_sinh(double x)
 {
   double t, w, h;
   int32_t ix, jx;
@@ -2161,7 +2161,7 @@ static double __ieee754_sinh(double x)
     if (ix < IC(0x3e300000U)) /* |x|<2**-28 */
       if (shuge + x > one)
         return x; /* sinh(tiny) = tiny with inexact */
-    t = __ieee754_expm1(__ieee754_fabs(x));
+    t = ieee754_expm1(ieee754_fabs(x));
     if (ix < IC(0x3ff00000U))
       return h * (2.0 * t - t * t / (t + one));
     return h * (t + t / (t + one));
@@ -2169,12 +2169,12 @@ static double __ieee754_sinh(double x)
 
   /* |x| in [22, log(maxdouble)] return 0.5*exp(|x|) */
   if (ix < IC(0x40862e42U))
-    return h * __ieee754_exp(__ieee754_fabs(x));
+    return h * ieee754_exp(ieee754_fabs(x));
 
   /* |x| in [log(maxdouble), overflowthresold] */
   GET_LOW_WORD(lx, x);
   if (ix < IC(0x408633ceU) || (ix == IC(0x408633ceU) && lx <= UC(0x8fb9f87dU))) {
-    w = __ieee754_exp(0.5 * __ieee754_fabs(x));
+    w = ieee754_exp(0.5 * ieee754_fabs(x));
     t = h * w;
     return t * w;
   }
@@ -2183,7 +2183,7 @@ static double __ieee754_sinh(double x)
   return x * shuge;
 }
 
-static double __ieee754_cosh(double x)
+static double ieee754_cosh(double x)
 {
   double t, w;
   int32_t ix;
@@ -2201,7 +2201,7 @@ static double __ieee754_cosh(double x)
   if (ix < IC(0x40360000U)) {
     /* |x| in [0,0.5*ln2], return 1+expm1(|x|)^2/(2*exp(|x|)) */
     if (ix < IC(0x3fd62e43U)) {
-      t = __ieee754_expm1(__ieee754_fabs(x));
+      t = ieee754_expm1(ieee754_fabs(x));
       w = one + t;
       if (ix < IC(0x3c800000))
         return w; /* cosh(tiny) = 1 */
@@ -2209,18 +2209,18 @@ static double __ieee754_cosh(double x)
     }
 
     /* |x| in [0.5*ln2,22], return (exp(|x|)+1/exp(|x|)/2; */
-    t = __ieee754_exp(__ieee754_fabs(x));
+    t = ieee754_exp(ieee754_fabs(x));
     return half * t + half / t;
   }
 
   /* |x| in [22, log(maxdouble)] return half*exp(|x|) */
   if (ix < IC(0x40862E42U))
-    return half * __ieee754_exp(__ieee754_fabs(x));
+    return half * ieee754_exp(ieee754_fabs(x));
 
   /* |x| in [log(maxdouble), overflowthresold] */
   GET_LOW_WORD(lx, x);
   if (ix < IC(0x408633ceU) || (ix == IC(0x408633ceU) && lx <= UC(0x8fb9f87dU))) {
-    w = __ieee754_exp(half * __ieee754_fabs(x));
+    w = ieee754_exp(half * ieee754_fabs(x));
     t = half * w;
     return t * w;
   }
@@ -2229,7 +2229,7 @@ static double __ieee754_cosh(double x)
   return hugeval * hugeval;
 }
 
-static double __ieee754_tanh(double x)
+static double ieee754_tanh(double x)
 {
   double t, z;
   int32_t jx, ix, lx;
@@ -2253,10 +2253,10 @@ static double __ieee754_tanh(double x)
     if (ix < IC(0x3c800000)) /* |x|<2**-55 */
       return x * (one + x); /* tanh(small) = small */
     if (ix >= IC(0x3ff00000)) { /* |x|>=1  */
-      t = __ieee754_expm1(two * __ieee754_fabs(x));
+      t = ieee754_expm1(two * ieee754_fabs(x));
       z = one - two / (t + two);
     } else {
-      t = __ieee754_expm1(-two * __ieee754_fabs(x));
+      t = ieee754_expm1(-two * ieee754_fabs(x));
       z = -t / (t + two);
     }
     /* |x| > 22, return +-1 */
@@ -2271,87 +2271,87 @@ static double __ieee754_tanh(double x)
 
 double ceil(double x)
 {
-  return __ieee754_ceil(x);
+  return ieee754_ceil(x);
 }
 
 double floor(double x)
 {
-  return __ieee754_floor(x);
+  return ieee754_floor(x);
 }
 
 double round(double x)
 {
-  return __ieee754_round(x);
+  return ieee754_round(x);
 }
 
 double trunc(double x)
 {
-  return __ieee754_trunc(x);
+  return ieee754_trunc(x);
 }
 
 double frexp(double x, int *eptr)
 {
- return __ieee754_frexp(x, eptr);
+ return ieee754_frexp(x, eptr);
 }
 
 double ldexp(double x, int n)
 {
- return __ieee754_scalbn(x, n);
+ return ieee754_scalbn(x, n);
 }
 
 double scalbn(double x, int n)
 {
- return __ieee754_scalbn(x, n);
+ return ieee754_scalbn(x, n);
 }
 
 double modf(double x, double *iptr)
 {
-  return __ieee754_modf(x, iptr);
+  return ieee754_modf(x, iptr);
 }
 
 double fmod(double x, double y)
 {
-  return __ieee754_fmod(x, y);
+  return ieee754_fmod(x, y);
 }
 
 double fabs(double x)
 {
-  return __ieee754_fabs(x);
+  return ieee754_fabs(x);
 }
 
 double copysign(double x, double y) 
 {
- return __ieee754_copysign(x, y);
+ return ieee754_copysign(x, y);
 }
 
 double sqrt(double x)
 {
-  return __ieee754_sqrt(x);
+  return ieee754_sqrt(x);
 }
 
 double pow(double x, double y)
 {
-  return __ieee754_pow(x, y);
+  return ieee754_pow(x, y);
 }
 
 double log(double x)
 {
-  return __ieee754_log(x);
+  return ieee754_log(x);
 }
 
 double log10(double x)
 {
-  return __ieee754_log10(x);
+  return ieee754_log10(x);
 }
 
 double exp(double x)
 {
-  return __ieee754_exp(x);
+  return ieee754_exp(x);
 }
 
 double expm1(double x)
 { 
-  return __ieee754_expm1(x);
+  return ieee754_expm1(x);
 }
 
 double fmax(double x, double y)
@@ -2366,51 +2366,51 @@ double fmin(double x, double y)
 
 double sin(double x)
 {
-  return __ieee754_sin(x);
+  return ieee754_sin(x);
 }
 
 double cos(double x)
 {
-  return __ieee754_cos(x);
+  return ieee754_cos(x);
 }
 
 double tan(double x)
 {
-  return __ieee754_tan(x);
+  return ieee754_tan(x);
 }
 
 double asin(double x)
 {
-  return __ieee754_asin(x);
+  return ieee754_asin(x);
 }
 
 double acos(double x)
 {
-  return __ieee754_acos(x);
+  return ieee754_acos(x);
 }
 
 double atan(double x)
 {
-  return __ieee754_atan(x);
+  return ieee754_atan(x);
 }
 
 double atan2(double y, double x)
 {
-  return __ieee754_atan2(y, x);
+  return ieee754_atan2(y, x);
 }
 
 double sinh(double x)
 { 
-  return __ieee754_sinh(x);
+  return ieee754_sinh(x);
 }
 
 double cosh(double x)
 { 
-  return __ieee754_cosh(x);
+  return ieee754_cosh(x);
 }
 
 double tanh(double x)
 { 
-  return __ieee754_tanh(x);
+  return ieee754_tanh(x);
 }
 
