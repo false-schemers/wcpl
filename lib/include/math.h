@@ -46,6 +46,7 @@ extern double copysign(double x, double y);
 extern double scalbn(double x, int n);
 extern double round(double x);
 extern double trunc(double x);
+extern double nearbyint(double x);
 extern double fmax(double x, double y);
 extern double fmin(double x, double y);
 extern double expm1(double x); 

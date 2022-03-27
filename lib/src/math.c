@@ -2283,12 +2283,16 @@ static double ieee754_tanh(double x)
 
 double ceil(double x)
 {
-  return ieee754_ceil(x);
+  /* use built-in WASM instruction instead of
+  return ieee754_ceil(x); */
+  return (double)asm(local.get x, f64.ceil);
 }
 
 double floor(double x)
 {
-  return ieee754_floor(x);
+  /* use built-in WASM instruction instead of
+  return ieee754_floor(x); */
+  return (double)asm(local.get x, f64.floor);
 }
 
 double round(double x)
@@ -2298,7 +2302,15 @@ double round(double x)
 
 double trunc(double x)
 {
-  return ieee754_trunc(x);
+  /* use built-in WASM instruction instead of
+  return ieee754_trunc(x); */
+  return (double)asm(local.get x, f64.trunc);
+}
+
+double nearbyint(double x) 
+{
+  /* use built-in WASM instruction */
+  return (double)asm(local.get x, f64.nearest);
 }
 
 double frexp(double x, int *eptr)
@@ -2328,17 +2340,23 @@ double fmod(double x, double y)
 
 double fabs(double x)
 {
-  return ieee754_fabs(x);
+  /* use built-in WASM instruction instead of
+  return ieee754_fabs(x); */
+  return (double)asm(local.get x, f64.abs);
 }
 
 double copysign(double x, double y) 
 {
- return ieee754_copysign(x, y);
+  /* use built-in WASM instruction instead of
+  return ieee754_copysign(x, y); */
+  return (double)asm(local.get x, local.get y, f64.copysign);
 }
 
 double sqrt(double x)
 {
-  return ieee754_sqrt(x);
+  /* use built-in WASM instruction instead of
+  return ieee754_sqrt(x); */
+  return (double)asm(local.get x, f64.sqrt);
 }
 
 double pow(double x, double y)
@@ -2368,12 +2386,20 @@ double expm1(double x)
 
 double fmax(double x, double y)
 {
-  return (isgreaterequal(x, y) || isnan(y)) ? x : y;
+  /* use built-in WASM instruction instead of
+  return (isgreaterequal(x, y) || isnan(y)) ? x : y; */
+  if (isnan(x)) return y;
+  if (isnan(y)) return x;
+  return (double)asm(local.get x, local.get y, f64.max);
 }
 
 double fmin(double x, double y)
 {
-  return (islessequal(x, y) || isnan(y)) ? x : y;
+  /* use built-in WASM instruction instead of
+  return (islessequal(x, y) || isnan(y)) ? x : y; */
+  if (isnan(x)) return y;
+  if (isnan(y)) return x;
+  return (double)asm(local.get x, local.get y, f64.min);
 }
 
 double sin(double x)

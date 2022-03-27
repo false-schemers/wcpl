@@ -8525,13 +8525,13 @@
   (func $math:ceil (export "ceil")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:ieee754_ceil
+    f64.ceil
     return
   )
   (func $math:floor (export "floor")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:ieee754_floor
+    f64.floor
     return
   )
   (func $math:round (export "round")
@@ -8543,7 +8543,13 @@
   (func $math:trunc (export "trunc")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:ieee754_trunc
+    f64.trunc
+    return
+  )
+  (func $math:nearbyint (export "nearbyint")
+    (param $x f64) (result f64) 
+    local.get $x
+    f64.nearest
     return
   )
   (func $math:frexp (export "frexp")
@@ -8584,30 +8590,20 @@
   (func $math:fabs (export "fabs")
     (param $x f64) (result f64) 
     local.get $x
-    i64.reinterpret_f64
-    i64.const 9223372036854775807
-    i64.and
-    f64.reinterpret_i64
+    f64.abs
     return
   )
   (func $math:copysign (export "copysign")
     (param $x f64) (param $y f64) (result f64) 
     local.get $x
-    i64.reinterpret_f64
-    i64.const 9223372036854775807
-    i64.and
     local.get $y
-    i64.reinterpret_f64
-    i64.const -9223372036854775808
-    i64.and
-    i64.or
-    f64.reinterpret_i64
+    f64.copysign
     return
   )
   (func $math:sqrt (export "sqrt")
     (param $x f64) (result f64) 
     local.get $x
-    call $math:ieee754_sqrt
+    f64.sqrt
     return
   )
   (func $math:pow (export "pow")
@@ -8644,33 +8640,39 @@
   (func $math:fmax (export "fmax")
     (param $x f64) (param $y f64) (result f64) 
     local.get $x
+    call $math:isnan
+    if
     local.get $y
-    local.get $x
-    local.get $y
-    f64.ge
-    if (result i32)
-    i32.const 1
-    else
+    return
+    end
     local.get $y
     call $math:isnan
+    if
+    local.get $x
+    return
     end
-    select
+    local.get $x
+    local.get $y
+    f64.max
     return
   )
   (func $math:fmin (export "fmin")
     (param $x f64) (param $y f64) (result f64) 
     local.get $x
+    call $math:isnan
+    if
     local.get $y
-    local.get $x
-    local.get $y
-    f64.le
-    if (result i32)
-    i32.const 1
-    else
+    return
+    end
     local.get $y
     call $math:isnan
+    if
+    local.get $x
+    return
     end
-    select
+    local.get $x
+    local.get $y
+    f64.min
     return
   )
   (func $math:sin (export "sin")

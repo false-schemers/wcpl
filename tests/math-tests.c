@@ -2282,7 +2282,6 @@ void test_math_modf(void) {
   REQUIRE(FEQ(x, z));
 }
 
-/*
 void test_math_nearbyint(void) {
   start("tests for nearbyint()");
   const char *buffer = "";
@@ -2324,7 +2323,6 @@ void test_math_nearbyint(void) {
   y = nearbyint(-1.5); z = -2.0;
   REQUIRE(FEQ(y, z));
 }
-*/
 
 /*
 void test_math_nextafter(void) {
@@ -3781,7 +3779,7 @@ int main()
   //test_math_log2();
   //test_math_logb();
   test_math_modf();
-  //test_math_nearbyint();
+  test_math_nearbyint();
   //test_math_nextafter();
   //test_math_nexttoward();
   test_math_pow();
