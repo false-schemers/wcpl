@@ -1706,7 +1706,7 @@ state_2:
     goto err;
   } else if (c == ';') {
     chbputc(c, pcb);
-    goto state_34;
+    goto state_43;
   } else {
     unreadchar();
     goto err;
@@ -1717,7 +1717,7 @@ state_3:
     return WT_LPAR;
   } else if (c == ';') {
     chbputc(c, pcb);
-    goto state_33;
+    goto state_42;
   } else {
     unreadchar();
     return WT_LPAR;
@@ -1739,36 +1739,18 @@ state_6:
   readchar();
   if (c == EOF) {
     goto err;
-  } else if (c == '0') {
-    chbputc(c, pcb);
-    goto state_31;
-  } else if ((c >= '1' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_30;
   } else if (c == 'i') {
     chbputc(c, pcb);
-    readchar();
-    if (c == 'n') {
-      chbputc(c, pcb);
-      readchar();
-      if (c == 'f') {
-        chbputc(c, pcb);
-        return WT_FLOAT;
-      }
-    }
-    goto err;
+    goto state_38;
   } else if (c == 'n') {
     chbputc(c, pcb);
-    readchar();
-    if (c == 'a') {
-      chbputc(c, pcb);
-      readchar();
-      if (c == 'n') {
-        chbputc(c, pcb);
-        return WT_FLOAT;
-      }
-    }
-    goto err;
+    goto state_37;
+  } else if (c == '0') {
+    chbputc(c, pcb);
+    goto state_8;
+  } else if ((c >= '1' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_7;
   } else {
     unreadchar();
     goto err;
@@ -1803,7 +1785,7 @@ state_8:
   } else if (c == 'E' || c == 'e') {
     chbputc(c, pcb);
     goto state_21;
-  } else if (c == 'x') {
+  } else if (c == 'X' || c == 'x') {
     chbputc(c, pcb);
     goto state_20;
   } else {
@@ -2103,6 +2085,12 @@ state_29:
   readchar();
   if (c == EOF) {
     return WT_INT;
+  } else if (c == 'P' || c == 'p') {
+    chbputc(c, pcb);
+    goto state_31;
+  } else if (c == '.') {
+    chbputc(c, pcb);
+    goto state_30;
   } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
     chbputc(c, pcb);
     goto state_29;
@@ -2113,81 +2101,169 @@ state_29:
 state_30:
   readchar();
   if (c == EOF) {
-    return WT_INT;
-  } else if ((c >= '0' && c <= '9')) {
+    return WT_FLOAT;
+  } else if (c == 'P' || c == 'p') {
+    chbputc(c, pcb);
+    goto state_34;
+  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
     chbputc(c, pcb);
     goto state_30;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_22;
   } else {
     unreadchar();
-    return WT_INT;
+    return WT_FLOAT;
   }
 state_31:
   readchar();
   if (c == EOF) {
-    return WT_INT;
+    goto err;
   } else if ((c >= '0' && c <= '9')) {
     chbputc(c, pcb);
+    goto state_33;
+  } else if (c == '+' || c == '-') {
+    chbputc(c, pcb);
     goto state_32;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_22;
-  } else if (c == 'x') {
-    chbputc(c, pcb);
-    goto state_20;
   } else {
     unreadchar();
-    return WT_INT;
+    goto err;
   }
 state_32:
   readchar();
   if (c == EOF) {
-    return WT_INT;
+    goto err;
   } else if ((c >= '0' && c <= '9')) {
     chbputc(c, pcb);
-    goto state_32;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_22;
+    goto state_33;
   } else {
     unreadchar();
-    return WT_INT;
+    goto err;
   }
 state_33:
-  return WT_BCSTART;
+  readchar();
+  if (c == EOF) {
+    return WT_FLOAT;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_33;
+  } else {
+    unreadchar();
+    return WT_FLOAT;
+  }
 state_34:
   readchar();
   if (c == EOF) {
-    goto eoferr;
-  } else if (!(c == '\n')) {
+    goto err;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_36;
+  } else if (c == '+' || c == '-') {
     chbputc(c, pcb);
     goto state_35;
   } else {
-    chbputc(c, pcb);
-    goto state_36;
+    unreadchar();
+    goto err;
   }
 state_35:
   readchar();
   if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_36;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_36:
+  readchar();
+  if (c == EOF) {
+    return WT_FLOAT;
+  } else if ((c >= '0' && c <= '9')) {
+    chbputc(c, pcb);
+    goto state_36;
+  } else {
+    unreadchar();
+    return WT_FLOAT;
+  }
+state_37:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (c == 'a') {
+    chbputc(c, pcb);
+    goto state_41;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_38:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (c == 'n') {
+    chbputc(c, pcb);
+    goto state_39;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_39:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (c == 'f') {
+    chbputc(c, pcb);
+    goto state_40;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_40:
+  return WT_FLOAT;
+state_41:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (c == 'n') {
+    chbputc(c, pcb);
+    goto state_40;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_42:
+  return WT_BCSTART;
+state_43:
+  readchar();
+  if (c == EOF) {
     goto eoferr;
   } else if (!(c == '\n')) {
     chbputc(c, pcb);
-    goto state_35;
+    goto state_44;
   } else {
     chbputc(c, pcb);
-    goto state_36;
+    goto state_45;
   }
-state_36:
+state_44:
+  readchar();
+  if (c == EOF) {
+    goto eoferr;
+  } else if (!(c == '\n')) {
+    chbputc(c, pcb);
+    goto state_44;
+  } else {
+    chbputc(c, pcb);
+    goto state_45;
+  }
+state_45:
   return WT_LC;
 
-  err:
-  eoferr:
-    return WT_EOF;
+err:
+eoferr:
+  return WT_EOF;
 #undef readchar
 #undef unreadchar
 }
+
 
 /* report error, possibly printing location information */
 static void vseprintf(sws_t *pw, const char *fmt, va_list args)
@@ -2313,14 +2389,37 @@ static void scan_integer(sws_t *pw, const char *s, numval_t *pv)
   if (errno || *e != 0) seprintf(pw, "invalid integer literal");
 }
 
-static double scan_float(sws_t *pw, const char *s)
+static float scan_float(sws_t *pw, const char *s)
+{
+  float f; char *e; errno = 0; 
+  if (streql(s, "+nan")) return (float)(HUGE_VAL - HUGE_VAL);
+  if (streql(s, "+inf")) return (float)(HUGE_VAL);
+  if (streql(s, "-inf")) return (float)(-HUGE_VAL);
+  if (s[0] == '0' && s[1] == 'x') {
+    unsigned u = hextouf(s);
+    if (u == (unsigned)-1) errno = EILSEQ;
+    else f = asfloat(u), s = ""; 
+  } else {
+    f = (float)strtod(s, &e);
+  }
+  if (errno || *e != 0) seprintf(pw, "invalid float literal");
+  return f;
+}
+
+static double scan_double(sws_t *pw, const char *s)
 {
   double d; char *e; errno = 0; 
   if (streql(s, "+nan")) return HUGE_VAL - HUGE_VAL;
   if (streql(s, "+inf")) return HUGE_VAL;
   if (streql(s, "-inf")) return -HUGE_VAL;
-  d = strtod(s, &e);
-  if (errno || *e != 0) seprintf(pw, "invalid floating-point literal");
+  if (s[0] == '0' && s[1] == 'x') {
+    unsigned long long u = hextoud(s);
+    if (u == (unsigned long long)-1LL) errno = EILSEQ;
+    else d = asdouble(u), s = ""; 
+  } else {
+    d = strtod(s, &e);
+  }
+  if (errno || *e != 0) seprintf(pw, "invalid double literal");
   return d;
 }
 
@@ -2602,14 +2701,20 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
           default: assert(false);
         }
       } break;
-      case INSIG_F32: case INSIG_F64: {
+      case INSIG_F32: {
         if (peekt(pw) == WT_FLOAT || peekt(pw) == WT_INT) {
-          double d = scan_float(pw, pw->tokstr);
-          if (is == INSIG_F32) pic->arg.f = (float)d;
-          else pic->arg.d = d;
+          pic->arg.f = scan_float(pw, pw->tokstr);
           dropt(pw);
         } else {
-          seprintf(pw, "invalid floating-point literal %s", pw->tokstr);
+          seprintf(pw, "invalid float literal %s", pw->tokstr);
+        } 
+      } break;
+      case INSIG_F64: {
+        if (peekt(pw) == WT_FLOAT || peekt(pw) == WT_INT) {
+          pic->arg.d = scan_double(pw, pw->tokstr);
+          dropt(pw);
+        } else {
+          seprintf(pw, "invalid double literal %s", pw->tokstr);
         } 
       } break;
       case INSIG_RF: { /* ref.func */
