@@ -255,11 +255,9 @@ int fcntl(int fd, int cmd, ...)
       }
       return 0;
     }
-    default: {
-      errno = EINVAL;
-      return -1;
-    }
   }
+  errno = EINVAL;
+  return -1;
 }
 
 

@@ -354,7 +354,7 @@
     local.get $s
     i32.store offset=0 align=4
     end
-    f64.const 0
+    f64.const 0x0.0000000000000p+0 (; 0 ;)
     return
     else
     i64.const 0
@@ -488,7 +488,7 @@
     local.get $s
     i32.store offset=0 align=4
     end
-    f64.const 0
+    f64.const 0x0.0000000000000p+0 (; 0 ;)
     return
     end
     local.get $negexp
@@ -554,7 +554,7 @@
     select
     return
     end
-    f64.const 1
+    f64.const 0x1.0000000000000p+0 (; 1 ;)
     local.set $exponent
     block $8$
     ref.data $stdlib:powers_of_10
@@ -731,7 +731,7 @@
     local.get $s
     i32.store offset=0 align=4
     end
-    f64.const 0
+    f64.const 0x0.0000000000000p+0 (; 0 ;)
     return
     else
     i64.const 0
@@ -905,7 +905,7 @@
     local.get $s
     i32.store offset=0 align=4
     end
-    f64.const 0
+    f64.const 0x0.0000000000000p+0 (; 0 ;)
     return
     end
     local.get $negexp
@@ -1228,7 +1228,7 @@
     local.get $s
     i32.store offset=0 align=4
     end
-    f64.const 0
+    f64.const 0x0.0000000000000p+0 (; 0 ;)
     return
     end
     else
@@ -1263,7 +1263,7 @@
     i32.add
     i32.store offset=0 align=4
     end
-    f64.const +nan
+    f64.const -nan
     return
     else
     local.get $endp
@@ -1275,7 +1275,7 @@
     local.get $s
     i32.store offset=0 align=4
     end
-    f64.const 0
+    f64.const 0x0.0000000000000p+0 (; 0 ;)
     return
     end
     end

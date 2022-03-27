@@ -772,7 +772,6 @@
     global.get $env:__stack_pointer
     local.set $fp$
     block $1$
-    block $6$
     block $5$
     block $4$
     block $3$
@@ -780,7 +779,7 @@
     local.get $cmd
     i32.const 1
     i32.sub
-    br_table $2$ $3$ $4$ $5$ $6$
+    br_table $2$ $3$ $4$ $5$ $1$
     end $2$
     i32.const 1
     local.get $bp$
@@ -904,14 +903,13 @@
     local.get $bp$
     global.set $env:__stack_pointer
     return
-    end $6$
+    end $1$
     i32.const 28
     global.set $errno:errno
     i32.const -1
     local.get $bp$
     global.set $env:__stack_pointer
     return
-    end $1$
   )
   (func $fcntl:posix_fadvise (export "posix_fadvise")
     (param $fd i32) (param $offset i64) (param $len i64) (param $advice i32) (result i32) 

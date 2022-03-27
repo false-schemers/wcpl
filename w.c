@@ -1187,14 +1187,22 @@ char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       if (pic->id) chbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
       else chbputf(pcb, " offset=%llu align=%u", pic->arg.u, 1<<pic->arg2.u); 
       break;
-    case INSIG_F32:
-      chbputc(' ', pcb); chbputg((double)pic->arg.f, pcb);
-      if (pic->id) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
-      break;
-    case INSIG_F64:
-      chbputc(' ', pcb); chbputg(pic->arg.d, pcb);
-      if (pic->id) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
-      break;
+    case INSIG_F32: {
+      char buf[32]; float f = pic->arg.f;
+      char *s = uftohex(asuint32(f), buf);
+      chbputf(pcb, " %s", s);
+      if (-HUGE_VAL < f && f < HUGE_VAL) {
+        sprintf(buf, "%.9g", (double)f); chbputf(pcb, " (; %s ;)", buf);
+      }
+    } break;
+    case INSIG_F64: {
+      char buf[32]; double d = pic->arg.d;
+      char *s = udtohex(asuint64(d), buf);
+      chbputf(pcb, " %s", s);
+      if (-HUGE_VAL < d && d < HUGE_VAL) {
+        sprintf(buf, "%.9g", d); chbputf(pcb, " (; %s ;)", buf);
+      } 
+    } break;
     case INSIG_LS_L:
       chbputf(pcb, " (; see next %llu+1 branches ;)", pic->arg.u);
       break; /* takes multiple inscodes, should be taken care of by caller */
@@ -2391,36 +2399,16 @@ static void scan_integer(sws_t *pw, const char *s, numval_t *pv)
 
 static float scan_float(sws_t *pw, const char *s)
 {
-  float f; char *e; errno = 0; 
-  if (streql(s, "+nan")) return (float)(HUGE_VAL - HUGE_VAL);
-  if (streql(s, "+inf")) return (float)(HUGE_VAL);
-  if (streql(s, "-inf")) return (float)(-HUGE_VAL);
-  if (s[0] == '0' && s[1] == 'x') {
-    unsigned u = hextouf(s);
-    if (u == (unsigned)-1) errno = EILSEQ;
-    else f = asfloat(u), s = ""; 
-  } else {
-    f = (float)strtod(s, &e);
-  }
-  if (errno || *e != 0) seprintf(pw, "invalid float literal");
-  return f;
+  unsigned u = hextouf(s);
+  if (u == (unsigned)-1) seprintf(pw, "invalid float literal");
+  return asfloat(u);
 }
 
 static double scan_double(sws_t *pw, const char *s)
 {
-  double d; char *e; errno = 0; 
-  if (streql(s, "+nan")) return HUGE_VAL - HUGE_VAL;
-  if (streql(s, "+inf")) return HUGE_VAL;
-  if (streql(s, "-inf")) return -HUGE_VAL;
-  if (s[0] == '0' && s[1] == 'x') {
-    unsigned long long u = hextoud(s);
-    if (u == (unsigned long long)-1LL) errno = EILSEQ;
-    else d = asdouble(u), s = ""; 
-  } else {
-    d = strtod(s, &e);
-  }
-  if (errno || *e != 0) seprintf(pw, "invalid double literal");
-  return d;
+  unsigned long long u = hextoud(s);
+  if (u == (unsigned long long)-1LL) seprintf(pw, "invalid double literal");
+  return asdouble(u);
 }
 
 /* size of buffer large enough to hold char escapes */

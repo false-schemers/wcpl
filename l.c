@@ -321,8 +321,9 @@ char *udtohex(unsigned long long uval, char buf[32]) /* 25 chars (actual require
   int exp2 = (int)((uval >> 52ULL) & 0x07FFULL);
   unsigned long long mant = (uval & 0xFFFFFFFFFFFFFULL);
   if (exp2 == 0x7FF) {
-    if (mant != 0ULL) strcpy(buf, dneg ? "-nan" : "nan");
-    else strcpy(buf, dneg ? "-inf" : "inf");
+    /* print as canonical NaN; todo: WASM allows :0xHHHHHHHHHH suffix! */
+    if (mant != 0ULL) strcpy(buf, dneg ? "-nan" : "+nan");
+    else strcpy(buf, dneg ? "-inf" : "+inf");
   } else {
     size_t i = 0, j; int val, vneg = false, dig, mdigs;
     if (exp2 == 0) val = mant == 0 ? 0 : -1022; else val = exp2 - 1023;
@@ -351,6 +352,7 @@ unsigned long long hextoud(const char *buf)
   if (strcmp(buf, "inf") == 0) {
     return dneg ? 0xFFF0000000000000ULL : 0x7FF0000000000000ULL;
   } else if (strcmp(buf, "nan") == 0) {
+    /* read canonical NaN; todo: WASM allows :0xHHHHHHHHHH suffix! */
     return dneg ? 0xFFF8000000000000ULL : 0x7FF8000000000000ULL;
   } else {
     int exp2 = 0; unsigned long long mant = 0ULL;
@@ -363,8 +365,8 @@ unsigned long long hextoud(const char *buf)
     for (mdigs = 13; mdigs > 0; --mdigs) {
       if (!*buf || !isxdigit(*buf)) goto err; 
       val = *buf++;
-      dig = val < '9' ? val - '0'
-          : val < 'F' ? val - 'A' + 10
+      dig = val <= '9' ? val - '0'
+          : val <= 'F' ? val - 'A' + 10
           : val - 'a' + 10;
       mant = (mant << 4ULL) | dig;
     }
@@ -391,8 +393,9 @@ char *uftohex(unsigned uval, char buf[32]) /* 17 chars (actual requirement), rou
   int exp2 = (int)((uval >> 23U) & 0x0FFU);
   unsigned mant = (uval & 0x7FFFFFU);
   if (exp2 == 0xFF) {
-    if (mant != 0UL) strcpy(buf, dneg ? "-nan" : "nan");
-    else strcpy(buf, dneg ? "-inf" : "inf");
+    /* print as canonical NaN; todo: WASM allows :0xHHHHHH suffix! */
+    if (mant != 0UL) strcpy(buf, dneg ? "-nan" : "+nan");
+    else strcpy(buf, dneg ? "-inf" : "+inf");
   } else {
     size_t i = 0, j; int val, vneg = false, dig, mdigs;
     if (exp2 == 0) val = mant == 0 ? 0 : -126; else val = exp2 - 127;
@@ -419,6 +422,7 @@ unsigned hextouf(const char *buf)
   if (*buf == '-') ++buf, dneg = true;
   else if (*buf == '+') ++buf;
   if (strcmp(buf, "inf") == 0) {
+    /* read canonical NaN; todo: WASM allows :0xHHHHHH suffix! */
     return dneg ? 0xFF800000U : 0x7F800000U;
   } else if (strcmp(buf, "nan") == 0) {
     return dneg ? 0xFFC00000U : 0x7FC00000U;
@@ -433,8 +437,8 @@ unsigned hextouf(const char *buf)
     for (mdigs = 6; mdigs > 0; --mdigs) {
       if (!*buf || !isxdigit(*buf)) goto err;
       val = *buf++;
-      dig = val < '9' ? val - '0'
-          : val < 'F' ? val - 'A' + 10
+      dig = val <= '9' ? val - '0'
+          : val <= 'F' ? val - 'A' + 10
           : val - 'a' + 10;
       mant = (mant << 4ULL) | dig;
     }
