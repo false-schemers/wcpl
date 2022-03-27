@@ -50,16 +50,12 @@ do { uint64_t __t = asuint64(d);             \
      | ((uint64_t)(ix1) & 0xFFFFFFFFULL)))
      
 #define SET_HIGH_WORD(d,v)                   \
-do { double *__p = &(d);                     \
-     uint64_t __t = (asuint64(*__p) &        \
-     0xFFFFFFFFULL) | ((uint64_t)(v) << 32); \
-     *__p = asdouble(__t); } while (0)
+  ((d) = asdouble((asuint64(d) &             \
+     0xFFFFFFFFULL) | ((uint64_t)(v) << 32)))
      
 #define SET_LOW_WORD(d,v)                    \
-do { double *__p = &(d);                     \
-     uint64_t __t = (asuint64(*__p) &~       \
-     0xFFFFFFFFULL) | (uint64_t)(v);         \
-     *__p = asdouble(__t); } while (0)
+ ((d) = asdouble((asuint64(d) &~             \
+     0xFFFFFFFFULL) | (uint64_t)(v))) 
 
 #define IC(x) ((int32_t) x)
 #define UC(x) ((uint32_t) x)
@@ -90,53 +86,53 @@ static const double Zero[] = {
   (asdouble(0x0000000000000000ULL)), /* 0.0 */
   (asdouble(0x8000000000000000ULL))  /* -0.0 */
 }; 
-static const double zero = (asdouble(0x0000000000000000ULL));      /* 0.0 */
-static const double half = (asdouble(0x3FE0000000000000ULL));      /* 0.5 */
-static const double one = (asdouble(0x3FF0000000000000ULL));       /* 1.0 */
-static const double two = (asdouble(0x4000000000000000ULL));       /* 2.0 */
-static const double two53 = (asdouble(0x4340000000000000ULL));     /* 9007199254740992.0 */
+#define zero      (asdouble(0x0000000000000000ULL))   /* 0.0 */
+#define half      (asdouble(0x3FE0000000000000ULL))   /* 0.5 */
+#define one       (asdouble(0x3FF0000000000000ULL))   /* 1.0 */
+#define two       (asdouble(0x4000000000000000ULL))   /* 2.0 */
+#define two53     (asdouble(0x4340000000000000ULL))   /* 9007199254740992.0 */
 /* poly coefs for (3/2)*(log(x)-2s-2/3*s**3 */
-static const double L1 = (asdouble(0x3FE3333333333303ULL));        /* 5.99999999999994648725e-01 */
-static const double L2 = (asdouble(0x3FDB6DB6DB6FABFFULL));        /* 4.28571428578550184252e-01 */
-static const double L3 = (asdouble(0x3FD55555518F264DULL));        /* 3.33333329818377432918e-01 */
-static const double L4 = (asdouble(0x3FD17460A91D4101ULL));        /* 2.72728123808534006489e-01 */
-static const double L5 = (asdouble(0x3FCD864A93C9DB65ULL));        /* 2.30660745775561754067e-01 */
-static const double L6 = (asdouble(0x3FCA7E284A454EEFULL));        /* 2.06975017800338417784e-01 */
-static const double P1 = (asdouble(0x3FC555555555553EULL));        /* 1.66666666666666019037e-01 */
-static const double P2 = (asdouble(0xBF66C16C16BEBD93ULL));       /* -2.77777777770155933842e-03 */
-static const double P3 = (asdouble(0x3F11566AAF25DE2CULL));        /* 6.61375632143793436117e-05 */
-static const double P4 = (asdouble(0xBEBBBD41C5D26BF1ULL));       /* -1.65339022054652515390e-06 */
-static const double P5 = (asdouble(0x3E66376972BEA4D0ULL));        /* 4.13813679705723846039e-08 */
-static const double lg2 = (asdouble(0x3FE62E42FEFA39EFULL));       /* 6.93147180559945286227e-01 */
-static const double lg2_h = (asdouble(0x3FE62E4300000000ULL));     /* 6.93147182464599609375e-01 */
-static const double lg2_l = (asdouble(0xBE205C610CA86C39ULL));    /* -1.90465429995776804525e-09 */
-static const double ovt = (asdouble(0x3C971547652B82FEULL));       /* 8.00856625953729443720e-17 =-(1024-log2(ovfl+.5ulp)) */
-static const double cp = (asdouble(0x3FEEC709DC3A03FDULL));        /* 9.61796693925975554329e-01 =2/(3ln2) */
-static const double cp_h = (asdouble(0x3FEEC709E0000000ULL));      /* 9.61796700954437255859e-01 =(float)cp */
-static const double cp_l = (asdouble(0xBE3E2FE0145B01F5ULL));     /* -7.02846165095275826516e-09 =tail of cp_h */
-static const double ivln2 = (asdouble(0x3FF71547652B82FEULL));     /* 1.44269504088896338700e+00 =1/ln2 */
-static const double ivln2_h = (asdouble(0x3FF7154760000000ULL));   /* 1.44269502162933349609e+00 =24b 1/ln2 */
-static const double ivln2_l = (asdouble(0x3E54AE0BF85DDF44ULL));   /* 1.92596299112661746887e-08 =1/ln2 tail */
-static const double ln2_hi = (asdouble(0x3FE62E42FEE00000ULL));    /* 6.93147180369123816490e-01 */
-static const double ln2_lo = (asdouble(0x3DEA39EF35793C76ULL));    /* 1.90821492927058770002e-10 */
-static const double Lg1 = (asdouble(0x3FE5555555555593ULL));         /* 6.666666666666735130e-01 */
-static const double Lg2 = (asdouble(0x3FD999999997FA04ULL));         /* 3.999999999940941908e-01 */
-static const double Lg3 = (asdouble(0x3FD2492494229359ULL));         /* 2.857142874366239149e-01 */
-static const double Lg4 = (asdouble(0x3FCC71C51D8E78AFULL));         /* 2.222219843214978396e-01 */
-static const double Lg5 = (asdouble(0x3FC7466496CB03DEULL));         /* 1.818357216161805012e-01 */
-static const double Lg6 = (asdouble(0x3FC39A09D078C69FULL));         /* 1.531383769920937332e-01 */
-static const double Lg7 = (asdouble(0x3FC2F112DF3E5244ULL));         /* 1.479819860511658591e-01 */
-static const double ivln10 = (asdouble(0x3FDBCB7B1526E50EULL));    /* 4.34294481903251816668e-01 */
-static const double log10_2hi = (asdouble(0x3FD34413509F6000ULL)); /* 3.01029995663611771306e-01 */
-static const double log10_2lo = (asdouble(0x3D59FEF311F12B36ULL)); /* 3.69423907715893078616e-13 */
+#define L1        (asdouble(0x3FE3333333333303ULL))   /*  5.99999999999994648725e-01 */
+#define L2        (asdouble(0x3FDB6DB6DB6FABFFULL))   /*  4.28571428578550184252e-01 */
+#define L3        (asdouble(0x3FD55555518F264DULL))   /*  3.33333329818377432918e-01 */
+#define L4        (asdouble(0x3FD17460A91D4101ULL))   /*  2.72728123808534006489e-01 */
+#define L5        (asdouble(0x3FCD864A93C9DB65ULL))   /*  2.30660745775561754067e-01 */
+#define L6        (asdouble(0x3FCA7E284A454EEFULL))   /*  2.06975017800338417784e-01 */
+#define P1        (asdouble(0x3FC555555555553EULL))   /*  1.66666666666666019037e-01 */
+#define P2        (asdouble(0xBF66C16C16BEBD93ULL))   /* -2.77777777770155933842e-03 */
+#define P3        (asdouble(0x3F11566AAF25DE2CULL))   /*  6.61375632143793436117e-05 */
+#define P4        (asdouble(0xBEBBBD41C5D26BF1ULL))   /* -1.65339022054652515390e-06 */
+#define P5        (asdouble(0x3E66376972BEA4D0ULL))   /*  4.13813679705723846039e-08 */
+#define lg2       (asdouble(0x3FE62E42FEFA39EFULL))   /*  6.93147180559945286227e-01 */
+#define lg2_h     (asdouble(0x3FE62E4300000000ULL))   /*  6.93147182464599609375e-01 */
+#define lg2_l     (asdouble(0xBE205C610CA86C39ULL))   /* -1.90465429995776804525e-09 */
+#define ovt       (asdouble(0x3C971547652B82FEULL))   /*  8.00856625953729443720e-17 =-(1024-log2(ovfl+.5ulp)) */
+#define cp        (asdouble(0x3FEEC709DC3A03FDULL))   /*  9.61796693925975554329e-01 =2/(3ln2) */
+#define cp_h      (asdouble(0x3FEEC709E0000000ULL))   /*  9.61796700954437255859e-01 =(float)cp */
+#define cp_l      (asdouble(0xBE3E2FE0145B01F5ULL))   /* -7.02846165095275826516e-09 =tail of cp_h */
+#define ivln2     (asdouble(0x3FF71547652B82FEULL))   /*  1.44269504088896338700e+00 =1/ln2 */
+#define ivln2_h   (asdouble(0x3FF7154760000000ULL))   /*  1.44269502162933349609e+00 =24b 1/ln2 */
+#define ivln2_l   (asdouble(0x3E54AE0BF85DDF44ULL))   /*  1.92596299112661746887e-08 =1/ln2 tail */
+#define ln2_hi    (asdouble(0x3FE62E42FEE00000ULL))   /*  6.93147180369123816490e-01 */
+#define ln2_lo    (asdouble(0x3DEA39EF35793C76ULL))   /*  1.90821492927058770002e-10 */
+#define Lg1       (asdouble(0x3FE5555555555593ULL))   /*  6.666666666666735130e-01 */
+#define Lg2       (asdouble(0x3FD999999997FA04ULL))   /*  3.999999999940941908e-01 */
+#define Lg3       (asdouble(0x3FD2492494229359ULL))   /*  2.857142874366239149e-01 */
+#define Lg4       (asdouble(0x3FCC71C51D8E78AFULL))   /*  2.222219843214978396e-01 */
+#define Lg5       (asdouble(0x3FC7466496CB03DEULL))   /*  1.818357216161805012e-01 */
+#define Lg6       (asdouble(0x3FC39A09D078C69FULL))   /*  1.531383769920937332e-01 */
+#define Lg7       (asdouble(0x3FC2F112DF3E5244ULL))   /*  1.479819860511658591e-01 */
+#define ivln10    (asdouble(0x3FDBCB7B1526E50EULL))   /*  4.34294481903251816668e-01 */
+#define log10_2hi (asdouble(0x3FD34413509F6000ULL))   /*  3.01029995663611771306e-01 */
+#define log10_2lo (asdouble(0x3D59FEF311F12B36ULL))   /*  3.69423907715893078616e-13 */
 /* exp constants */
 static const double halF[2] = { 
   (asdouble(0x3FE0000000000000ULL)), /* 0.5 */ 
   (asdouble(0xBFE0000000000000ULL))  /* -0.5 */
 };
-static const double twom1000 = (asdouble(0x0170000000000000ULL));  /* 2**-1000= 9.33263618503218878990e-302 */
-static const double o_threshold = (asdouble(0x40862E42FEFA39EFULL));  /* 7.09782712893383973096e+02 */
-static const double u_threshold = (asdouble(0xC0874910D52D3051ULL)); /* -7.45133219101941108420e+02 */
+#define twom1000 (asdouble(0x0170000000000000ULL))  /* 2**-1000= 9.33263618503218878990e-302 */
+#define o_threshold (asdouble(0x40862E42FEFA39EFULL))  /* 7.09782712893383973096e+02 */
+#define u_threshold (asdouble(0xC0874910D52D3051ULL)) /* -7.45133219101941108420e+02 */
 static const double ln2HI[2] = { /* ln2_hi, -ln2_hi */
   (asdouble(0x3FE62E42FEE00000ULL)), /* +6.93147180369123816490e-01 */
   (asdouble(0xBFE62E42FEE00000ULL))  /* -6.93147180369123816490e-01 */
@@ -155,18 +151,18 @@ static const double Q[] = {
   (asdouble(0xBE8AFDB76E09C32DULL))   /* -2.01099218183624371326e-07 */
 };
 /* trig constants */
-static const double S1 = (asdouble(0xBFC5555555555549ULL));  /* -1.66666666666666324348e-01 */
-static const double S2 = (asdouble(0x3F8111111110F8A6ULL));   /* 8.33333333332248946124e-03 */
-static const double S3 = (asdouble(0xBF2A01A019C161D5ULL));  /* -1.98412698298579493134e-04 */
-static const double S4 = (asdouble(0x3EC71DE357B1FE7DULL));   /* 2.75573137070700676789e-06 */
-static const double S5 = (asdouble(0xBE5AE5E68A2B9CEBULL));  /* -2.50507602534068634195e-08 */
-static const double S6 = (asdouble(0x3DE5D93A5ACFD57CULL));   /* 1.58969099521155010221e-10 */
-static const double C1 = (asdouble(0x3FA555555555554CULL));   /* 4.16666666666666019037e-02 */
-static const double C2 = (asdouble(0xBF56C16C16C15177ULL));  /* -1.38888888888741095749e-03 */
-static const double C3 = (asdouble(0x3EFA01A019CB1590ULL));   /* 2.48015872894767294178e-05 */
-static const double C4 = (asdouble(0xBE927E4F809C52ADULL));  /* -2.75573143513906633035e-07 */
-static const double C5 = (asdouble(0x3E21EE9EBDB4B1C4ULL));   /* 2.08757232129817482790e-09 */
-static const double C6 = (asdouble(0xBDA8FAE9BE8838D4ULL));  /* -1.13596475577881948265e-11 */
+#define S1        (asdouble(0xBFC5555555555549ULL))   /* -1.66666666666666324348e-01 */
+#define S2        (asdouble(0x3F8111111110F8A6ULL))   /*  8.33333333332248946124e-03 */
+#define S3        (asdouble(0xBF2A01A019C161D5ULL))   /* -1.98412698298579493134e-04 */
+#define S4        (asdouble(0x3EC71DE357B1FE7DULL))   /*  2.75573137070700676789e-06 */
+#define S5        (asdouble(0xBE5AE5E68A2B9CEBULL))   /* -2.50507602534068634195e-08 */
+#define S6        (asdouble(0x3DE5D93A5ACFD57CULL))   /*  1.58969099521155010221e-10 */
+#define C1        (asdouble(0x3FA555555555554CULL))   /*  4.16666666666666019037e-02 */
+#define C2        (asdouble(0xBF56C16C16C15177ULL))   /* -1.38888888888741095749e-03 */
+#define C3        (asdouble(0x3EFA01A019CB1590ULL))   /*  2.48015872894767294178e-05 */
+#define C4        (asdouble(0xBE927E4F809C52ADULL))   /* -2.75573143513906633035e-07 */
+#define C5        (asdouble(0x3E21EE9EBDB4B1C4ULL))   /*  2.08757232129817482790e-09 */
+#define C6        (asdouble(0xBDA8FAE9BE8838D4ULL))   /* -1.13596475577881948265e-11 */
 static const double T[] = {
   (asdouble(0x3FD5555555555563ULL)),   /* 3.33333333333334091986e-01 */
   (asdouble(0x3FC111111110FE7AULL)),   /* 1.33333333333201242699e-01 */
@@ -182,8 +178,8 @@ static const double T[] = {
   (asdouble(0xBEF375CBDB605373ULL)),  /* -1.85586374855275456654e-05 */
   (asdouble(0x3EFB2A7074BF7AD4ULL))    /* 2.59073051863633712884e-05 */
 };
-static const double pio4 = (asdouble(0x3FE921FB54442D18ULL));   /* 7.85398163397448278999e-01 */
-static const double pio4lo = (asdouble(0x3C81A62633145C07ULL)); /* 3.06161699786838301793e-17 */
+#define pio4      (asdouble(0x3FE921FB54442D18ULL))   /* 7.85398163397448278999e-01 */
+#define pio4lo    (asdouble(0x3C81A62633145C07ULL))   /* 3.06161699786838301793e-17 */
 static const int init_jk[] = { 2, 3, 4, 6 }; /* initial value for jk */
 static const double PIo2[] = {
   (asdouble(0x3FF921FB40000000ULL)),   /* 1.57079625129699707031e+00 */
@@ -209,8 +205,8 @@ static const int32_t two_over_pi[] = {
   IC(0x91615EU), IC(0xE61B08U), IC(0x659985U), IC(0x5F14A0U), IC(0x68408DU), IC(0xFFD880U),
   IC(0x4D7327U), IC(0x310606U), IC(0x1556CAU), IC(0x73A8C9U), IC(0x60E27BU), IC(0xC08C6BU)
 };
-static const double two24 = (asdouble(0x4170000000000000ULL));  /* 1.67772160000000000000e+07 */
-static const double twon24 = (asdouble(0x3E70000000000000ULL)); /* 5.96046447753906250000e-08 */
+#define two24 (asdouble(0x4170000000000000ULL))  /* 1.67772160000000000000e+07 */
+#define twon24 (asdouble(0x3E70000000000000ULL)) /* 5.96046447753906250000e-08 */
 static const int32_t npio2_hw[] = {
   IC(0x3FF921FBU), IC(0x400921FBU), IC(0x4012D97CU), IC(0x401921FBU), IC(0x401F6A7AU), IC(0x4022D97CU),
   IC(0x4025FDBBU), IC(0x402921FBU), IC(0x402C463AU), IC(0x402F6A7AU), IC(0x4031475CU), IC(0x4032D97CU),
@@ -219,30 +215,30 @@ static const int32_t npio2_hw[] = {
   IC(0x4043A28CU), IC(0x40446B9CU), IC(0x404534ACU), IC(0x4045FDBBU), IC(0x4046C6CBU), IC(0x40478FDBU),
   IC(0x404858EBU), IC(0x404921FBU)
 };
-static const double invpio2 = (asdouble(0x3FE45F306DC9C883ULL)); /* 6.36619772367581382433e-01 = 53 bits of 2/pi */
-static const double pio2_1 = (asdouble(0x3FF921FB54400000ULL));  /* 1.57079632673412561417e+00 = first  33 bit of pi/2 */
-static const double pio2_1t = (asdouble(0x3DD0B4611A626331ULL)); /* 6.07710050650619224932e-11 = pi/2 - pio2_1 */
-static const double pio2_2 = (asdouble(0x3DD0B4611A600000ULL));  /* 6.07710050630396597660e-11 = 33 bit of pi/2 */
-static const double pio2_2t = (asdouble(0x3BA3198A2E037073ULL)); /* 2.02226624879595063154e-21 = pi/2 - (pio2_1+pio2_2) */
-static const double pio2_3 = (asdouble(0x3BA3198A2E000000ULL));  /* 2.02226624871116645580e-21 = third  33 bit of pi/2 */
-static const double pio2_3t = (asdouble(0x397B839A252049C1ULL)); /* 8.47842766036889956997e-32 = pi/2 - (pio2_1+pio2_2+pio2_3) */
+#define invpio2   (asdouble(0x3FE45F306DC9C883ULL))   /*  6.36619772367581382433e-01 = 53 bits of 2/pi */
+#define pio2_1    (asdouble(0x3FF921FB54400000ULL))   /*  1.57079632673412561417e+00 = first  33 bit of pi/2 */
+#define pio2_1t   (asdouble(0x3DD0B4611A626331ULL))   /*  6.07710050650619224932e-11 = pi/2 - pio2_1 */
+#define pio2_2    (asdouble(0x3DD0B4611A600000ULL))   /*  6.07710050630396597660e-11 = 33 bit of pi/2 */
+#define pio2_2t   (asdouble(0x3BA3198A2E037073ULL))   /*  2.02226624879595063154e-21 = pi/2 - (pio2_1+pio2_2) */
+#define pio2_3    (asdouble(0x3BA3198A2E000000ULL))   /*  2.02226624871116645580e-21 = third  33 bit of pi/2 */
+#define pio2_3t   (asdouble(0x397B839A252049C1ULL))   /*  8.47842766036889956997e-32 = pi/2 - (pio2_1+pio2_2+pio2_3) */
 
 /* asin/acos constants */
-static const double pi = (asdouble(0x400921FB54442D18ULL));      /* 3.14159265358979311600e+00 */
-static const double pio2_hi = (asdouble(0x3FF921FB54442D18ULL)); /* 1.57079632679489655800e+00 */
-static const double pio2_lo = (asdouble(0x3C91A62633145C07ULL)); /* 6.12323399573676603587e-17 */
-static const double pio4_hi = (asdouble(0x3FE921FB54442D18ULL)); /* 7.85398163397448278999e-01 */
+#define pi        (asdouble(0x400921FB54442D18ULL))   /*  3.14159265358979311600e+00 */
+#define pio2_hi   (asdouble(0x3FF921FB54442D18ULL))   /*  1.57079632679489655800e+00 */
+#define pio2_lo   (asdouble(0x3C91A62633145C07ULL))   /*  6.12323399573676603587e-17 */
+#define pio4_hi   (asdouble(0x3FE921FB54442D18ULL))   /*  7.85398163397448278999e-01 */
 /* coefficient for R(x^2) */
-static const double pS0 = (asdouble(0x3FC5555555555555ULL));   /* 1.66666666666666657415e-01 */
-static const double pS1 = (asdouble(0xBFD4D61203EB6F7DULL));  /* -3.25565818622400915405e-01 */
-static const double pS2 = (asdouble(0x3FC9C1550E884455ULL));   /* 2.01212532134862925881e-01 */
-static const double pS3 = (asdouble(0xBFA48228B5688F3BULL));  /* -4.00555345006794114027e-02 */
-static const double pS4 = (asdouble(0x3F49EFE07501B288ULL));   /* 7.91534994289814532176e-04 */
-static const double pS5 = (asdouble(0x3F023DE10DFDF709ULL));   /* 3.47933107596021167570e-05 */
-static const double qS1 = (asdouble(0xC0033A271C8A2D4BULL));  /* -2.40339491173441421878e+00 */
-static const double qS2 = (asdouble(0x40002AE59C598AC8ULL));   /* 2.02094576023350569471e+00 */
-static const double qS3 = (asdouble(0xBFE6066C1B8D0159ULL));  /* -6.88283971605453293030e-01 */
-static const double qS4 = (asdouble(0x3FB3B8C5B12E9282ULL));   /* 7.70381505559019352791e-02 */
+#define pS0       (asdouble(0x3FC5555555555555ULL))   /*  1.66666666666666657415e-01 */
+#define pS1       (asdouble(0xBFD4D61203EB6F7DULL))   /* -3.25565818622400915405e-01 */
+#define pS2       (asdouble(0x3FC9C1550E884455ULL))   /*  2.01212532134862925881e-01 */
+#define pS3       (asdouble(0xBFA48228B5688F3BULL))   /* -4.00555345006794114027e-02 */
+#define pS4       (asdouble(0x3F49EFE07501B288ULL))   /*  7.91534994289814532176e-04 */
+#define pS5       (asdouble(0x3F023DE10DFDF709ULL))   /*  3.47933107596021167570e-05 */
+#define qS1       (asdouble(0xC0033A271C8A2D4BULL))   /* -2.40339491173441421878e+00 */
+#define qS2       (asdouble(0x40002AE59C598AC8ULL))   /*  2.02094576023350569471e+00 */
+#define qS3       (asdouble(0xBFE6066C1B8D0159ULL))   /* -6.88283971605453293030e-01 */
+#define qS4       (asdouble(0x3FB3B8C5B12E9282ULL))   /*  7.70381505559019352791e-02 */
 
 /* atan/atan2 constants */
 static const double atanhi[] = {
@@ -270,12 +266,12 @@ static const double aT[] = {
   (asdouble(0xBFA2B4442C6A6C2FULL)),  /* -3.65315727442169155270e-02 */
   (asdouble(0x3F90AD3AE322DA11ULL))    /* 1.62858201153657823623e-02 */
 };
-static const double pi_o_4 = (asdouble(0x3FE921FB54442D18ULL)); /* 7.8539816339744827900E-01 */
-static const double pi_o_2 = (asdouble(0x3FF921FB54442D18ULL)); /* 1.5707963267948965580E+00 */
-static const double pi_lo = (asdouble(0x3CA1A62633145C07ULL));  /* 1.2246467991473531772E-16 */
+#define pi_o_4    (asdouble(0x3FE921FB54442D18ULL))   /*  7.8539816339744827900E-01 */
+#define pi_o_2    (asdouble(0x3FF921FB54442D18ULL))   /*  1.5707963267948965580E+00 */
+#define pi_lo     (asdouble(0x3CA1A62633145C07ULL))   /*  1.2246467991473531772E-16 */
 
 /* hyperbolic trig. constants */
-static const double shuge = (asdouble(0x7FAC7B1F3CAC7433ULL)); /* 1.0e307 */
+#define shuge     (asdouble(0x7FAC7B1F3CAC7433ULL))   /*  1.0e307 */
 
 
 /* classify double */

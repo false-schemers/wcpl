@@ -2127,7 +2127,7 @@ state_30:
 state_31:
   readchar();
   if (c == EOF) {
-    goto err;
+    return WT_INT;
   } else if ((c >= '0' && c <= '9')) {
     chbputc(c, pcb);
     goto state_32;
@@ -2139,12 +2139,12 @@ state_31:
     goto state_20;
   } else {
     unreadchar();
-    goto err;
+    return WT_INT;
   }
 state_32:
   readchar();
   if (c == EOF) {
-    goto err;
+    return WT_INT;
   } else if ((c >= '0' && c <= '9')) {
     chbputc(c, pcb);
     goto state_32;
@@ -2153,7 +2153,7 @@ state_32:
     goto state_22;
   } else {
     unreadchar();
-    goto err;
+    return WT_INT;
   }
 state_33:
   return WT_BCSTART;
@@ -2260,7 +2260,6 @@ static wt_t peekt(sws_t *pw)
       pw->posl = pw->lno, pw->posi = pw->curi; 
       pw->ctk = lex(pw, &pw->token);
       if (pw->ctk == WT_EOF && !pw->inateof) {
-        assert(false);
         seprintf(pw, "illegal token"); 
       }
       switch (pw->ctk) {
