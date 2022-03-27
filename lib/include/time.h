@@ -1,14 +1,12 @@
 /* Date and time */
 
 #pragma once
-
 /* NULL is built-in */
 /* size_t is built-in */
+#include <sys/types.h>
+#include <sys/defs.h>
 
 #define CLOCKS_PER_SEC (1000000000LL)
-
-typedef long long time_t;
-typedef long long clock_t;
 
 struct tm {
   int tm_sec;   /* seconds */

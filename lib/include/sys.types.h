@@ -15,3 +15,4 @@ typedef uint32_t gid_t;
 typedef int32_t  blksize_t;
 typedef int64_t  blkcnt_t;
 typedef int64_t  time_t;
+typedef int64_t  clock_t;
