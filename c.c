@@ -186,6 +186,14 @@ static ts_t ts_arith_common(ts_t ts1, ts_t ts2)
   return TS_INT;
 }
 
+/* ts2 can be promoted up to ts1 with implicit cast */
+static ts_t ts_arith_assign_compatible(ts_t ts1, ts_t ts2)
+{
+  assert(ts_numerical(ts1) && ts_numerical(ts2));
+  if (ts1 == ts2) return true;
+  return ts_arith_common(ts1, ts2) == ts1;
+}
+
 unsigned long long integral_mask(ts_t ts, unsigned long long u)
 {
   switch (ts) {
@@ -647,11 +655,18 @@ bool static_eval(node_t *pn, seval_t *pr)
       }
     } break;
     case NT_PREFIX: {
-      seval_t rx; bool ok = false; 
+      seval_t rx; node_t *psn; bool ok = false; 
       assert(ndlen(pn) == 1);
       if (pn->op == TT_AND && ndref(pn, 0)->nt == NT_IDENTIFIER) {
         pr->ts = TS_PTR; pr->val.i = 0; pr->id = ndref(pn, 0)->name;
         ok = true;
+      } else if (pn->op == TT_AND && (psn = ndref(pn, 0))->nt == NT_SUBSCRIPT
+        && ndref(psn, 0)->nt == NT_IDENTIFIER) {
+        assert(ndlen(psn) == 2);
+        if (static_eval(ndref(psn, 1), &rx) && rx.ts == TS_INT) {
+          pr->ts = TS_PTR; pr->val = rx.val; pr->id = ndref(psn, 0)->name;
+          ok = true;
+        }
       } else if (static_eval(ndref(pn, 0), &rx)) {
         if (ts_numerical(rx.ts)) {
           numval_t vz; ts_t tz = numval_unop(pn->op, rx.ts, rx.val, &vz);
@@ -905,7 +920,7 @@ static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *
     seval_t r; buf_t cb = mkchb();
     if (!static_eval(pdn, &r) || !ts_numerical(r.ts)) 
       neprintf(pdn, "non-numerical-constant initializer");
-    if (ts_arith_common(ptn->ts, r.ts) == ptn->ts) { /* can be promoted up */
+    if (ts_arith_assign_compatible(ptn->ts, r.ts)) { /* r.ts can be promoted up */
       if (ptn->ts != r.ts) { numval_convert(ptn->ts, r.ts, &r.val); r.ts = ptn->ts; }
     } else neprintf(pdn, "constant initializer cannot be promoted to expected type");
     pd = watiebref(&g_curpwm->exports, pdidx); /* re-fetch after static_eval */
@@ -928,8 +943,9 @@ static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *
     chbfini(&cb);
   } else if (ptn->ts == TS_PTR) {
     seval_t r;
-    if (!static_eval(pdn, &r) || r.ts != TS_PTR) 
+    if (!static_eval(pdn, &r) || r.ts != TS_PTR) {
       neprintf(pdn, "constant address initializer expected");
+    }
     pd = watiebref(&g_curpwm->exports, pdidx); /* re-fetch after static_eval */
     if (!r.id) { /* NULL */
       buf_t cb = mkchb();

@@ -3,9 +3,159 @@
   (import "env" "__linear_memory" (memory $env:__linear_memory 0))
   (import "env" "__stack_pointer" (global $env:__stack_pointer i32))
   (import "wasi_snapshot_preview1" "clock_time_get" (func $wasi_snapshot_preview1:clock_time_get (param i32) (param i64) (param i32) (result i32)))
+  (import "stdlib" "getenv" (func $stdlib:getenv (param i32) (result i32)))
+  (import "string" "strcpy" (func $string:strcpy (param i32) (param i32) (result i32)))
+  (import "string" "strncpy" (func $string:strncpy (param i32) (param i32) (param i32) (result i32)))
+  (import "string" "strcmp" (func $string:strcmp (param i32) (param i32) (result i32)))
+  (import "string" "strlen" (func $string:strlen (param i32) (result i32)))
+  (import "errno" "errno" (global $errno:errno i32))
+  (import "stdio" "snprintf" (func $stdio:snprintf (param i32) (param i32) (param i32) (param i32) (result i32)))
+  (global $time:_tzset (mut i32) (i32.const 0))
+  (global $time:timezone (export "timezone") (mut i32) (i32.const 0))
+  (data $time:days_in_month var align=4 "\1f\00\00\00\1e\00\00\00\1f\00\00\00\1e\00\00\00\1f\00\00\00\1f\00\00\00\1e\00\00\00\1f\00\00\00\1e\00\00\00\1f\00\00\00\1f\00\00\00\1d\00\00\00")
+  (data $time:mon_days var align=4 "\1f\00\00\00;\00\00\00Z\00\00\00x\00\00\00\97\00\00\00\b5\00\00\00\d4\00\00\00\f3\00\00\00\11\01\00\000\01\00\00N\01\00\00m\01\00\00")
+  (data $time:wday_name var align=4 size=28
+    (ref.data $time:ds3$
+     data.put_ref offset=0
+     ref.data $time:ds4$
+     data.put_ref offset=4
+     ref.data $time:ds5$
+     data.put_ref offset=8
+     ref.data $time:ds6$
+     data.put_ref offset=12
+     ref.data $time:ds7$
+     data.put_ref offset=16
+     ref.data $time:ds8$
+     data.put_ref offset=20
+     ref.data $time:ds9$
+     data.put_ref offset=24))
+  (data $time:ds3$ const align=1 "Sun\00")
+  (data $time:ds4$ const align=1 "Mon\00")
+  (data $time:ds5$ const align=1 "Tue\00")
+  (data $time:ds6$ const align=1 "Wed\00")
+  (data $time:ds7$ const align=1 "Thu\00")
+  (data $time:ds8$ const align=1 "Fri\00")
+  (data $time:ds9$ const align=1 "Sat\00")
+  (data $time:wday_full_name var align=4 size=28
+    (ref.data $time:ds11$
+     data.put_ref offset=0
+     ref.data $time:ds12$
+     data.put_ref offset=4
+     ref.data $time:ds13$
+     data.put_ref offset=8
+     ref.data $time:ds14$
+     data.put_ref offset=12
+     ref.data $time:ds15$
+     data.put_ref offset=16
+     ref.data $time:ds16$
+     data.put_ref offset=20
+     ref.data $time:ds17$
+     data.put_ref offset=24))
+  (data $time:ds11$ const align=1 "Sunday\00")
+  (data $time:ds12$ const align=1 "Monday\00")
+  (data $time:ds13$ const align=1 "Tuesday\00")
+  (data $time:ds14$ const align=1 "Wednesday\00")
+  (data $time:ds15$ const align=1 "Thursday\00")
+  (data $time:ds16$ const align=1 "Friday\00")
+  (data $time:ds17$ const align=1 "Saturday\00")
+  (data $time:mon_name const align=4 size=48
+    (ref.data $time:ds19$
+     data.put_ref offset=0
+     ref.data $time:ds20$
+     data.put_ref offset=4
+     ref.data $time:ds21$
+     data.put_ref offset=8
+     ref.data $time:ds22$
+     data.put_ref offset=12
+     ref.data $time:ds23$
+     data.put_ref offset=16
+     ref.data $time:ds24$
+     data.put_ref offset=20
+     ref.data $time:ds25$
+     data.put_ref offset=24
+     ref.data $time:ds26$
+     data.put_ref offset=28
+     ref.data $time:ds27$
+     data.put_ref offset=32
+     ref.data $time:ds28$
+     data.put_ref offset=36
+     ref.data $time:ds29$
+     data.put_ref offset=40
+     ref.data $time:ds30$
+     data.put_ref offset=44))
+  (data $time:ds19$ const align=1 "Jan\00")
+  (data $time:ds20$ const align=1 "Feb\00")
+  (data $time:ds21$ const align=1 "Mar\00")
+  (data $time:ds22$ const align=1 "Apr\00")
+  (data $time:ds23$ const align=1 "May\00")
+  (data $time:ds24$ const align=1 "Jun\00")
+  (data $time:ds25$ const align=1 "Jul\00")
+  (data $time:ds26$ const align=1 "Aug\00")
+  (data $time:ds27$ const align=1 "Sep\00")
+  (data $time:ds28$ const align=1 "Oct\00")
+  (data $time:ds29$ const align=1 "Nov\00")
+  (data $time:ds30$ const align=1 "Dec\00")
+  (data $time:mon_full_name const align=4 size=48
+    (ref.data $time:ds32$
+     data.put_ref offset=0
+     ref.data $time:ds33$
+     data.put_ref offset=4
+     ref.data $time:ds34$
+     data.put_ref offset=8
+     ref.data $time:ds35$
+     data.put_ref offset=12
+     ref.data $time:ds36$
+     data.put_ref offset=16
+     ref.data $time:ds37$
+     data.put_ref offset=20
+     ref.data $time:ds38$
+     data.put_ref offset=24
+     ref.data $time:ds39$
+     data.put_ref offset=28
+     ref.data $time:ds40$
+     data.put_ref offset=32
+     ref.data $time:ds41$
+     data.put_ref offset=36
+     ref.data $time:ds42$
+     data.put_ref offset=40
+     ref.data $time:ds43$
+     data.put_ref offset=44))
+  (data $time:ds32$ const align=1 "January\00")
+  (data $time:ds33$ const align=1 "February\00")
+  (data $time:ds34$ const align=1 "March\00")
+  (data $time:ds35$ const align=1 "April\00")
+  (data $time:ds36$ const align=1 "May\00")
+  (data $time:ds37$ const align=1 "June\00")
+  (data $time:ds38$ const align=1 "July\00")
+  (data $time:ds39$ const align=1 "August\00")
+  (data $time:ds40$ const align=1 "Sepember\00")
+  (data $time:ds41$ const align=1 "October\00")
+  (data $time:ds42$ const align=1 "November\00")
+  (data $time:ds43$ const align=1 "December\00")
+  (data $time:asctime_buf var align=1 size=26)
+  (data $time:gmtime_buf var align=4 size=36)
+  (data $time:_tzname var align=1 size=512)
+  (data $time:_tzval var align=1 size=256)
+  (data $time:_tzdflt var align=1 "   \00")
+  (data $time:tzname (export "tzname") var align=4 size=8
+    (ref.data $time:_tzdflt
+     data.put_ref offset=0
+     ref.data $time:_tzdflt
+     data.put_ref offset=4))
+  (data $time:ds59$ const align=1 "TZ\00")
+  (data $time:ds60$ const align=1 size=1)
+  (data $time:ds63$ const align=1 "%s %s%3d %.2d:%.2d:%.2d %d\n\00")
+  (data $time:ds72$ const align=1 "?\00")
+  (data $time:ds73$ const align=1 "?\00")
+  (data $time:ds74$ const align=1 "%a %b %d %x %Y\00")
+  (data $time:ds75$ const align=1 "AM\00")
+  (data $time:ds76$ const align=1 "PM\00")
+  (data $time:ds77$ const align=1 "%d.%m.%Y\00")
+  (data $time:ds78$ const align=1 "%H:%M:%S\00")
+  (data $time:ds79$ const align=1 "%\00")
   (func $time:time (export "time")
     (param $pt i32) (result i64) 
-    (local $nsps i64) (local $error i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
+    (local $error i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
     global.get $env:__stack_pointer
     local.set $bp$
     global.get $env:__stack_pointer
@@ -18,10 +168,8 @@
     i32.const 0
     i64.extend_i32_s
     i64.store offset=0 align=8
-    i64.const 1000000000
-    local.set $nsps
     i32.const 0
-    local.get $nsps
+    i64.const 1000000000
     local.get $fp$
     call $wasi_snapshot_preview1:clock_time_get
     local.tee $error
@@ -33,7 +181,7 @@
     local.tee $i2$
     local.get $i2$
     i64.load offset=0 align=8
-    local.get $nsps
+    i64.const 1000000000
     i64.div_u
     i64.store offset=0 align=8
     else
@@ -54,6 +202,1926 @@
     end
     local.get $fp$
     i64.load offset=0 align=8
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+  )
+  (func $time:clock (export "clock")
+    (result i64) 
+    (local $error i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) 
+    global.get $env:__stack_pointer
+    local.set $bp$
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
+    local.tee $fp$
+    local.tee $i1$
+    i32.const 0
+    i64.extend_i32_s
+    i64.store offset=0 align=8
+    i32.const 2
+    i64.const 1
+    local.get $fp$
+    call $wasi_snapshot_preview1:clock_time_get
+    local.tee $error
+    i32.const 65535
+    i32.and
+    i32.const 0
+    i32.ne
+    if
+    i64.const -1
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+    end
+    local.get $fp$
+    i64.load offset=0 align=8
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+  )
+  (func $time:difftime (export "difftime")
+    (param $t1 i64) (param $t0 i64) (result f64) 
+    local.get $t1
+    local.get $t0
+    i64.sub
+    f64.convert_i64_s
+    return
+  )
+  (func $time:secs_to_tm
+    (param $t i64) (param $ptm i32) (result i32) 
+    (local $days i64) (local $secs i64) (local $years i64) (local $remdays i32) (local $remsecs i32) (local $remyears i32) (local $qc_cycles i32) (local $c_cycles i32) (local $q_cycles i32) (local $months i32) (local $wday i32) (local $yday i32) (local $leap i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) 
+    local.get $t
+    i64.const -67908586910515200
+    i64.lt_s
+    if (result i32)
+    i32.const 1
+    else
+    local.get $t
+    i64.const 67908586878892800
+    i64.gt_s
+    end
+    if
+    i32.const -1
+    return
+    end
+    local.get $t
+    i64.const 951868800
+    i64.sub
+    local.tee $secs
+    i32.const 86400
+    i64.extend_i32_s
+    i64.div_s
+    local.set $days
+    local.get $secs
+    i32.const 86400
+    i64.extend_i32_s
+    i64.rem_s
+    i32.wrap_i64
+    local.tee $remsecs
+    i32.const 0
+    i32.lt_s
+    if
+    local.get $remsecs
+    i32.const 86400
+    i32.add
+    local.set $remsecs
+    local.get $days
+    i32.const 1
+    i64.extend_i32_s
+    i64.sub
+    local.set $days
+    end
+    i32.const 3
+    i64.extend_i32_s
+    local.get $days
+    i64.add
+    i32.const 7
+    i64.extend_i32_s
+    i64.rem_s
+    i32.wrap_i64
+    local.tee $wday
+    i32.const 0
+    i32.lt_s
+    if
+    local.get $wday
+    i32.const 7
+    i32.add
+    local.set $wday
+    end
+    local.get $days
+    i32.const 146097
+    i64.extend_i32_s
+    i64.div_s
+    i32.wrap_i64
+    local.set $qc_cycles
+    local.get $days
+    i32.const 146097
+    i64.extend_i32_s
+    i64.rem_s
+    i32.wrap_i64
+    local.tee $remdays
+    i32.const 0
+    i32.lt_s
+    if
+    local.get $remdays
+    i32.const 146097
+    i32.add
+    local.set $remdays
+    local.get $qc_cycles
+    i32.const 1
+    i32.sub
+    local.set $qc_cycles
+    end
+    local.get $remdays
+    i32.const 36524
+    i32.div_s
+    local.tee $c_cycles
+    i32.const 4
+    i32.eq
+    if
+    local.get $c_cycles
+    i32.const 1
+    i32.sub
+    local.set $c_cycles
+    end
+    local.get $remdays
+    local.get $c_cycles
+    i32.const 36524
+    i32.mul
+    i32.sub
+    local.tee $remdays
+    i32.const 1461
+    i32.div_s
+    local.tee $q_cycles
+    i32.const 25
+    i32.eq
+    if
+    local.get $q_cycles
+    i32.const 1
+    i32.sub
+    local.set $q_cycles
+    end
+    local.get $remdays
+    local.get $q_cycles
+    i32.const 1461
+    i32.mul
+    i32.sub
+    local.tee $remdays
+    i32.const 365
+    i32.div_s
+    local.tee $remyears
+    i32.const 4
+    i32.eq
+    if
+    local.get $remyears
+    i32.const 1
+    i32.sub
+    local.set $remyears
+    end
+    local.get $remdays
+    local.get $remyears
+    i32.const 365
+    i32.mul
+    i32.sub
+    local.set $remdays
+    local.get $remyears
+    i32.eqz
+    if (result i32)
+    local.get $q_cycles
+    if (result i32)
+    i32.const 1
+    else
+    local.get $c_cycles
+    i32.eqz
+    end
+    else
+    i32.const 0
+    end
+    local.set $leap
+    local.get $remdays
+    i32.const 31
+    i32.add
+    i32.const 28
+    i32.add
+    local.get $leap
+    i32.add
+    local.tee $yday
+    i32.const 365
+    local.get $leap
+    i32.add
+    i32.ge_s
+    if
+    local.get $yday
+    i32.const 365
+    local.get $leap
+    i32.add
+    i32.sub
+    local.set $yday
+    end
+    local.get $remyears
+    i32.const 4
+    local.get $q_cycles
+    i32.mul
+    i32.add
+    i32.const 100
+    local.get $c_cycles
+    i32.mul
+    i32.add
+    i64.extend_i32_s
+    i64.const 400
+    local.get $qc_cycles
+    i64.extend_i32_s
+    i64.mul
+    i64.add
+    local.set $years
+    block $2$
+    i32.const 0
+    local.set $months
+    loop $1$
+    ref.data $time:days_in_month
+    local.get $months
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    local.get $remdays
+    i32.le_s
+    i32.eqz
+    br_if $2$
+    block $3$
+    local.get $remdays
+    ref.data $time:days_in_month
+    local.get $months
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    i32.sub
+    local.set $remdays
+    end $3$
+    local.get $months
+    local.get $months
+    i32.const 1
+    i32.add
+    local.set $months
+    drop
+    br $1$
+    end $1$
+    end $2$
+    local.get $months
+    i32.const 10
+    i32.ge_s
+    if
+    local.get $months
+    i32.const 12
+    i32.sub
+    local.set $months
+    local.get $years
+    i32.const 1
+    i64.extend_i32_s
+    i64.add
+    local.set $years
+    end
+    local.get $years
+    i32.const 100
+    i64.extend_i32_s
+    i64.add
+    i32.const 2147483647
+    i64.extend_i32_s
+    i64.gt_s
+    if (result i32)
+    i32.const 1
+    else
+    local.get $years
+    i32.const 100
+    i64.extend_i32_s
+    i64.add
+    i32.const -2147483648
+    i64.extend_i32_s
+    i64.lt_s
+    end
+    if
+    i32.const -1
+    return
+    end
+    local.get $ptm
+    i32.const 20
+    i32.add
+    local.tee $i1$
+    local.get $years
+    i32.wrap_i64
+    i32.const 100
+    i32.add
+    i32.store offset=0 align=4
+    local.get $ptm
+    i32.const 16
+    i32.add
+    local.tee $i2$
+    local.get $months
+    i32.const 2
+    i32.add
+    i32.store offset=0 align=4
+    local.get $ptm
+    i32.const 12
+    i32.add
+    local.tee $i3$
+    local.get $remdays
+    i32.const 1
+    i32.add
+    i32.store offset=0 align=4
+    local.get $ptm
+    i32.const 24
+    i32.add
+    local.tee $i4$
+    local.get $wday
+    i32.store offset=0 align=4
+    local.get $ptm
+    i32.const 28
+    i32.add
+    local.tee $i5$
+    local.get $yday
+    i32.store offset=0 align=4
+    local.get $ptm
+    i32.const 8
+    i32.add
+    local.tee $i6$
+    local.get $remsecs
+    i32.const 3600
+    i32.div_s
+    i32.store offset=0 align=4
+    local.get $ptm
+    i32.const 4
+    i32.add
+    local.tee $i7$
+    local.get $remsecs
+    i32.const 60
+    i32.div_s
+    i32.const 60
+    i32.rem_s
+    i32.store offset=0 align=4
+    local.get $ptm
+    local.tee $i8$
+    local.get $remsecs
+    i32.const 60
+    i32.rem_s
+    i32.store offset=0 align=4
+    i32.const 0
+    return
+  )
+  (func $time:gmtime_r (export "gmtime_r")
+    (param $pt i32) (param $ptm i32) (result i32) 
+    (local $i1$ i32) 
+    local.get $pt
+    i64.load offset=0 align=8
+    local.get $ptm
+    call $time:secs_to_tm
+    i32.const 0
+    i32.lt_s
+    if
+    i32.const 61
+    global.set $errno:errno
+    i32.const 0
+    return
+    end
+    local.get $ptm
+    i32.const 32
+    i32.add
+    local.tee $i1$
+    i32.const 0
+    i32.store offset=0 align=4
+    local.get $ptm
+    return
+  )
+  (func $time:get_tz_name
+    (param $src i32) (param $dest i32) (result i32) 
+    (local $tzlen i32) (local $i1$ i32) (local $i2$ i32) 
+    i32.const 0
+    local.set $tzlen
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 58
+    i32.ne
+    if
+    block $1$
+    loop $2$
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 0
+    i32.ne
+    if (result i32)
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 44
+    i32.ne
+    else
+    i32.const 0
+    end
+    if (result i32)
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 43
+    i32.ne
+    else
+    i32.const 0
+    end
+    if (result i32)
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 45
+    i32.ne
+    else
+    i32.const 0
+    end
+    if (result i32)
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.ge_s
+    if (result i32)
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 57
+    i32.le_s
+    else
+    i32.const 0
+    end
+    i32.eqz
+    else
+    i32.const 0
+    end
+    if (result i32)
+    local.get $tzlen
+    i32.const 255
+    i32.lt_s
+    else
+    i32.const 0
+    end
+    if
+    local.get $dest
+    local.get $dest
+    i32.const 1
+    i32.add
+    local.set $dest
+    local.tee $i1$
+    local.get $src
+    local.get $src
+    i32.const 1
+    i32.add
+    local.set $src
+    i32.load8_s offset=0 align=1
+    i32.store8 offset=0 align=1
+    local.get $tzlen
+    i32.const 1
+    i32.add
+    local.set $tzlen
+    br $2$
+    end
+    end $2$
+    end $1$
+    end
+    local.get $tzlen
+    i32.const 0
+    i32.eq
+    if
+    local.get $dest
+    ref.data $time:_tzdflt
+    call $string:strcpy
+    drop
+    else
+    local.get $dest
+    local.tee $i2$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    end
+    local.get $src
+    return
+  )
+  (func $time:get_tz_offset
+    (param $src i32) (param $error i32) (result i32) 
+    (local $mul i32) (local $i i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i4$ i32) (local $i3$ i32) (local $i2$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) 
+    global.get $env:__stack_pointer
+    local.set $bp$
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
+    local.set $fp$
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 0
+    i32.eq
+    if
+    i32.const 0
+    global.set $time:timezone
+    local.get $error
+    local.tee $i1$
+    i32.const 0
+    i32.store offset=0 align=4
+    else
+    local.get $fp$
+    local.tee $i4$
+    local.get $fp$
+    i32.const 4
+    i32.add
+    local.tee $i3$
+    local.get $fp$
+    i32.const 8
+    i32.add
+    local.tee $i2$
+    i32.const 0
+    i32.store offset=0 align=4
+    local.get $i2$
+    i32.load offset=0 align=4
+    i32.store offset=0 align=4
+    local.get $i3$
+    i32.load offset=0 align=4
+    i32.store offset=0 align=4
+    i32.const 1
+    local.set $mul
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 45
+    i32.eq
+    if
+    i32.const -1
+    local.set $mul
+    local.get $src
+    i32.const 1
+    i32.add
+    local.set $src
+    else
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 43
+    i32.eq
+    if
+    local.get $src
+    i32.const 1
+    i32.add
+    local.set $src
+    end
+    end
+    block $2$
+    i32.const 0
+    local.set $i
+    loop $1$
+    local.get $i
+    i32.const 3
+    i32.lt_s
+    i32.eqz
+    br_if $2$
+    block $3$
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 0
+    i32.eq
+    if
+    i32.const 0
+    local.set $mul
+    else
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.ge_s
+    if (result i32)
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 57
+    i32.le_s
+    else
+    i32.const 0
+    end
+    if
+    local.get $fp$
+    local.get $i
+    i32.const 4
+    i32.mul
+    i32.add
+    local.tee $i5$
+    local.get $src
+    local.get $src
+    i32.const 1
+    i32.add
+    local.set $src
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.sub
+    i32.store offset=0 align=4
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.ge_s
+    if (result i32)
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 57
+    i32.le_s
+    else
+    i32.const 0
+    end
+    if
+    local.get $fp$
+    local.get $i
+    i32.const 4
+    i32.mul
+    i32.add
+    local.tee $i6$
+    i32.const 10
+    local.get $fp$
+    local.get $i
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    i32.mul
+    local.get $src
+    local.get $src
+    i32.const 1
+    i32.add
+    local.set $src
+    i32.load8_s offset=0 align=1
+    i32.add
+    i32.const 48
+    i32.sub
+    i32.store offset=0 align=4
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 48
+    i32.ge_s
+    if (result i32)
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 57
+    i32.le_s
+    else
+    i32.const 0
+    end
+    if
+    i32.const 0
+    local.set $mul
+    end
+    end
+    end
+    end
+    local.get $mul
+    i32.const 0
+    i32.eq
+    if
+    br $2$
+    else
+    local.get $src
+    i32.load8_s offset=0 align=1
+    i32.const 58
+    i32.eq
+    if
+    local.get $src
+    i32.const 1
+    i32.add
+    local.set $src
+    else
+    br $2$
+    end
+    end
+    end $3$
+    local.get $i
+    i32.const 1
+    i32.add
+    local.set $i
+    br $1$
+    end $1$
+    end $2$
+    local.get $fp$
+    i32.load offset=4 align=4
+    i32.const 59
+    i32.gt_s
+    if (result i32)
+    i32.const 1
+    else
+    local.get $fp$
+    i32.load offset=8 align=4
+    i32.const 59
+    i32.gt_s
+    end
+    if
+    i32.const 0
+    local.set $mul
+    end
+    local.get $mul
+    local.get $fp$
+    i32.load offset=8 align=4
+    i32.const 60
+    local.get $fp$
+    i32.load offset=4 align=4
+    i32.mul
+    i32.add
+    i32.const 3600
+    local.get $fp$
+    i32.load offset=0 align=4
+    i32.mul
+    i32.add
+    i32.mul
+    global.set $time:timezone
+    local.get $error
+    local.tee $i7$
+    local.get $mul
+    i32.const 0
+    i32.eq
+    i32.store offset=0 align=4
+    end
+    local.get $src
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+  )
+  (func $time:tzset (export "tzset")
+    (local $tzval i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
+    global.get $env:__stack_pointer
+    local.set $bp$
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
+    local.set $fp$
+    ref.data $time:ds59$
+    call $stdlib:getenv
+    local.tee $tzval
+    i32.const 0
+    i32.eq
+    if
+    ref.data $time:ds60$
+    local.set $tzval
+    end
+    global.get $time:_tzset
+    i32.eqz
+    if (result i32)
+    i32.const 1
+    else
+    ref.data $time:_tzval
+    local.get $tzval
+    call $string:strcmp
+    i32.const 0
+    i32.ne
+    end
+    if
+    local.get $tzval
+    call $string:strlen
+    i32.const 255
+    i32.le_u
+    global.set $time:_tzset
+    global.get $time:_tzset
+    if
+    ref.data $time:_tzval
+    local.get $tzval
+    call $string:strcpy
+    drop
+    end
+    local.get $tzval
+    ref.data $time:_tzname
+    call $time:get_tz_name
+    local.tee $tzval
+    local.get $fp$
+    call $time:get_tz_offset
+    local.set $tzval
+    local.get $fp$
+    i32.load offset=0 align=4
+    if
+    ref.data $time:tzname
+    local.tee $i1$
+    ref.data $time:_tzdflt
+    i32.store offset=0 align=4
+    ref.data $time:tzname
+    i32.const 4
+    i32.add
+    local.tee $i2$
+    ref.data $time:_tzdflt
+    i32.store offset=0 align=4
+    else
+    local.get $tzval
+    ref.data $time:_tzname
+    i32.const 256
+    i32.add
+    call $time:get_tz_name
+    local.set $tzval
+    ref.data $time:tzname
+    local.tee $i3$
+    ref.data $time:_tzname
+    i32.store offset=0 align=4
+    ref.data $time:tzname
+    i32.const 4
+    i32.add
+    local.tee $i4$
+    ref.data $time:_tzname
+    i32.const 256
+    i32.add
+    i32.store offset=0 align=4
+    end
+    end
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+  )
+  (func $time:mktime (export "mktime")
+    (param $tm i32) (result i64) 
+    (local $tyears i32) (local $tdays i32) (local $leaps i32) (local $utc_hrs i32) (local $leap_year i32) 
+    call $time:tzset
+    local.get $tm
+    i32.load offset=20 align=4
+    i32.const 1900
+    i32.add
+    i32.const 4
+    i32.rem_s
+    i32.const 0
+    i32.eq
+    local.set $leap_year
+    local.get $tm
+    i32.load offset=20 align=4
+    i32.const 70
+    i32.sub
+    local.tee $tyears
+    i32.const 2
+    i32.add
+    i32.const 4
+    i32.div_s
+    local.set $leaps
+    local.get $tyears
+    i32.const 0
+    i32.lt_s
+    if
+    local.get $tyears
+    i32.const 2
+    i32.sub
+    i32.const 4
+    i32.div_s
+    local.set $leaps
+    local.get $leap_year
+    if (result i32)
+    local.get $tm
+    i32.load offset=16 align=4
+    i32.const 1
+    i32.gt_s
+    else
+    i32.const 0
+    end
+    if
+    local.get $leaps
+    i32.const 1
+    i32.add
+    local.set $leaps
+    end
+    else
+    local.get $tyears
+    i32.const 2
+    i32.add
+    i32.const 4
+    i32.div_s
+    local.set $leaps
+    local.get $leap_year
+    if (result i32)
+    local.get $tm
+    i32.load offset=16 align=4
+    i32.const 0
+    i32.eq
+    if (result i32)
+    i32.const 1
+    else
+    local.get $tm
+    i32.load offset=16 align=4
+    i32.const 1
+    i32.eq
+    end
+    else
+    i32.const 0
+    end
+    if
+    local.get $leaps
+    i32.const 1
+    i32.sub
+    local.set $leaps
+    end
+    end
+    local.get $tm
+    i32.load offset=16 align=4
+    i32.const 0
+    i32.gt_s
+    if (result i32)
+    ref.data $time:mon_days
+    local.get $tm
+    i32.load offset=16 align=4
+    i32.const 1
+    i32.sub
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    else
+    i32.const 0
+    end
+    local.tee $tdays
+    local.get $tm
+    i32.load offset=12 align=4
+    i32.const 1
+    i32.sub
+    i32.add
+    local.tee $tdays
+    local.get $tyears
+    i32.const 365
+    i32.mul
+    local.get $leaps
+    i32.add
+    i32.add
+    local.set $tdays
+    local.get $tm
+    i32.load offset=8 align=4
+    local.set $utc_hrs
+    local.get $tdays
+    i32.const 86400
+    i32.mul
+    local.get $utc_hrs
+    i32.const 3600
+    i32.mul
+    i32.add
+    local.get $tm
+    i32.load offset=4 align=4
+    i32.const 60
+    i32.mul
+    i32.add
+    local.get $tm
+    i32.load offset=0 align=4
+    i32.add
+    global.get $time:timezone
+    i32.add
+    i64.extend_i32_s
+    return
+  )
+  (func $time:asctime_r (export "asctime_r")
+    (param $ptm i32) (param $buf i32) (result i32) 
+    (local $i1$ i32) 
+    local.get $buf
+    i32.const 26
+    ref.data $time:ds63$
+    global.get $env:__stack_pointer
+    i32.const 64
+    i32.sub
+    local.tee $i1$
+    global.set $env:__stack_pointer
+    local.get $i1$
+    ref.data $time:wday_name
+    local.get $ptm
+    i32.load offset=24 align=4
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    i32.store offset=0 align=4
+    local.get $i1$
+    ref.data $time:mon_name
+    local.get $ptm
+    i32.load offset=16 align=4
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    i32.store offset=8 align=4
+    local.get $i1$
+    local.get $ptm
+    i32.load offset=12 align=4
+    i32.store offset=16 align=4
+    local.get $i1$
+    local.get $ptm
+    i32.load offset=8 align=4
+    i32.store offset=24 align=4
+    local.get $i1$
+    local.get $ptm
+    i32.load offset=4 align=4
+    i32.store offset=32 align=4
+    local.get $i1$
+    local.get $ptm
+    i32.load offset=0 align=4
+    i32.store offset=40 align=4
+    local.get $i1$
+    i32.const 1900
+    local.get $ptm
+    i32.load offset=20 align=4
+    i32.add
+    i32.store offset=48 align=4
+    local.get $i1$
+    call $stdio:snprintf
+    local.get $i1$
+    global.set $env:__stack_pointer
+    drop
+    local.get $buf
+    return
+  )
+  (func $time:localtime_r (export "localtime_r")
+    (param $pt i32) (param $ptm i32) (result i32) 
+    (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
+    global.get $env:__stack_pointer
+    local.set $bp$
+    global.get $env:__stack_pointer
+    i32.const 16
+    i32.sub
+    global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
+    local.tee $fp$
+    local.tee $i1$
+    local.get $pt
+    i64.load offset=0 align=8
+    i64.store offset=0 align=8
+    call $time:tzset
+    local.get $fp$
+    local.tee $i2$
+    local.get $i2$
+    i64.load offset=0 align=8
+    global.get $time:timezone
+    i64.extend_i32_s
+    i64.sub
+    i64.store offset=0 align=8
+    local.get $fp$
+    local.get $ptm
+    call $time:gmtime_r
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+  )
+  (func $time:ctime_r (export "ctime_r")
+    (param $pt i32) (param $buf i32) (result i32) 
+    (local $ptm i32) (local $bp$ i32) (local $fp$ i32) 
+    global.get $env:__stack_pointer
+    local.set $bp$
+    global.get $env:__stack_pointer
+    i32.const 48
+    i32.sub
+    global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
+    local.set $fp$
+    local.get $pt
+    local.get $fp$
+    call $time:localtime_r
+    local.tee $ptm
+    i32.const 0
+    i32.ne
+    if (result i32)
+    local.get $ptm
+    local.get $buf
+    call $time:asctime_r
+    else
+    i32.const 0
+    end
+    local.get $bp$
+    global.set $env:__stack_pointer
+    return
+  )
+  (func $time:gmtime (export "gmtime")
+    (param $pt i32) (result i32) 
+    local.get $pt
+    ref.data $time:gmtime_buf
+    call $time:gmtime_r
+    return
+  )
+  (func $time:asctime (export "asctime")
+    (param $ptm i32) (result i32) 
+    local.get $ptm
+    ref.data $time:asctime_buf
+    call $time:asctime_r
+    return
+  )
+  (func $time:localtime (export "localtime")
+    (param $pt i32) (result i32) 
+    local.get $pt
+    ref.data $time:gmtime_buf
+    call $time:localtime_r
+    return
+  )
+  (func $time:ctime (export "ctime")
+    (param $pt i32) (result i32) 
+    (local $ptm i32) 
+    local.get $pt
+    ref.data $time:gmtime_buf
+    call $time:localtime_r
+    local.tee $ptm
+    i32.eqz
+    if
+    i32.const 0
+    return
+    end
+    local.get $ptm
+    ref.data $time:asctime_buf
+    call $time:asctime_r
+    return
+  )
+  (func $time:get_week
+    (param $tp i32) (param $start_monday i32) (result i32) 
+    (local $week i32) 
+    local.get $tp
+    i32.load offset=28 align=4
+    i32.const 7
+    i32.add
+    local.set $week
+    local.get $start_monday
+    if
+    local.get $tp
+    i32.load offset=24 align=4
+    i32.const 0
+    i32.eq
+    if
+    local.get $week
+    i32.const 6
+    i32.sub
+    local.set $week
+    else
+    local.get $week
+    local.get $tp
+    i32.load offset=24 align=4
+    i32.const 1
+    i32.sub
+    i32.sub
+    local.set $week
+    end
+    else
+    local.get $week
+    local.get $tp
+    i32.load offset=24 align=4
+    i32.sub
+    local.set $week
+    end
+    local.get $week
+    i32.const 7
+    i32.div_s
+    return
+  )
+  (func $time:strftime (export "strftime")
+    (param $s i32) (param $smax i32) (param $fmt i32) (param $tp i32) (result i32) 
+    (local $ptr i32) (local $count i32) (local $addstr i32) (local $addlen i32) (local $week i32) (local $hour12 i32) (local $len i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) (local $i10$ i32) (local $i11$ i32) (local $i12$ i32) (local $i13$ i32) (local $i14$ i32) (local $i15$ i32) (local $i16$ i32) (local $i17$ i32) (local $i18$ i32) (local $i19$ i32) (local $i20$ i32) (local $i21$ i32) (local $i22$ i32) (local $i23$ i32) (local $i24$ i32) (local $i25$ i32) (local $i26$ i32) (local $i27$ i32) (local $i28$ i32) (local $i29$ i32) (local $i30$ i32) (local $i31$ i32) (local $i32$ i32) (local $i33$ i32) (local $i34$ i32) (local $i35$ i32) (local $i36$ i32) (local $i37$ i32) (local $i38$ i32) (local $i39$ i32) (local $i40$ i32) (local $i41$ i32) 
+    global.get $env:__stack_pointer
+    local.set $bp$
+    global.get $env:__stack_pointer
+    i32.const 80
+    i32.sub
+    global.set $env:__stack_pointer
+    global.get $env:__stack_pointer
+    local.set $fp$
+    local.get $s
+    local.set $ptr
+    i32.const 0
+    local.set $count
+    call $time:tzset
+    block $2$
+    loop $1$
+    block $3$
+    local.get $fmt
+    i32.load8_s offset=0 align=1
+    i32.const 37
+    i32.eq
+    if
+    i32.const 0
+    local.set $addstr
+    i32.const -1
+    local.set $addlen
+    block $4$
+    block $27$
+    block $26$
+    block $25$
+    block $24$
+    block $23$
+    block $22$
+    block $21$
+    block $20$
+    block $19$
+    block $18$
+    block $17$
+    block $16$
+    block $15$
+    block $14$
+    block $13$
+    block $12$
+    block $11$
+    block $10$
+    block $9$
+    block $8$
+    block $7$
+    block $6$
+    block $5$
+    local.get $fmt
+    i32.const 1
+    i32.add
+    local.tee $fmt
+    i32.load8_s offset=0 align=1
+    local.set $i1$
+    i32.const 37
+    local.get $i1$
+    i32.eq
+    br_if $26$
+    i32.const 65
+    local.get $i1$
+    i32.eq
+    br_if $6$
+    i32.const 66
+    local.get $i1$
+    i32.eq
+    br_if $8$
+    i32.const 72
+    local.get $i1$
+    i32.eq
+    br_if $11$
+    i32.const 73
+    local.get $i1$
+    i32.eq
+    br_if $12$
+    i32.const 77
+    local.get $i1$
+    i32.eq
+    br_if $15$
+    i32.const 83
+    local.get $i1$
+    i32.eq
+    br_if $17$
+    i32.const 85
+    local.get $i1$
+    i32.eq
+    br_if $18$
+    i32.const 87
+    local.get $i1$
+    i32.eq
+    br_if $19$
+    i32.const 88
+    local.get $i1$
+    i32.eq
+    br_if $21$
+    i32.const 89
+    local.get $i1$
+    i32.eq
+    br_if $24$
+    i32.const 90
+    local.get $i1$
+    i32.eq
+    br_if $25$
+    i32.const 97
+    local.get $i1$
+    i32.eq
+    br_if $5$
+    i32.const 98
+    local.get $i1$
+    i32.eq
+    br_if $7$
+    i32.const 99
+    local.get $i1$
+    i32.eq
+    br_if $9$
+    i32.const 100
+    local.get $i1$
+    i32.eq
+    br_if $10$
+    i32.const 106
+    local.get $i1$
+    i32.eq
+    br_if $13$
+    i32.const 109
+    local.get $i1$
+    i32.eq
+    br_if $14$
+    i32.const 112
+    local.get $i1$
+    i32.eq
+    br_if $16$
+    i32.const 119
+    local.get $i1$
+    i32.eq
+    br_if $20$
+    i32.const 120
+    local.get $i1$
+    i32.eq
+    br_if $22$
+    i32.const 121
+    local.get $i1$
+    i32.eq
+    br_if $23$
+    br $27$
+    end $5$
+    i32.const 3
+    local.set $addlen
+    end $6$
+    local.get $tp
+    i32.load offset=24 align=4
+    i32.const 0
+    i32.lt_s
+    if (result i32)
+    i32.const 1
+    else
+    local.get $tp
+    i32.load offset=24 align=4
+    i32.const 6
+    i32.gt_s
+    end
+    if
+    ref.data $time:ds72$
+    local.set $addstr
+    i32.const -1
+    local.set $addlen
+    else
+    ref.data $time:wday_full_name
+    local.get $tp
+    i32.load offset=24 align=4
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    local.set $addstr
+    end
+    br $4$
+    end $7$
+    i32.const 3
+    local.set $addlen
+    end $8$
+    local.get $tp
+    i32.load offset=16 align=4
+    i32.const 0
+    i32.lt_s
+    if (result i32)
+    i32.const 1
+    else
+    local.get $tp
+    i32.load offset=16 align=4
+    i32.const 11
+    i32.gt_s
+    end
+    if
+    ref.data $time:ds73$
+    local.set $addstr
+    i32.const -1
+    local.set $addlen
+    else
+    ref.data $time:mon_full_name
+    local.get $tp
+    i32.load offset=16 align=4
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    local.set $addstr
+    end
+    br $4$
+    end $9$
+    local.get $fp$
+    i32.const 80
+    ref.data $time:ds74$
+    local.get $tp
+    call $time:strftime
+    drop
+    br $4$
+    end $10$
+    local.get $fp$
+    local.tee $i2$
+    i32.const 48
+    local.get $tp
+    i32.load offset=12 align=4
+    i32.const 10
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i3$
+    i32.const 48
+    local.get $tp
+    i32.load offset=12 align=4
+    i32.const 10
+    i32.rem_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i4$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $11$
+    local.get $fp$
+    local.tee $i5$
+    i32.const 48
+    local.get $tp
+    i32.load offset=8 align=4
+    i32.const 10
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i6$
+    i32.const 48
+    local.get $tp
+    i32.load offset=8 align=4
+    i32.const 10
+    i32.rem_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i7$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $12$
+    local.get $tp
+    i32.load offset=8 align=4
+    i32.const 12
+    i32.rem_s
+    local.tee $hour12
+    i32.const 0
+    i32.eq
+    if
+    i32.const 12
+    local.set $hour12
+    end
+    local.get $fp$
+    local.tee $i8$
+    i32.const 48
+    local.get $hour12
+    i32.const 10
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i9$
+    i32.const 48
+    local.get $hour12
+    i32.const 10
+    i32.rem_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i10$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $13$
+    local.get $fp$
+    local.tee $i11$
+    i32.const 48
+    local.get $tp
+    i32.load offset=28 align=4
+    i32.const 1
+    i32.add
+    i32.const 100
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i12$
+    i32.const 48
+    local.get $tp
+    i32.load offset=28 align=4
+    i32.const 1
+    i32.add
+    i32.const 100
+    i32.rem_s
+    i32.const 10
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i13$
+    i32.const 48
+    local.get $tp
+    i32.load offset=28 align=4
+    i32.const 1
+    i32.add
+    i32.const 10
+    i32.rem_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 3
+    i32.add
+    local.tee $i14$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $14$
+    local.get $fp$
+    local.tee $i15$
+    i32.const 48
+    local.get $tp
+    i32.load offset=16 align=4
+    i32.const 1
+    i32.add
+    i32.const 10
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i16$
+    i32.const 48
+    local.get $tp
+    i32.load offset=16 align=4
+    i32.const 1
+    i32.add
+    i32.const 10
+    i32.rem_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i17$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $15$
+    local.get $fp$
+    local.tee $i18$
+    i32.const 48
+    local.get $tp
+    i32.load offset=4 align=4
+    i32.const 10
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i19$
+    i32.const 48
+    local.get $tp
+    i32.load offset=4 align=4
+    i32.const 10
+    i32.rem_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i20$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $16$
+    local.get $tp
+    i32.load offset=8 align=4
+    i32.const 0
+    i32.gt_s
+    if (result i32)
+    local.get $tp
+    i32.load offset=8 align=4
+    i32.const 13
+    i32.lt_s
+    else
+    i32.const 0
+    end
+    if
+    ref.data $time:ds75$
+    local.set $addstr
+    else
+    ref.data $time:ds76$
+    local.set $addstr
+    end
+    br $4$
+    end $17$
+    local.get $fp$
+    local.tee $i21$
+    i32.const 48
+    local.get $tp
+    i32.load offset=0 align=4
+    i32.const 10
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i22$
+    i32.const 48
+    local.get $tp
+    i32.load offset=0 align=4
+    i32.const 10
+    i32.rem_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i23$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $18$
+    end $19$
+    local.get $tp
+    i32.const 0
+    i32.const 1
+    local.get $fmt
+    i32.load8_s offset=0 align=1
+    i32.const 85
+    i32.eq
+    select
+    call $time:get_week
+    local.set $week
+    local.get $fp$
+    local.tee $i24$
+    i32.const 48
+    local.get $week
+    i32.const 10
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i25$
+    i32.const 48
+    local.get $week
+    i32.const 10
+    i32.rem_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i26$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $20$
+    local.get $fp$
+    local.tee $i27$
+    i32.const 48
+    local.get $tp
+    i32.load offset=24 align=4
+    i32.const 10
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i28$
+    i32.const 48
+    local.get $tp
+    i32.load offset=24 align=4
+    i32.const 10
+    i32.rem_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i29$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $21$
+    local.get $fp$
+    i32.const 80
+    ref.data $time:ds77$
+    local.get $tp
+    call $time:strftime
+    drop
+    br $4$
+    end $22$
+    local.get $fp$
+    i32.const 80
+    ref.data $time:ds78$
+    local.get $tp
+    call $time:strftime
+    drop
+    br $4$
+    end $23$
+    local.get $fp$
+    local.tee $i30$
+    i32.const 48
+    local.get $tp
+    i32.load offset=20 align=4
+    i32.const 100
+    i32.rem_s
+    i32.const 10
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i31$
+    i32.const 48
+    local.get $tp
+    i32.load offset=20 align=4
+    i32.const 100
+    i32.rem_s
+    i32.const 10
+    i32.rem_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i32$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $24$
+    local.get $fp$
+    local.tee $i33$
+    i32.const 48
+    local.get $tp
+    i32.load offset=20 align=4
+    i32.const 1900
+    i32.add
+    i32.const 1000
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i34$
+    i32.const 48
+    local.get $tp
+    i32.load offset=20 align=4
+    i32.const 1900
+    i32.add
+    i32.const 1000
+    i32.rem_s
+    i32.const 100
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i35$
+    i32.const 48
+    local.get $tp
+    i32.load offset=20 align=4
+    i32.const 1900
+    i32.add
+    i32.const 100
+    i32.rem_s
+    i32.const 10
+    i32.div_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 3
+    i32.add
+    local.tee $i36$
+    i32.const 48
+    local.get $tp
+    i32.load offset=20 align=4
+    i32.const 1900
+    i32.add
+    i32.const 10
+    i32.rem_s
+    i32.add
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 4
+    i32.add
+    local.tee $i37$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $25$
+    ref.data $time:tzname
+    local.get $tp
+    i32.load offset=32 align=4
+    i32.const 0
+    i32.gt_s
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    local.set $addstr
+    br $4$
+    end $26$
+    ref.data $time:ds79$
+    local.set $addstr
+    br $4$
+    end $27$
+    local.get $fp$
+    local.tee $i38$
+    i32.const 37
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 1
+    i32.add
+    local.tee $i39$
+    local.get $fmt
+    i32.load8_s offset=0 align=1
+    i32.store8 offset=0 align=1
+    local.get $fp$
+    i32.const 2
+    i32.add
+    local.tee $i40$
+    i32.const 0
+    i32.store8 offset=0 align=1
+    br $4$
+    end $4$
+    local.get $addstr
+    i32.const 0
+    i32.eq
+    if
+    local.get $fp$
+    local.set $addstr
+    end
+    local.get $addstr
+    i32.load8_s offset=0 align=1
+    i32.const 0
+    i32.ne
+    if
+    local.get $addlen
+    i32.const 0
+    i32.lt_s
+    if (result i32)
+    local.get $addstr
+    call $string:strlen
+    else
+    local.get $addlen
+    end
+    local.set $len
+    local.get $count
+    local.get $len
+    i32.add
+    local.get $smax
+    i32.gt_u
+    if
+    local.get $smax
+    local.get $count
+    i32.sub
+    local.set $len
+    end
+    local.get $ptr
+    local.get $addstr
+    local.get $len
+    call $string:strncpy
+    drop
+    local.get $ptr
+    local.get $len
+    i32.add
+    local.set $ptr
+    local.get $count
+    local.get $len
+    i32.add
+    local.set $count
+    end
+    local.get $fmt
+    i32.const 1
+    i32.add
+    local.set $fmt
+    else
+    local.get $count
+    local.get $smax
+    i32.le_u
+    if
+    local.get $ptr
+    local.get $ptr
+    i32.const 1
+    i32.add
+    local.set $ptr
+    local.tee $i41$
+    local.get $fmt
+    i32.load8_s offset=0 align=1
+    i32.store8 offset=0 align=1
+    end
+    local.get $fmt
+    i32.const 1
+    i32.add
+    local.set $fmt
+    end
+    end $3$
+    local.get $fmt
+    i32.const -1
+    i32.add
+    i32.load8_s offset=0 align=1
+    i32.const 0
+    i32.ne
+    br_if $1$
+    end $1$
+    end $2$
+    local.get $count
+    local.get $smax
+    i32.gt_u
+    if
+    i32.const 0
+    local.set $count
+    end
+    local.get $count
     local.get $bp$
     global.set $env:__stack_pointer
     return
