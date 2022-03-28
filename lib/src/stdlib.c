@@ -384,7 +384,52 @@ void exit(int status)
   proc_exit((exitcode_t)status);
 }
 
-/* char *getenv(const char *name) */
+char **_environ = NULL;
+static char *empty_environ[1] = { NULL };
+
+void initialize_environ(void) 
+{
+  if (_environ != NULL) {
+    return;
+  } else {
+    size_t environ_count;
+    size_t environ_buf_size;
+    errno_t error = environ_sizes_get(&environ_count, &environ_buf_size);
+    if (error != ERRNO_SUCCESS) goto err;
+    if (environ_count == 0) goto err;
+    size_t num_ptrs = environ_count + 1;
+    if (num_ptrs == 0) goto err;
+    char *environ_buf = malloc(environ_buf_size);
+    if (environ_buf == NULL) goto err;
+    char **environ_ptrs = calloc(num_ptrs, sizeof(char *));
+    if (environ_ptrs == NULL) { free(environ_buf); goto err; }
+    error = environ_get((uint8_t **)environ_ptrs, (uint8_t *)environ_buf);
+    if (error != ERRNO_SUCCESS) {
+      free(environ_buf);
+      free(environ_ptrs);
+      goto err;
+    }
+    _environ = environ_ptrs;
+    return;
+  err:;
+  }
+  _environ = &empty_environ[0];
+}
+
+char *getenv(const char *name)
+{
+  if (name != NULL) {
+    size_t len = strlen(name);
+    initialize_environ();
+    char **env;
+    for (env = _environ; *env; ++env) {
+			if (strncmp(name, *env, len) && (*env)[len] == '=')
+				return *env + len + 1;
+    }
+  }
+  return NULL;
+}
+
 
 /* system() is absent */
 
