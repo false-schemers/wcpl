@@ -23,8 +23,11 @@ sym_t   g_env_mod;  /* environment module */
 sym_t   g_wasi_mod; /* module for wasi */
 sym_t   g_lm_id;    /* id for linear memory */
 sym_t   g_sp_id;    /* id for stack pointer global */
+sym_t   g_sb_id;    /* id for stack base global */
+sym_t   g_hb_id;    /* id for heap base global */
 size_t  g_sdbaddr;  /* static data allocation start */
 size_t  g_stacksz;  /* stack size in bytes */
+size_t  g_argvbsz;  /* argv buf size in bytes */
 
 
 void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl)
@@ -48,8 +51,11 @@ void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl)
   g_env_mod = intern("env");
   g_lm_id = intern("__linear_memory");
   g_sp_id = intern("__stack_pointer");
+  g_sb_id = intern("__stack_base");
+  g_hb_id = intern("__heap_base");
   g_sdbaddr = 1024; /* >0, 16-aligned: address 0 reserved for NULL */
   g_stacksz = 64*1024; /* 64K default */
+  g_argvbsz = 4*1024; /* 4K default */
 } 
 
 void fini_wcpl(void)
@@ -1021,10 +1027,17 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
         seval_t r; assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
         assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
         if (!static_eval(ndref(pin, 1), &r) || !(ts_numerical(r.ts) 
-            || (r.ts == TS_PTR && r.val.i == 0 && r.id == 0))) /* NULL is ok, &other is not (fixme) */
+            || (r.ts == TS_PTR && r.val.i == 0))) /* NYI: non-0 offset (fixme) */
           neprintf(pin, "non-constant initializer");
         pg = watiebref(&g_curpwm->exports, pgidx); /* re-fetch after static_eval */
-        asm_numerical_const(r.ts == TS_PTR ? TS_UINT : r.ts, &r.val, &pg->ic); /* wasm32 */
+        if (r.ts != TS_PTR || r.id == 0) {
+          asm_numerical_const(r.ts == TS_PTR ? TS_UINT : r.ts, &r.val, &pg->ic); /* wasm32 */
+        } else {
+          const node_t *pimn = lookup_global(r.id); inscode_t *pic = &pg->ic;
+          if (!pimn) neprintf(pdn, "unknown identifier in address initializer");
+          assert(pimn->nt == NT_IMPORT && pimn->name != 0);
+          pic->in = IN_REF_DATA; pic->id = r.id; pic->arg2.mod = pimn->name;
+        }
       }  
       pg->mut = MT_VAR;
       pg->vt = ts2vt(ptn->ts);
@@ -3614,7 +3627,6 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
   /* add standard imports/exports */
   switch (pwm->main) {
     case MAIN_ABSENT: {
-      /* fixme: add standard imports */
       watie_t *pi;
       /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
       pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
@@ -3626,11 +3638,54 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
       pi->lt = LT_MIN; pi->n = 0;
     } break;
     case MAIN_ARGC_ARGV: {
-      /* fixme: add standard startup code and exports */
-      exprintf("NYI: can't set up environment for main(argc, argv)");
+      watie_t *pi, *pf; inscode_t *pic; sym_t r;
+      /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
+      pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
+      pi->mod = g_env_mod; pi->id = g_sp_id; 
+      pi->mut = MT_VAR; pi->vt = VT_I32;
+      /* (import "env" "__stack_base" (global $env:__stack_base i32)) */
+      pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
+      pi->mod = g_env_mod; pi->id = g_sb_id; 
+      pi->mut = MT_CONST; pi->vt = VT_I32;
+      /* (import "env" "__heap_base" (global $env:__heap_base i32)) */
+      pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
+      pi->mod = g_env_mod; pi->id = g_hb_id; 
+      pi->mut = MT_CONST; pi->vt = VT_I32;
+      /* (import "env" "__linear_memory" (memory $env:__linear_memory 0)) */
+      pi = watiebnewbk(&pwm->imports, IEK_MEM);
+      pi->mod = g_env_mod; pi->id = g_lm_id; 
+      pi->lt = LT_MIN; pi->n = 0;
+      /* (import "env" "initialize_argv" (func $...)) */
+      pi = watiebnewbk(&pwm->imports, IEK_FUNC);
+      pi->mod = g_env_mod; pi->id = intern("initialize_argv");
+      /* (import "env" "_argc" (global $env:_argc (mut i32))) */
+      pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
+      pi->mod = g_env_mod; pi->id = intern("_argc");
+      pi->mut = MT_VAR; pi->vt = VT_I32;
+      /* (import "env" "_argv" (global $env:_argv (mut i32))) */
+      pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
+      pi->mod = g_env_mod; pi->id = intern("_argv");
+      pi->mut = MT_VAR; pi->vt = VT_I32;
+      /* (import "wasi_snapshot_preview1" "proc_exit" (func $... (param i32))) */
+      pi = watiebnewbk(&pwm->imports, IEK_FUNC);
+      pi->mod = g_wasi_mod; pi->id = intern("proc_exit");
+      *vtbnewbk(&pi->fs.partypes) = VT_I32;
+      /* (func $_start ...) */
+      pf = watiebnewbk(&pwm->exports, IEK_FUNC); 
+      pf->mod = mod; pf->id = intern("_start"); /* fs is void->void */
+      pf->exported = true;
+      pic = icbnewbk(&pf->code); pic->in = IN_REGDECL; pic->id = (r = intern("res")); pic->arg.u = VT_I32;
+      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("initialize_argv"); pic->arg2.mod = g_env_mod; 
+      pic = icbnewbk(&pf->code); pic->in = IN_GLOBAL_GET; pic->id = intern("_argc"); pic->arg2.mod = g_env_mod;
+      pic = icbnewbk(&pf->code); pic->in = IN_GLOBAL_GET; pic->id = intern("_argv"); pic->arg2.mod = g_env_mod;
+      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("main"); pic->arg2.mod = mod; 
+      pic = icbnewbk(&pf->code); pic->in = IN_LOCAL_TEE; pic->id = r;
+      pic = icbnewbk(&pf->code); pic->in = IN_IF; pic->arg.u = BT_VOID;
+      pic = icbnewbk(&pf->code); pic->in = IN_LOCAL_GET; pic->id = r;
+      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("proc_exit"); pic->arg2.mod = g_wasi_mod;
+      pic = icbnewbk(&pf->code); pic->in = IN_END;
     } break;
     case MAIN_VOID: {
-      /* fixme: add standard startup code and exports */
       watie_t *pi, *pf; inscode_t *pic; sym_t r;
       /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
       pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);

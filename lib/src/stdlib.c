@@ -385,15 +385,14 @@ void exit(int status)
 }
 
 char **_environ = NULL;
-static char *empty_environ[1] = { NULL };
+static char *empty_environ[] = { NULL };
 
 void initialize_environ(void) 
 {
   if (_environ != NULL) {
     return;
   } else {
-    size_t environ_count;
-    size_t environ_buf_size;
+    size_t environ_count, environ_buf_size;
     errno_t error = environ_sizes_get(&environ_count, &environ_buf_size);
     if (error != ERRNO_SUCCESS) goto err;
     if (environ_count == 0) goto err;

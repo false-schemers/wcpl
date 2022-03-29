@@ -2888,6 +2888,23 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     dropt(pw);
     parse_mod_id(pw, &pe->mod, &pe->id);
     parse_optional_export(pw, pe);
+#if 1
+    if (ahead(pw, "(")) {
+      expect(pw, "(");
+      expect(pw, "mut");
+      pe->mut = MT_VAR;
+      pe->vt = parse_valtype(pw);
+      expect(pw, ")");
+    } else {
+      pe->mut = MT_CONST;
+      pe->vt = parse_valtype(pw);
+    }
+    if (ahead(pw, "(")) {
+      expect(pw, "(");
+      parse_ins(pw, &pe->ic, NULL);
+      expect(pw, ")");
+    }
+#else   
     pe->mut = MT_CONST;
     while (ahead(pw, "(")) {
       dropt(pw);
@@ -2908,6 +2925,7 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
       parse_ins(pw, &pe->ic, NULL);
       expect(pw, ")");
     }
+#endif
   } else if (ahead(pw, "func")) {
     watie_t *pe = watiebnewbk(&pm->exports, IEK_FUNC);
     dropt(pw);
@@ -3334,10 +3352,12 @@ size_t watify_wat_module(wat_module_t* pm)
 /* patch initial stack pointer and memory size */
 static void finalize_wat_module(wat_module_t* pm, size_t dsegend)
 {
-  size_t i, n, align, spaddr, ememaddr, mempages;
+  size_t i, n, align, spaddr, hpaddr, ememaddr, mempages;
   spaddr = dsegend + g_stacksz; align = 16; 
   n = spaddr % align; if (n > 0) spaddr += align - n;
-  ememaddr = spaddr; align = 64*1024; /* page = 64K */
+  hpaddr = spaddr + g_argvbsz; align = 16; 
+  n = hpaddr % align; if (n > 0) hpaddr += align - n;
+  ememaddr = hpaddr; align = 64*1024; /* page = 64K */
   n = ememaddr % align; if (n > 0) ememaddr += align - n;
   mempages = ememaddr/align;
   for (i = 0; i < watieblen(&pm->exports); ++i) {
@@ -3346,6 +3366,14 @@ static void finalize_wat_module(wat_module_t* pm, size_t dsegend)
       if (pe->mod == g_env_mod && pe->id == g_sp_id) {
         if (pe->ic.in == IN_I32_CONST) { /* wasm32 */
           pe->ic.arg.u = spaddr;
+        }
+      } else if (pe->mod == g_env_mod && pe->id == g_sb_id) {
+        if (pe->ic.in == IN_I32_CONST) { /* wasm32 */
+          pe->ic.arg.u = spaddr;
+        }
+      } else if (pe->mod == g_env_mod && pe->id == g_hb_id) {
+        if (pe->ic.in == IN_I32_CONST) { /* wasm32 */
+          pe->ic.arg.u = hpaddr;
         }
       }
     } else if (pe->iek == IEK_MEM) {
@@ -3415,7 +3443,10 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
         sym_t rtn = *pmn; wat_module_t* pnewm;
         if (rtn == g_env_mod) {
           if (mt == MAIN_VOID) rtn = internf("%s.void", symname(rtn));
-          else if (mt == MAIN_ARGC_ARGV) rtn = internf("%s.argv", symname(rtn));
+          else if (mt == MAIN_ARGC_ARGV) {
+            if (g_argvbsz != 0) rtn = internf("%s.argv", symname(rtn));
+            else rtn = internf("%s.argv.malloc", symname(rtn));
+          }
           envmod = rtn;
         }
         logef("# found library dependence: '%s' module\n", symname(rtn));

@@ -1,7 +1,7 @@
 WCPL
 ====
 
-Standalone compiler/linker/libc for a subset of C targeting Webassembly (mostly functional)
+Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 
 # C features supported
 
@@ -34,8 +34,6 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly (mostly 
 - `{}` initializers for locals
 - `static` variables in function scope
 - structures/unions as parameters
-- hex format of doubles in WAT object and output files
-- fixme: non-NULL address expr is not a constant for global var init
 - fixme: stdout/stderr are not line-buffered and don't autoflush on exit
 
 # C features that won't be supported
@@ -54,23 +52,23 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly (mostly 
 
 # Libraries already implemented
 
-- `<assert.h>` (header only)
-- `<ctype.h>`
+- `<assert.h>` (C90, header only)
+- `<ctype.h>`  (C90)
 - `<dirent.h>` (POSIX-like, abridged)
-- `<errno.h>`
+- `<errno.h>` (C90 + full WASI error list)
 - `<fcntl.h>` (POSIX-like, abridged)
 - `<fenv.h>` (with WASM limitations)
-- `<float.h>` (header only)
-- `<inttypes.h>` (header only)
-- `<limits.h>` (header only)
-- `<stdarg.h>` (header only)
-- `<stdbool.h>` (header only)
-- `<stddef.h>` (header only)
-- `<stdint.h>` (header only)
-- `<stdio.h>` (abridged: no `gets`, `tmpfile`, `tmpnam`)
-- `<stdlib.h>` (abridged: no `system`)
-- `<string.h>`
-- `<sys/types.h>` (header only)
+- `<float.h>` (C90, header only)
+- `<inttypes.h>` (C99, header only)
+- `<limits.h>` (C90, header only)
+- `<stdarg.h>` (C90, header only)
+- `<stdbool.h>` (C99, header only)
+- `<stddef.h>` (C90, header only)
+- `<stdint.h>` (C99, header only)
+- `<stdio.h>` (C90, abridged: no `gets`, `tmpfile`, `tmpnam`)
+- `<stdlib.h>` (C90, abridged: no `system`)
+- `<string.h>` (C90 + some POSIX-like extras)
+- `<sys/types.h>` (header only, internal)
 - `<sys/defs.h>` (header only, internal)
 - `<sys/stat.h>` (POSIX-like, abridged)
 - `<unistd.h>` (POSIX-like, abridged)
@@ -127,6 +125,15 @@ A mix of source and object files can be given; one of the input files should
 contain implementation of main() procedure. Library dependences are automatically
 loaded and used.
 
+## Running
+
+Currently, WCPL produces output executables in WAT format. Some WASM runtimes
+such as `wasmtime` allow running WAT files directly and provide better disgnostics
+(e.g. symbolic stack traces); for others, WAT files should be first converted to
+WASM format with `wat2wasm` or similst tools.
+
+Please read the documentation on your WASM runtime for details on directory
+mapping and passing command line arguments.
 
 
 

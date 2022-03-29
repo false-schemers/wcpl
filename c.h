@@ -12,8 +12,11 @@ extern sym_t   g_env_mod;  /* environment module */
 extern sym_t   g_wasi_mod; /* module for wasi */
 extern sym_t   g_lm_id;    /* id for linear memory */
 extern sym_t   g_sp_id;    /* id for stack pointer global */
+extern sym_t   g_sb_id;    /* id for stack base global */
+extern sym_t   g_hb_id;    /* id for heap base global */
 extern size_t  g_sdbaddr;  /* static data allocation start */
 extern size_t  g_stacksz;  /* stack size in bytes */
+extern size_t  g_argvbsz;  /* argv buf size in bytes */
 
 /* convert function type to a function signature */
 extern funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs);
