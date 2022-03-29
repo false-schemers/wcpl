@@ -7,7 +7,7 @@ char **_argv = NULL;
 int _argc = 0;
 static char *empty_argv[] = { "", NULL };
 
-void initialize_argv(void) 
+void initialize(void) 
 {
   if (_argv != NULL) {
     return;

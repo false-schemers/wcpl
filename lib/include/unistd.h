@@ -2,7 +2,7 @@
 
 #pragma once
 #include <sys/types.h>
-#include <sys/defs.h>
+#include <sys/cdefs.h>
 
 #define STDIN_FILENO  (0)
 #define STDOUT_FILENO (1)

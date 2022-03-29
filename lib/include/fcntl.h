@@ -2,7 +2,7 @@
 
 #pragma once
 #include <sys/types.h>
-#include <sys/defs.h>
+#include <sys/cdefs.h>
 
 #define O_APPEND    (0x00000001)  /* = WASI FDFLAGS_APPEND */
 #define O_DSYNC     (0x00000002)  /* = WASI FDFLAGS_DSYNC */

@@ -69,7 +69,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - `<stdlib.h>` (C90, abridged: no `system`)
 - `<string.h>` (C90 + some POSIX-like extras)
 - `<sys/types.h>` (header only, internal)
-- `<sys/defs.h>` (header only, internal)
+- `<sys/cdefs.h>` (header only, internal)
 - `<sys/stat.h>` (POSIX-like, abridged)
 - `<unistd.h>` (POSIX-like, abridged)
 - `<wasi/api.h>` (header only, implemented by host)

@@ -2,7 +2,7 @@
 
 #pragma once
 #include <stdarg.h>
-#include <sys/defs.h>
+#include <sys/cdefs.h>
 
 #define EOF (-1)
 #define BUFSIZ 1024

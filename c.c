@@ -3681,9 +3681,9 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
       pi = watiebnewbk(&pwm->imports, IEK_MEM);
       pi->mod = g_env_mod; pi->id = g_lm_id; 
       pi->lt = LT_MIN; pi->n = 0;
-      /* (import "env" "initialize_argv" (func $...)) */
+      /* (import "env" "initialize" (func $...)) */
       pi = watiebnewbk(&pwm->imports, IEK_FUNC);
-      pi->mod = g_env_mod; pi->id = intern("initialize_argv");
+      pi->mod = g_env_mod; pi->id = intern("initialize");
       /* (import "env" "_argc" (global $env:_argc (mut i32))) */
       pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
       pi->mod = g_env_mod; pi->id = intern("_argc");
@@ -3701,7 +3701,7 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
       pf->mod = mod; pf->id = intern("_start"); /* fs is void->void */
       pf->exported = true;
       pic = icbnewbk(&pf->code); pic->in = IN_REGDECL; pic->id = (r = intern("res")); pic->arg.u = VT_I32;
-      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("initialize_argv"); pic->arg2.mod = g_env_mod; 
+      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("initialize"); pic->arg2.mod = g_env_mod; 
       pic = icbnewbk(&pf->code); pic->in = IN_GLOBAL_GET; pic->id = intern("_argc"); pic->arg2.mod = g_env_mod;
       pic = icbnewbk(&pf->code); pic->in = IN_GLOBAL_GET; pic->id = intern("_argv"); pic->arg2.mod = g_env_mod;
       pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("main"); pic->arg2.mod = mod; 

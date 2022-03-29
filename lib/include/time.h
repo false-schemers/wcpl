@@ -4,7 +4,7 @@
 /* NULL is built-in */
 /* size_t is built-in */
 #include <sys/types.h>
-#include <sys/defs.h>
+#include <sys/cdefs.h>
 
 #define CLOCKS_PER_SEC (1000000000LL)
 
