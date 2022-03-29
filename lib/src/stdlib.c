@@ -363,10 +363,6 @@ static size_t atexit_count;
 
 int atexit(atexit_func_t fn)
 {
-  size_t i;
-  for (i = 0; i < atexit_count; ++i) {
-    if (atexit_funcs[i] == fn) return 0;
-  }
   if (atexit_count < 32) {
     atexit_funcs[atexit_count++] = fn;
     return 0;
@@ -376,9 +372,8 @@ int atexit(atexit_func_t fn)
 
 void exit(int status)
 {
-  size_t i;
-  for (i = 0; i < atexit_count; ++i) {
-    atexit_func_t fn = atexit_funcs[i];
+  while (atexit_count > 0) {
+    atexit_func_t fn = atexit_funcs[--atexit_count];
     (*fn)();
   }
   proc_exit((exitcode_t)status);
@@ -497,8 +492,8 @@ typedef union header {
 static_assert(sizeof(header_t) == 16, "header is not 16 bytes long");
 #define NALLOC (WASMPAGESIZE/sizeof(header_t)) 
 
-static header_t g_base;
-static header_t *g_freep;
+static header_t malloc_base;
+static header_t *malloc_freep;
 
 static header_t *morecore(size_t nunits)
 {
@@ -513,7 +508,7 @@ static header_t *morecore(size_t nunits)
 
   free((void *)(insertp + 1));
 
-  return g_freep;
+  return malloc_freep;
 }
 
 void *malloc(size_t nbytes)
@@ -522,13 +517,13 @@ void *malloc(size_t nbytes)
   /* each unit is a chunk of sizeof(header_t) bytes */
   size_t nunits = ((nbytes + sizeof(header_t) - 1) / sizeof(header_t)) + 1; 
 
-  if (g_freep == NULL) {
-    g_base.s.next = &g_base;
-    g_base.s.size = 0;
-    g_freep = &g_base;
+  if (malloc_freep == NULL) {
+    malloc_base.s.next = &malloc_base;
+    malloc_base.s.size = 0;
+    malloc_freep = &malloc_base;
   }
 
-  prevp = g_freep;
+  prevp = malloc_freep;
   currp = prevp->s.next;
 
   for (;; prevp = currp, currp = currp->s.next) {
@@ -540,11 +535,11 @@ void *malloc(size_t nbytes)
         currp += currp->s.size;
         currp->s.size = nunits;
       }
-      g_freep = prevp;
+      malloc_freep = prevp;
       return (void *)(currp + 1);
     }
 
-    if (currp == g_freep) {
+    if (currp == malloc_freep) {
       if ((currp = morecore(nunits)) == NULL) {
         errno = ENOMEM;
         return NULL;
@@ -561,7 +556,7 @@ void free(void *ptr)
 
   header_t *currp, *insertp = ((header_t *)ptr) - 1;
 
-  for (currp = g_freep; !((currp < insertp) && (insertp < currp->s.next)); currp = currp->s.next) {
+  for (currp = malloc_freep; !((currp < insertp) && (insertp < currp->s.next)); currp = currp->s.next) {
     if ((currp >= currp->s.next) && ((currp < insertp) || (insertp < currp->s.next))) break;
   }
 
@@ -579,7 +574,7 @@ void free(void *ptr)
     currp->s.next = insertp;
   }
 
-  g_freep = currp;
+  malloc_freep = currp;
 }
 
 void *calloc(size_t nels, size_t esz)
@@ -633,19 +628,16 @@ long long llabs(long long n)
 div_t div(int num, int den)
 {
   div_t d; d.quot = num/den; d.rem = num%den; return d;
-  //return (div_t){ num/den, num%den };
 }
 
 ldiv_t ldiv(long num, long den)
 {
   ldiv_t d; d.quot = num/den; d.rem = num%den; return d;
-  //return (ldiv_t){ num/den, num%den };
 }
 
 lldiv_t lldiv(long long num, long long den)
 {
   lldiv_t d; d.quot = num/den; d.rem = num%den; return d;
-  //return (lldiv_t){ num/den, num%den };
 }
 
 int mblen(const char *s, size_t n)

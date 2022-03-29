@@ -3377,21 +3377,21 @@ static void finalize_wat_module(wat_module_t* pm, size_t dsegend)
   for (i = 0; i < watieblen(&pm->exports); ++i) {
     watie_t *pe = watiebref(&pm->exports, i);
     if (pe->iek == IEK_GLOBAL) {
-      if (pe->mod == g_env_mod && pe->id == g_sp_id) {
+      if (pe->mod == g_crt_mod && pe->id == g_sp_id) {
         if (pe->ic.in == IN_I32_CONST) { /* wasm32 */
           pe->ic.arg.u = spaddr;
         }
-      } else if (pe->mod == g_env_mod && pe->id == g_sb_id) {
+      } else if (pe->mod == g_crt_mod && pe->id == g_sb_id) {
         if (pe->ic.in == IN_I32_CONST) { /* wasm32 */
           pe->ic.arg.u = spaddr;
         }
-      } else if (pe->mod == g_env_mod && pe->id == g_hb_id) {
+      } else if (pe->mod == g_crt_mod && pe->id == g_hb_id) {
         if (pe->ic.in == IN_I32_CONST) { /* wasm32 */
           pe->ic.arg.u = hpaddr;
         }
       }
     } else if (pe->iek == IEK_MEM) {
-      if (pe->mod == g_env_mod && pe->id == g_lm_id) {
+      if (pe->mod == g_crt_mod && pe->id == g_lm_id) {
         pe->n = mempages;
         /* it seems to be required that mem is exported as "memory" */
         pe->id = intern("memory"); pe->exported = true;
@@ -3455,7 +3455,7 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
         /* nothing to load  */
       } else {
         sym_t rtn = *pmn; wat_module_t* pnewm;
-        if (rtn == g_env_mod) {
+        if (rtn == g_crt_mod) {
           if (mt == MAIN_VOID) rtn = internf("%s.void", symname(rtn));
           else if (mt == MAIN_ARGC_ARGV) {
             if (g_argvbsz != 0) rtn = internf("%s.args", symname(rtn));
@@ -3493,7 +3493,7 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
   pmodid->mod = mainmod; pmodid->id = startid; pmodid->iek = IEK_FUNC;
   if (envmod) { /* need to ref linear memory explicitly */
     pmodid = bufnewbk(&depglobals); 
-    pmodid->mod = g_env_mod; pmodid->id = g_lm_id; pmodid->iek = IEK_MEM;  
+    pmodid->mod = g_crt_mod; pmodid->id = g_lm_id; pmodid->iek = IEK_MEM;  
   }
   
   /* process depglobals until all deps moved to pm */

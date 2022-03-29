@@ -12,6 +12,9 @@
 
 /* stream i/o after K&R TCPL */
 
+static bool initialized = false;
+
+/* by detault, use full buffering for stdin and stdout */
 FILE _iob[FOPEN_MAX] = {
   { 0, NULL, NULL, NULL, _IOREAD,       0, {} }, /* stdin */
   { 0, NULL, NULL, NULL, _IOWRT,        1, {} }, /* stdout */
@@ -27,8 +30,6 @@ static FILE *findfp(void)
   return NULL;
 }
 
-/* atexit() handler */
-static bool closeall_set = false;
 static void closeall(void)
 {
   FILE *fpi;
@@ -38,9 +39,21 @@ static void closeall(void)
   }
 }
 
+static void initialize(void)
+{
+  if (!initialized) {
+    /* make stdin and stdout line-buffered if associated with a tty */
+    if (isatty(STDIN_FILENO)) stdin->flags |= _IOLBF; 
+    if (isatty(STDOUT_FILENO)) stdout->flags |= _IOLBF; 
+    atexit(&closeall);
+    initialized = true;
+  }
+}
+
 FILE *freopen(const char *filename, const char *mode, FILE *fp)
 {
   int plus, oflags, fd;
+  if (!initialized) initialize();
   if (fp != NULL) fclose(fp); else fp = findfp();
   if (fp == NULL || filename == NULL || mode == NULL) return NULL;
   switch (mode[0]) {
@@ -56,7 +69,6 @@ FILE *freopen(const char *filename, const char *mode, FILE *fp)
   if ((oflags & O_APPEND) && !(oflags & O_RDWR) && lseek(fd, 0L, SEEK_END) < 0) {
     fclose(fp); fp = NULL;
   }
-  if (!closeall_set) { atexit(&closeall); closeall_set = true; }
   return fp;
 }
 
@@ -67,6 +79,7 @@ FILE *fopen(const char *name, const char *mode)
 
 FILE *fdopen(int fd, const char *mode)
 {
+  if (!initialized) initialize();
 	FILE *fp = findfp();
 	if (fp == NULL) return NULL;
 	fp->fd = fd;
@@ -82,7 +95,6 @@ FILE *fdopen(int fd, const char *mode)
 		fp->flags &= ~(_IOREAD|_IOWRT);
 		fp->flags |= _IORW;
 	}
-  if (!closeall_set) { atexit(&closeall); closeall_set = true; }
 	return fp;
 }
 
@@ -106,6 +118,7 @@ int fclose(FILE *fp)
 
 static void addbuf(FILE *fp)
 {
+  if (!initialized) initialize();
   if (fp->flags & _IONBF) {
     fp->base = (unsigned char *)&fp->sbuf[0];
     fp->end = fp->base + SBFSIZ;
@@ -192,8 +205,6 @@ static int wrtchk(FILE *fp)
   if (fp->base == NULL) {
     /* first attempt to bufferize output */
     addbuf(fp);
-    /* we will have to flush even if all we use is stdout/stderr */
-    if (!closeall_set) { atexit(&closeall); closeall_set = true; }
   }
   if (fp->ptr == fp->base && !(fp->flags & (_IONBF|_IOLBF)))  {
     fp->cnt = fp->end - fp->base; /* first write since seek--set cnt */
@@ -205,6 +216,7 @@ static int wrtchk(FILE *fp)
 int _flushbuf(int c, FILE *fp)
 {
   unsigned char c1;
+  if (wrtchk(fp) != 0) return EOF;
   do {
     /* check for linebuffered with write perm, but no EOF */
     if ((fp->flags & (_IOLBF|_IOWRT|_IOEOF)) == (_IOLBF|_IOWRT)) {
@@ -219,9 +231,6 @@ int _flushbuf(int c, FILE *fp)
       fp->flags |= _IOERR;
       return EOF;
     }
-    /* The _wrtchk call is here rather than at the top of _flushbuf to 
-     * reduce overhead for line-buffered I/O under normal circumstances. */
-    if (wrtchk(fp) != 0) return EOF;
   } while (fp->flags & (_IONBF|_IOLBF));
   writebuf(fp); /* full buffer: flush it */
   putc((char)c, fp); /* then put "c" in newly emptied buf */
@@ -267,7 +276,7 @@ int fputs(const char *s, FILE *fp)
 {
   ssize_t ndone = 0, n;
   unsigned char *cptr; char *p;
-  if (wrtchk(fp)) return 0;
+  if (wrtchk(fp) != 0) return 0;
   if ((fp->flags & _IONBF) == 0) {
     for (;; s += n) {
       while ((n = fp->end - (cptr = fp->ptr)) <= 0) { /* full buf */

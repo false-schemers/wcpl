@@ -1,5 +1,4 @@
 #pragma module "env"
-
 #include <wasi/api.h>
 #include <stdlib.h>
 
@@ -36,4 +35,9 @@ void initialize(void)
   fd_write(2, &iov, 1, &ret);
   _argv = &empty_argv[0];
   _argc = 1;
+}
+
+void terminate(int status)
+{
+  proc_exit((exitcode_t)status);
 }

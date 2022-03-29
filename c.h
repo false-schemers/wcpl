@@ -8,8 +8,8 @@ extern long    g_optlvl;   /* -O arg */
 extern buf_t  *g_ibases;   /* module include search bases */
 extern buf_t  *g_lbases;   /* module object module search bases */
 extern fsbuf_t g_funcsigs; /* unique function signatures */
-extern sym_t   g_env_mod;  /* environment module */
-extern sym_t   g_wasi_mod; /* module for wasi */
+extern sym_t   g_crt_mod;  /* C runtime module */
+extern sym_t   g_wasi_mod; /* WASI module */
 extern sym_t   g_lm_id;    /* id for linear memory */
 extern sym_t   g_sp_id;    /* id for stack pointer global */
 extern sym_t   g_sb_id;    /* id for stack base global */
