@@ -1264,6 +1264,20 @@ void watiebfini(watiebuf_t* pb)
   buffini(pb);
 }
 
+void watiebdel(watiebuf_t* pb, iekind_t iek, sym_t mod, sym_t id)
+{
+  watie_t *pie; size_t i;
+  assert(pb); assert(pb->esz = sizeof(watie_t));
+  pie = (watie_t*)(pb->buf);
+  for (i = 0; i < pb->fill; ++i) {
+    watie_t *piei = pie+i;
+    if (piei->iek == iek && piei->mod == mod && piei->id == id) {
+      watiefini(piei); bufrem(pb, i);
+      return;
+    }
+  }
+}
+
 wat_module_t* wat_module_init(wat_module_t* pm)
 {
   memset(pm, 0, sizeof(wat_module_t));
@@ -3444,8 +3458,8 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
         if (rtn == g_env_mod) {
           if (mt == MAIN_VOID) rtn = internf("%s.void", symname(rtn));
           else if (mt == MAIN_ARGC_ARGV) {
-            if (g_argvbsz != 0) rtn = internf("%s.argv", symname(rtn));
-            else rtn = internf("%s.argv.malloc", symname(rtn));
+            if (g_argvbsz != 0) rtn = internf("%s.args", symname(rtn));
+            else rtn = internf("%s.argv", symname(rtn));
           }
           envmod = rtn;
         }

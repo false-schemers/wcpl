@@ -30,7 +30,7 @@ size_t  g_stacksz;  /* stack size in bytes */
 size_t  g_argvbsz;  /* argv buf size in bytes */
 
 
-void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl)
+void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl, size_t sarg, size_t aarg)
 {
   size_t i;
   g_optlvl = optlvl; 
@@ -54,8 +54,8 @@ void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl)
   g_sb_id = intern("__stack_base");
   g_hb_id = intern("__heap_base");
   g_sdbaddr = 1024; /* >0, 16-aligned: address 0 reserved for NULL */
-  g_stacksz = 64*1024; /* 64K default */
-  g_argvbsz = 4*1024; /* 4K default */
+  g_stacksz = sarg; /* 64K default */
+  g_argvbsz = aarg; /* 4K default */
 } 
 
 void fini_wcpl(void)
@@ -3627,15 +3627,41 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
   /* add standard imports/exports */
   switch (pwm->main) {
     case MAIN_ABSENT: {
-      watie_t *pi;
-      /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
-      pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
-      pi->mod = g_env_mod; pi->id = g_sp_id; 
-      pi->mut = MT_VAR; pi->vt = VT_I32;
-      /* (import "env" "__linear_memory" (memory $env:__linear_memory 0)) */
-      pi = watiebnewbk(&pwm->imports, IEK_MEM); 
-      pi->mod = g_env_mod; pi->id = g_lm_id; 
-      pi->lt = LT_MIN; pi->n = 0;
+      if (mod == g_env_mod) { /* special case */
+        watie_t *pe, *pg; inscode_t *pic; 
+        /* (memory $env:__linear_memory (export "__linear_memory") 2) */
+        pe = watiebnewbk(&pwm->exports, IEK_MEM);
+        pe->mod = g_env_mod; pe->id = g_lm_id; pe->exported = true;
+        pe->lt = LT_MIN; pe->n = 2; /* patched by linker */
+        /* (global $env:__stack_pointer (export "__stack_pointer") (mut i32) (i32.const 4242)) */
+        watiebdel(&pwm->exports, IEK_GLOBAL, g_env_mod, g_sp_id);
+        pg = watiebnewbk(&pwm->exports, IEK_GLOBAL);
+        pg->mod = g_env_mod; pg->id = g_sp_id; pg->exported = true;
+        pg->mut = MT_VAR; pg->vt = VT_I32;
+        pic = &pg->ic; pic->in = IN_I32_CONST; pic->arg.i = 4242; /* patched by linker */
+        /* (global $env:__stack_base (export "__stack_base") i32 (i32.const 42424)) */
+        watiebdel(&pwm->exports, IEK_GLOBAL, g_env_mod, g_sb_id);
+        pg = watiebnewbk(&pwm->exports, IEK_GLOBAL);
+        pg->mod = g_env_mod; pg->id = g_sb_id; pg->exported = true;
+        pg->mut = MT_CONST; pg->vt = VT_I32;
+        pic = &pg->ic; pic->in = IN_I32_CONST; pic->arg.i = 4242; /* patched by linker */
+        /* (global $env:__heap_base (export "__heap_base") i32 (i32.const 42424)) */
+        watiebdel(&pwm->exports, IEK_GLOBAL, g_env_mod, g_hb_id);
+        pg = watiebnewbk(&pwm->exports, IEK_GLOBAL);
+        pg->mod = g_env_mod; pg->id = g_hb_id; pg->exported = true;
+        pg->mut = MT_CONST; pg->vt = VT_I32;
+        pic = &pg->ic; pic->in = IN_I32_CONST; pic->arg.i = 4242; /* patched by linker */
+      } else { /* regular module without 'main'*/
+        watie_t *pi;
+        /* (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32))) */
+        pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
+        pi->mod = g_env_mod; pi->id = g_sp_id; 
+        pi->mut = MT_VAR; pi->vt = VT_I32;
+        /* (import "env" "__linear_memory" (memory $env:__linear_memory 0)) */
+        pi = watiebnewbk(&pwm->imports, IEK_MEM); 
+        pi->mod = g_env_mod; pi->id = g_lm_id; 
+        pi->lt = LT_MIN; pi->n = 0;
+      }
     } break;
     case MAIN_ARGC_ARGV: {
       watie_t *pi, *pf; inscode_t *pic; sym_t r;
@@ -3762,6 +3788,8 @@ int main(int argc, char **argv)
   const char *ofile_arg = NULL;
   bool c_opt = false;
   long lvl_arg = 3;
+  unsigned long s_arg = 65536; /* 64K default */
+  unsigned long a_arg = 4096; /* 4K default */
   const char *path;
   dsbuf_t incv, libv; 
   
@@ -3778,12 +3806,14 @@ int main(int argc, char **argv)
      "  -v        Increase verbosity\n"
      "  -q        Suppress logging ('quiet')\n"
      "  -c        Compile single input file\n"
-     "  -O lvl    Optimization level; defaults to 2\n"
+     "  -O lvl    Optimization level; defaults to 3\n"
      "  -o ofile  Output file\n"
-     "  -I path   Add include path (must end with separator)\n"
-     "  -L path   Add library path (must end with separator)\n"
+     "  -I path   Add include path (must end with path separator)\n"
+     "  -L path   Add library path (must end with path separator)\n"
+     "  -s stksz  Stack size in bytes; defaults to 65536\n"
+     "  -a argsz  Argument area size in bytes (use 0 for malloc); defaults to 4096\n"
      "  -h        This help");
-  while ((opt = egetopt(argc, argv, "wvqcO:o:L:I:h")) != EOF) {
+  while ((opt = egetopt(argc, argv, "wvqcO:o:L:I:s:a:h")) != EOF) {
     switch (opt) {
       case 'w':  setwlevel(3); break;
       case 'v':  incverbosity(); break;
@@ -3793,11 +3823,18 @@ int main(int argc, char **argv)
       case 'o':  ofile_arg = eoptarg; break;
       case 'I':  dsbpushbk(&incv, &eoptarg); break;
       case 'L':  dsbpushbk(&libv, &eoptarg); break;
+      case 's':  s_arg = strtoul(eoptarg, NULL, 0); break; 
+      case 'a':  a_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'h':  eusage("WCPL 0.01 built on "__DATE__);
     }
   }
 
-  init_wcpl(&incv, &libv, lvl_arg);
+  if (s_arg < 1024 || s_arg > 16777216)
+    eusage("-s argument is outside of reasonable range");
+  if (a_arg != 0 && (a_arg < 512 || a_arg > 65536))
+    eusage("-a argument is outside of reasonable range");
+
+  init_wcpl(&incv, &libv, lvl_arg, (size_t)s_arg, (size_t)a_arg);
 
   if (c_opt) {
     /* compile single source file */

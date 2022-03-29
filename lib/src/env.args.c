@@ -1,7 +1,9 @@
 #pragma module "env"
 
 #include <wasi/api.h>
-#include <stdlib.h>
+
+void *__stack_base;
+void *__heap_base;
 
 char **_argv = NULL;
 int _argc = 0;
@@ -18,10 +20,13 @@ void initialize_argv(void)
     if (args_count == 0) goto err; 
     size_t num_ptrs = args_count + 1;
     if (num_ptrs == 0) goto err; 
-    char *args_buf = malloc(args_buf_size);
-    if (args_buf == NULL) goto err;
-    char **args_ptrs = calloc(num_ptrs, sizeof(char *));
-    if (args_ptrs == NULL) { free(args_buf); goto err; }
+    char *args_buf = __stack_base;
+    char *ptrs_buf = args_buf + args_buf_size;
+    size_t n = (size_t)ptrs_buf % 16;
+    if (n > 0) ptrs_buf += 16-n; 
+    char *ptrs_end = ptrs_buf + num_ptrs*sizeof(char*);
+    if (ptrs_end > __heap_base) goto err;
+    char **args_ptrs = (char **)ptrs_buf;
     error = args_get((uint8_t **)args_ptrs, (uint8_t *)args_buf);
     if (error != ERRNO_SUCCESS) goto err;
     args_ptrs[args_count] = NULL;

@@ -412,6 +412,10 @@ void initialize_environ(void)
     return;
   err:;
   }
+  ciovec_t iov; size_t ret;
+  iov.buf = (uint8_t*)"internal error: unable to retrieve environment strings\n"; 
+  iov.buf_len = 55;
+  fd_write(2, &iov, 1, &ret);
   _environ = &empty_environ[0];
 }
 

@@ -489,6 +489,7 @@ extern void watiebfini(watiebuf_t* pb);
 #define watiebref(pb, i) ((watie_t*)bufref(pb, i))
 #define watiebnewfr(pb, iek) watieinit(bufnewfr(pb), iek)
 #define watiebnewbk(pb, iek) watieinit(bufnewbk(pb), iek)
+extern void watiebdel(watiebuf_t* pb, iekind_t iek, sym_t mod, sym_t id);
 
 typedef enum main {
   MAIN_ABSENT = 0, MAIN_VOID, MAIN_ARGC_ARGV
