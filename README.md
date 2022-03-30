@@ -127,12 +127,13 @@ WASM format will be an option in the future.
 Currently, WCPL produces output executables in WAT format. Some WASM runtimes
 such as `wasmtime`* allow running WAT files directly (and provide better disgnostics
 this way, e.g. symbolic stack traces); for others, WAT files should be first converted 
-to WASM format with `wat2wasm` or similar tools.
+to WASM format with `wat2wasm`** or similar tools.
 
 Please read the documentation on your WASM runtime for details on directory
 mapping and passing command line arguments.
 
 \* available at https://github.com/bytecodealliance/wasmtime/releases
+\*\* available at https://github.com/WebAssembly/wabt/releases
 
 
 
