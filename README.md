@@ -133,6 +133,7 @@ Please read the documentation on your WASM runtime for details on directory
 mapping and passing command line arguments.
 
 \* available at https://github.com/bytecodealliance/wasmtime/releases
+
 \*\* available at https://github.com/WebAssembly/wabt/releases
 
 
