@@ -229,7 +229,7 @@ unsigned fsintern(fsbuf_t* pb, funcsig_t *pfs)
   size_t i;
   for (i = 0; i < fsblen(pb); ++i) if (sameft(fsbref(pb, i), pfs)) break;
   if (i == fsblen(pb)) memswap(pfs, fsbnewbk(pb), sizeof(funcsig_t));
-  return i;
+  return (unsigned)i;
 }
 
 unsigned funcsig(fsbuf_t* pb, size_t argc, size_t retc, ...)
@@ -243,7 +243,7 @@ unsigned funcsig(fsbuf_t* pb, size_t argc, size_t retc, ...)
   for (i = 0; i < fsblen(pb); ++i) if (sameft(fsbref(pb, i), &ft)) break;
   if (i == fsblen(pb)) memswap(&ft, fsbnewbk(pb), sizeof(funcsig_t));
   fsfini(&ft);
-  return i;
+  return (unsigned)i;
 }
 
 
@@ -1040,7 +1040,7 @@ instr_t name_instr(const char *name)
     size_t i; bufinit(&g_nimap, sizeof(int)*2);
     for (i = 0; i <= 0xff; ++i) {
       const char *s = g_innames[i];
-      if (s) { pi = bufnewbk(&g_nimap); pi[0] = intern(s), pi[1] = i; }
+      if (s) { pi = bufnewbk(&g_nimap); pi[0] = intern(s), pi[1] = (int)i; }
     }
     pi = bufnewbk(&g_nimap); pi[0] = intern("i32.trunc_sat_f32_s"), pi[1] = IN_I32_TRUNC_SAT_F32_S;
     pi = bufnewbk(&g_nimap); pi[0] = intern("i32.trunc_sat_f32_u"), pi[1] = IN_I32_TRUNC_SAT_F32_U; 
@@ -2533,7 +2533,7 @@ static sym_t parse_id(sws_t *pw)
 
 static sym_t parse_id_string(sws_t *pw, chbuf_t *pcb, const char *chset)
 {
-  char *s; size_t n; bool ok = false;
+  char *s = NULL; size_t n; bool ok = false;
   ok = (peekt(pw) == WT_STRING);
   if (ok) ok = (s = scan_string(pw, pw->tokstr, pcb)) != NULL;
   if (ok) ok = (n = strlen(s)) == chblen(pcb); /* no \00s inside */
@@ -3392,7 +3392,7 @@ static void finalize_wat_module(wat_module_t* pm, size_t dsegend)
       }
     } else if (pe->iek == IEK_MEM) {
       if (pe->mod == g_crt_mod && pe->id == g_lm_id) {
-        pe->n = mempages;
+        pe->n = (unsigned)mempages;
         /* it seems to be required that mem is exported as "memory" */
         pe->id = intern("memory"); pe->exported = true;
       }

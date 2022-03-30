@@ -1011,7 +1011,7 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
       pd->exported = !hide;
       measure_type(ptn, pdn, &size, &align, 0);
       bufresize(&pd->data, size); /* fills with zeroes */
-      pd->align = align;
+      pd->align = (int)align;
       if (pin) {
         assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
         assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
@@ -2706,7 +2706,7 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
       if (ts_numerical(ptni->ts)) assert(ptni->ts == ts_integral_promote(ptni->ts));
       acode_pushin_id(pcn, IN_LOCAL_GET, pname);
       acode_swapin(pcn, pani); /* arg on stack */
-      asm_store(ptni->ts, ptni->ts, (i-basei)*asz, &pcn->data);
+      asm_store(ptni->ts, ptni->ts, (unsigned)((i-basei)*asz), &pcn->data);
     }
     acode_pushin_id(pcn, IN_LOCAL_GET, pname); 
     /* put the call instruction followed by sp restore */
@@ -3192,7 +3192,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
 static node_t *fundef_compile(node_t *pdn)
 {
   node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1), *pln = NULL;
-  buf_t rib = mkbuf(sizeof(ri_t)); node_t *ret; size_t i;
+  buf_t rib = mkbuf(sizeof(ri_t)); node_t *ret = NULL; size_t i;
   /* output is created anew from pieces of input and pool nodes */
   node_t *prn = npnew(NT_FUNDEF, pdn->pwsid, pdn->startpos), *prtn, *prbn; 
   prn->name = pdn->name; prn->sc = pdn->sc;
@@ -3419,7 +3419,7 @@ static void process_fundef(sym_t mmod, node_t *pn, wat_module_t *pm)
     if (ndlen(ptn) == 1 && ndref(ptn, 0)->ts == TS_INT) {
       pm->main = MAIN_VOID;
     } else { /* expect argc, argv */ 
-      int sigok = true; node_t *psn;
+      int sigok = true; node_t *psn = NULL;
       if (ndlen(ptn) != 3 || ndref(ptn, 0)->ts != TS_INT) 
         sigok = false;
       if (sigok && (psn = ndref(ptn, 1), psn = (psn->nt == NT_VARDECL) ? ndref(psn, 0) : psn)->ts != TS_INT) 
