@@ -3865,9 +3865,20 @@ int main(int argc, char **argv)
       }
     }
     link_wat_modules(&wmb, &wm);
-
     logef("# all modules linked successfully\n", symname(g_wasi_mod));
-    write_wat_module(&wm, stdout);
+
+    if (ofile_arg) {
+      FILE *pf;
+      if (strsuf(ofile_arg, ".wasm")) 
+        eusage("output in .wasm format not supported yet -- use .wat");
+      pf = fopen(ofile_arg, "w");
+      if (!pf) exprintf("cannot open output file %s:", ofile_arg);
+      write_wat_module(&wm, pf);
+      fclose(pf);
+      logef("# executable module written to %s\n", ofile_arg);
+    } else {
+      write_wat_module(&wm, stdout);
+    }
 
     wat_module_fini(&wm);
     wat_module_buf_fini(&wmb); 

@@ -3414,7 +3414,7 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
   /* find main() function, collect dependencies */
   for (i = 0; i < wat_module_buf_len(pwb); ++i) {
     wat_module_t* pmi = wat_module_buf_ref(pwb, i);
-    size_t mainj = SIZE_MAX;
+    size_t mainj = (size_t)-1;
     /* check for main */
     if (pmi->main != MAIN_ABSENT) {
       if (mainmod) 
@@ -3426,7 +3426,7 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
         if (pe->iek != IEK_FUNC) continue;
         if (pe->id == mainid) {
           assert(pe->mod == mainmod);
-          if (mainj != SIZE_MAX)
+          if (mainj != (size_t)-1)
             exprintf("duplicate main() in %s module", 
               symname(mainmod));
           mainj = j;
