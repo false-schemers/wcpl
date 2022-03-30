@@ -3800,7 +3800,6 @@ int main()
   //test_math_y1();
   //test_math_yn();
   printf("\nFAILURES: %d\n", failcnt);
-  fflush(stdout);
   return failcnt;
 }
 

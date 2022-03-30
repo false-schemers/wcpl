@@ -3664,7 +3664,7 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
       }
     } break;
     case MAIN_ARGC_ARGV: {
-      watie_t *pi, *pf; inscode_t *pic; sym_t r;
+      watie_t *pi, *pf; inscode_t *pic;
       /* (import "crt" "__stack_pointer" (global $crt:__stack_pointer (mut i32))) */
       pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
       pi->mod = g_crt_mod; pi->id = g_sp_id; 
@@ -3692,39 +3692,19 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
       pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
       pi->mod = g_crt_mod; pi->id = intern("_argv");
       pi->mut = MT_VAR; pi->vt = VT_I32;
-#if 1
       /* (import "crt" "terminate" (func $... (param i32))) */
       pi = watiebnewbk(&pwm->imports, IEK_FUNC);
       pi->mod = g_crt_mod; pi->id = intern("terminate");
       *vtbnewbk(&pi->fs.partypes) = VT_I32;
-#else
-      /* (import "wasi_snapshot_preview1" "proc_exit" (func $... (param i32))) */
-      pi = watiebnewbk(&pwm->imports, IEK_FUNC);
-      pi->mod = g_wasi_mod; pi->id = intern("proc_exit");
-      *vtbnewbk(&pi->fs.partypes) = VT_I32;
-#endif
       /* (func $_start ...) */
       pf = watiebnewbk(&pwm->exports, IEK_FUNC); 
       pf->mod = mod; pf->id = intern("_start"); /* fs is void->void */
       pf->exported = true;
-#if 1
       pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("initialize"); pic->arg2.mod = g_crt_mod; 
       pic = icbnewbk(&pf->code); pic->in = IN_GLOBAL_GET; pic->id = intern("_argc"); pic->arg2.mod = g_crt_mod;
       pic = icbnewbk(&pf->code); pic->in = IN_GLOBAL_GET; pic->id = intern("_argv"); pic->arg2.mod = g_crt_mod;
       pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("main"); pic->arg2.mod = mod; 
       pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("terminate"); pic->arg2.mod = g_crt_mod;
-#else
-      pic = icbnewbk(&pf->code); pic->in = IN_REGDECL; pic->id = (r = intern("res")); pic->arg.u = VT_I32;
-      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("initialize"); pic->arg2.mod = g_crt_mod; 
-      pic = icbnewbk(&pf->code); pic->in = IN_GLOBAL_GET; pic->id = intern("_argc"); pic->arg2.mod = g_crt_mod;
-      pic = icbnewbk(&pf->code); pic->in = IN_GLOBAL_GET; pic->id = intern("_argv"); pic->arg2.mod = g_crt_mod;
-      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("main"); pic->arg2.mod = mod; 
-      pic = icbnewbk(&pf->code); pic->in = IN_LOCAL_TEE; pic->id = r;
-      pic = icbnewbk(&pf->code); pic->in = IN_IF; pic->arg.u = BT_VOID;
-      pic = icbnewbk(&pf->code); pic->in = IN_LOCAL_GET; pic->id = r;
-      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("proc_exit"); pic->arg2.mod = g_wasi_mod;
-      pic = icbnewbk(&pf->code); pic->in = IN_END;
-#endif
     } break;
     case MAIN_VOID: {
       watie_t *pi, *pf; inscode_t *pic; sym_t r;
@@ -3736,33 +3716,20 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
       pi = watiebnewbk(&pwm->imports, IEK_MEM);
       pi->mod = g_crt_mod; pi->id = g_lm_id; 
       pi->lt = LT_MIN; pi->n = 0;
-#if 1
+      /* (import "crt" "initialize" (func $...)) */
+      pi = watiebnewbk(&pwm->imports, IEK_FUNC);
+      pi->mod = g_crt_mod; pi->id = intern("initialize");
       /* (import "crt" "terminate" (func $... (param i32))) */
       pi = watiebnewbk(&pwm->imports, IEK_FUNC);
       pi->mod = g_crt_mod; pi->id = intern("terminate");
       *vtbnewbk(&pi->fs.partypes) = VT_I32;
-#else
-      /* (import "wasi_snapshot_preview1" "proc_exit" (func $... (param i32))) */
-      pi = watiebnewbk(&pwm->imports, IEK_FUNC);
-      pi->mod = g_wasi_mod; pi->id = intern("proc_exit");
-      *vtbnewbk(&pi->fs.partypes) = VT_I32;
-#endif
       /* (func $_start ...) */
       pf = watiebnewbk(&pwm->exports, IEK_FUNC); 
       pf->mod = mod; pf->id = intern("_start"); /* fs is void->void */
       pf->exported = true;
-#if 1
+      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("initialize"); pic->arg2.mod = g_crt_mod; 
       pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("main"); pic->arg2.mod = mod; 
       pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("terminate"); pic->arg2.mod = g_crt_mod;
-#else
-      pic = icbnewbk(&pf->code); pic->in = IN_REGDECL; pic->id = (r = intern("res")); pic->arg.u = VT_I32;
-      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("main"); pic->arg2.mod = mod; 
-      pic = icbnewbk(&pf->code); pic->in = IN_LOCAL_TEE; pic->id = r;
-      pic = icbnewbk(&pf->code); pic->in = IN_IF; pic->arg.u = BT_VOID;
-      pic = icbnewbk(&pf->code); pic->in = IN_LOCAL_GET; pic->id = r;
-      pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("proc_exit"); pic->arg2.mod = g_wasi_mod;
-      pic = icbnewbk(&pf->code); pic->in = IN_END;
-#endif
     } break;
     default: assert(false);
   }

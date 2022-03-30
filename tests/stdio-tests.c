@@ -2971,6 +2971,5 @@ int main()
   test_C99_example_4();
   
   printf("\nFAILURES: %d\n", failcnt);
-  fflush(stdout);
   return failcnt;
 }

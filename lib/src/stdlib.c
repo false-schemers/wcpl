@@ -9,6 +9,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <wasi/api.h>
+#include <sys/crt.h>
 
 double atof(const char *s)
 {
@@ -357,14 +358,10 @@ void abort(void)
   proc_exit((exitcode_t)EXIT_FAILURE);
 }
 
-typedef void (*atexit_func_t)(void);
-static atexit_func_t atexit_funcs[32];
-static size_t atexit_count;
-
-int atexit(atexit_func_t fn)
+int atexit(onterm_func_t fn)
 {
-  if (atexit_count < 32) {
-    atexit_funcs[atexit_count++] = fn;
+  if (onterm_count < ONTERM_MAX) {
+    onterm_funcs[onterm_count++] = fn;
     return 0;
   } 
   return -1;
@@ -372,11 +369,7 @@ int atexit(atexit_func_t fn)
 
 void exit(int status)
 {
-  while (atexit_count > 0) {
-    atexit_func_t fn = atexit_funcs[--atexit_count];
-    (*fn)();
-  }
-  proc_exit((exitcode_t)status);
+  terminate(status);
 }
 
 char **_environ = NULL;
