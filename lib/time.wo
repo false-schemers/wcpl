@@ -1,7 +1,7 @@
 (module $time
-  (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
-  (import "env" "__linear_memory" (memory $env:__linear_memory 0))
-  (import "env" "__stack_pointer" (global $env:__stack_pointer i32))
+  (import "crt" "__stack_pointer" (global $crt:__stack_pointer (mut i32)))
+  (import "crt" "__linear_memory" (memory $crt:__linear_memory 0))
+  (import "crt" "__stack_pointer" (global $crt:__stack_pointer i32))
   (import "wasi_snapshot_preview1" "clock_time_get" (func $wasi_snapshot_preview1:clock_time_get (param i32) (param i64) (param i32) (result i32)))
   (import "stdlib" "getenv" (func $stdlib:getenv (param i32) (result i32)))
   (import "string" "strcpy" (func $string:strcpy (param i32) (param i32) (result i32)))
@@ -156,13 +156,13 @@
   (func $time:time (export "time")
     (param $pt i32) (result i64) 
     (local $error i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     i32.const 0
@@ -203,19 +203,19 @@
     local.get $fp$
     i64.load offset=0 align=8
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $time:clock (export "clock")
     (result i64) 
     (local $error i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     i32.const 0
@@ -233,13 +233,13 @@
     if
     i64.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $fp$
     i64.load offset=0 align=8
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $time:difftime (export "difftime")
@@ -702,13 +702,13 @@
   (func $time:get_tz_offset
     (param $src i32) (param $error i32) (result i32) 
     (local $mul i32) (local $i i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i4$ i32) (local $i3$ i32) (local $i2$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $src
     i32.load8_s offset=0 align=1
@@ -934,18 +934,18 @@
     end
     local.get $src
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $time:tzset (export "tzset")
     (local $tzval i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     ref.data $time:ds59$
     call $stdlib:getenv
@@ -1022,7 +1022,7 @@
     end
     end
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $time:mktime (export "mktime")
@@ -1164,11 +1164,11 @@
     local.get $buf
     i32.const 26
     ref.data $time:ds63$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 64
     i32.sub
     local.tee $i1$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     local.get $i1$
     ref.data $time:wday_name
     local.get $ptm
@@ -1212,7 +1212,7 @@
     local.get $i1$
     call $stdio:snprintf
     local.get $i1$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     drop
     local.get $buf
     return
@@ -1220,13 +1220,13 @@
   (func $time:localtime_r (export "localtime_r")
     (param $pt i32) (param $ptm i32) (result i32) 
     (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     local.get $pt
@@ -1245,19 +1245,19 @@
     local.get $ptm
     call $time:gmtime_r
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $time:ctime_r (export "ctime_r")
     (param $pt i32) (param $buf i32) (result i32) 
     (local $ptm i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 48
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $pt
     local.get $fp$
@@ -1273,7 +1273,7 @@
     i32.const 0
     end
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $time:gmtime (export "gmtime")
@@ -1357,13 +1357,13 @@
   (func $time:strftime (export "strftime")
     (param $s i32) (param $smax i32) (param $fmt i32) (param $tp i32) (result i32) 
     (local $ptr i32) (local $count i32) (local $addstr i32) (local $addlen i32) (local $week i32) (local $hour12 i32) (local $len i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) (local $i9$ i32) (local $i10$ i32) (local $i11$ i32) (local $i12$ i32) (local $i13$ i32) (local $i14$ i32) (local $i15$ i32) (local $i16$ i32) (local $i17$ i32) (local $i18$ i32) (local $i19$ i32) (local $i20$ i32) (local $i21$ i32) (local $i22$ i32) (local $i23$ i32) (local $i24$ i32) (local $i25$ i32) (local $i26$ i32) (local $i27$ i32) (local $i28$ i32) (local $i29$ i32) (local $i30$ i32) (local $i31$ i32) (local $i32$ i32) (local $i33$ i32) (local $i34$ i32) (local $i35$ i32) (local $i36$ i32) (local $i37$ i32) (local $i38$ i32) (local $i39$ i32) (local $i40$ i32) (local $i41$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 80
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $s
     local.set $ptr
@@ -2123,7 +2123,7 @@
     end
     local.get $count
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
 )

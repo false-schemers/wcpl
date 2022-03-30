@@ -30,11 +30,11 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 # C and library features not yet supported
 
 - implicit conversions of arrays to element pointers; explicit `&arr[0]` required
-- taking address of a global scalar var (?)
+- taking address of a global scalar var (for now, `&` works for global arrays/structs/unions only)
 - `{}` initializers for locals
 - `static` variables in function scope
 - structures/unions as parameters
-- fixme: stdout/stderr are not line-buffered and don't autoflush on exit
+- static inline functions in header files
 
 # C features that won't be supported
 
@@ -93,7 +93,7 @@ format with no extensions; WASM format will be an option in the future.
 
 # Installation
 
-Here's how you can compile WCPL on a unix box; instructions for other
+Here's how you can compile WCPL on a Unix box; instructions for other
 systems/compilers are similar:
 
 ```
@@ -115,22 +115,22 @@ wcpl -c infile.c -o infile.wo
 
 If `-o` option is not specified, output goes to standard output.
 
-## Compilation and Linking
+## Compilation and linking
 
 ```
 wcpl -o out.wat infile1.c infile2.c infile3.wo ...
 ```
 
-A mix of source and object files can be given; one of the input files should
-contain implementation of main() procedure. Library dependences are automatically
+Any mix of source and object files can be given; one of the input files should
+contain implementation of the `main()` procedure. Library dependences are automatically
 loaded and used.
 
-## Running
+## Running executables
 
 Currently, WCPL produces output executables in WAT format. Some WASM runtimes
-such as `wasmtime` allow running WAT files directly and provide better disgnostics
-(e.g. symbolic stack traces); for others, WAT files should be first converted to
-WASM format with `wat2wasm` or similst tools.
+such as `wasmtime` allow running WAT files directly (and provide better disgnostics
+this way, e.g. symbolic stack traces); for others, WAT files should be first converted 
+to WASM format with `wat2wasm` or similar tools.
 
 Please read the documentation on your WASM runtime for details on directory
 mapping and passing command line arguments.

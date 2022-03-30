@@ -1,4 +1,4 @@
-#pragma module "env"
+#pragma module "crt"
 #include <wasi/api.h>
 #include <sys/crt.h>
 

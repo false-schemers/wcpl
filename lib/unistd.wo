@@ -1,7 +1,7 @@
 (module $unistd
-  (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
-  (import "env" "__linear_memory" (memory $env:__linear_memory 0))
-  (import "env" "__stack_pointer" (global $env:__stack_pointer i32))
+  (import "crt" "__stack_pointer" (global $crt:__stack_pointer (mut i32)))
+  (import "crt" "__linear_memory" (memory $crt:__linear_memory 0))
+  (import "crt" "__stack_pointer" (global $crt:__stack_pointer i32))
   (import "wasi_snapshot_preview1" "fd_read" (func $wasi_snapshot_preview1:fd_read (param i32) (param i32) (param i32) (param i32) (result i32)))
   (import "wasi_snapshot_preview1" "fd_write" (func $wasi_snapshot_preview1:fd_write (param i32) (param i32) (param i32) (param i32) (result i32)))
   (import "wasi_snapshot_preview1" "fd_close" (func $wasi_snapshot_preview1:fd_close (param i32) (result i32)))
@@ -25,13 +25,13 @@
   (func $unistd:read (export "read")
     (param $fd i32) (param $buf i32) (param $nbyte i32) (result i32) 
     (local $err i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     local.get $buf
@@ -70,25 +70,25 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $fp$
     i32.load offset=8 align=4
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:write (export "write")
     (param $fd i32) (param $buf i32) (param $nbyte i32) (result i32) 
     (local $err i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     local.get $buf
@@ -127,25 +127,25 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $fp$
     i32.load offset=8 align=4
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:pread (export "pread")
     (param $fd i32) (param $buf i32) (param $nbyte i32) (param $offset i64) (result i32) 
     (local $err i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 48
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $offset
     i32.const 0
@@ -156,7 +156,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $fp$
@@ -225,25 +225,25 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $fp$
     i32.load offset=8 align=4
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:pwrite (export "pwrite")
     (param $fd i32) (param $buf i32) (param $nbyte i32) (param $offset i64) (result i32) 
     (local $err i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 48
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $offset
     i32.const 0
@@ -254,7 +254,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $fp$
@@ -323,25 +323,25 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $fp$
     i32.load offset=8 align=4
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:lseek (export "lseek")
     (param $fd i32) (param $offset i64) (param $whence i32) (result i64) 
     (local $err i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $fd
     local.get $offset
@@ -372,13 +372,13 @@
     i32.const -1
     i64.extend_i32_s
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $fp$
     i64.load offset=0 align=8
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:ftruncate (export "ftruncate")
@@ -439,13 +439,13 @@
   (func $unistd:isatty (export "isatty")
     (param $fd i32) (result i32) 
     (local $r i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 32
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $fd
     local.get $fp$
@@ -458,7 +458,7 @@
     global.set $errno:errno
     i32.const 0
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $fp$
@@ -481,12 +481,12 @@
     global.set $errno:errno
     i32.const 0
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     i32.const 1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:sbrk (export "sbrk")
@@ -542,13 +542,13 @@
   (func $unistd:faccessat (export "faccessat")
     (param $fd i32) (param $path i32) (param $amode i32) (param $atflag i32) (result i32) 
     (local $lookup_flags i32) (local $error i32) (local $min i64) (local $bp$ i32) (local $fp$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 96
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $amode
     i32.const -8
@@ -569,7 +569,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     i32.const 1
@@ -593,7 +593,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $amode
@@ -617,7 +617,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     i32.const 0
@@ -662,25 +662,25 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     end
     i32.const 0
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:access (export "access")
     (param $path i32) (param $amode i32) (result i32) 
     (local $dirfd i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $path
     local.get $fp$
@@ -693,7 +693,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $dirfd
@@ -703,7 +703,7 @@
     i32.const 0
     call $unistd:faccessat
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:unlinkat (export "unlinkat")
@@ -748,13 +748,13 @@
   (func $unistd:unlink (export "unlink")
     (param $path i32) (result i32) 
     (local $dirfd i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $path
     local.get $fp$
@@ -767,7 +767,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $dirfd
@@ -776,7 +776,7 @@
     i32.const 0
     call $unistd:unlinkat
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:linkat (export "linkat")
@@ -824,13 +824,13 @@
   (func $unistd:link (export "link")
     (param $oldpath i32) (param $newpath i32) (result i32) 
     (local $olddirfd i32) (local $newdirfd i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $oldpath
     local.get $fp$
@@ -857,7 +857,7 @@
     i32.const 0
     call $unistd:linkat
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     end
@@ -865,7 +865,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:symlinkat (export "symlinkat")
@@ -898,13 +898,13 @@
   (func $unistd:symlink (export "symlink")
     (param $tgtpath i32) (param $lnkpath i32) (result i32) 
     (local $dirfd i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $lnkpath
     local.get $fp$
@@ -917,7 +917,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $tgtpath
@@ -926,19 +926,19 @@
     i32.load offset=0 align=4
     call $unistd:symlinkat
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:readlinkat (export "readlinkat")
     (param $fd i32) (param $path i32) (param $buf i32) (param $bufsize i32) (result i32) 
     (local $error i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $fd
     local.get $path
@@ -960,25 +960,25 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $fp$
     i32.load offset=0 align=4
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:readlink (export "readlink")
     (param $path i32) (param $buf i32) (param $bufsize i32) (result i32) 
     (local $dirfd i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $path
     local.get $fp$
@@ -991,7 +991,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $dirfd
@@ -1001,7 +1001,7 @@
     local.get $bufsize
     call $unistd:readlinkat
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:rmdirat (export "rmdirat")
@@ -1031,13 +1031,13 @@
   (func $unistd:rmdir (export "rmdir")
     (param $path i32) (result i32) 
     (local $dirfd i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     local.get $path
     local.get $fp$
@@ -1050,7 +1050,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end
     local.get $dirfd
@@ -1058,7 +1058,7 @@
     i32.load offset=0 align=4
     call $unistd:rmdirat
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $unistd:fdatasync (export "fdatasync")

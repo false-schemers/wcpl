@@ -1,7 +1,7 @@
 (module $stdlib
-  (import "env" "__stack_pointer" (global $env:__stack_pointer (mut i32)))
-  (import "env" "__linear_memory" (memory $env:__linear_memory 0))
-  (import "env" "__stack_pointer" (global $env:__stack_pointer i32))
+  (import "crt" "__stack_pointer" (global $crt:__stack_pointer (mut i32)))
+  (import "crt" "__linear_memory" (memory $crt:__linear_memory 0))
+  (import "crt" "__stack_pointer" (global $crt:__stack_pointer i32))
   (import "string" "memcpy" (func $string:memcpy (param i32) (param i32) (param i32) (result i32)))
   (import "string" "strncmp" (func $string:strncmp (param i32) (param i32) (param i32) (result i32)))
   (import "string" "memset" (func $string:memset (param i32) (param i32) (param i32) (result i32)))
@@ -18,9 +18,9 @@
   (import "wasi_snapshot_preview1" "environ_get" (func $wasi_snapshot_preview1:environ_get (param i32) (param i32) (result i32)))
   (import "wasi_snapshot_preview1" "environ_sizes_get" (func $wasi_snapshot_preview1:environ_sizes_get (param i32) (param i32) (result i32)))
   (import "wasi_snapshot_preview1" "proc_exit" (func $wasi_snapshot_preview1:proc_exit (param i32)))
-  (import "env" "onterm_funcs" (global $env:onterm_funcs i32))
-  (import "env" "onterm_count" (global $env:onterm_count i32))
-  (import "env" "terminate" (func $env:terminate (param i32)))
+  (import "crt" "onterm_funcs" (global $crt:onterm_funcs i32))
+  (import "crt" "onterm_count" (global $crt:onterm_count i32))
+  (import "crt" "terminate" (func $crt:terminate (param i32)))
   (global $stdlib:_environ (export "_environ") (mut i32) (i32.const 0))
   (global $stdlib:malloc_freep (mut i32))
   (data $stdlib:powers_of_10 var align=8 "\00\00\00\00\00\00$@\00\00\00\00\00\00Y@\00\00\00\00\00\88\c3@\00\00\00\00\84\d7\97A\00\80\e07y\c3AC\17n\05\b5\b5\b8\93F\f5\f9?\e9\03O8M2\1d0\f9Hw\82Z<\bfs\7f\ddO\15u")
@@ -1806,16 +1806,16 @@
   (func $stdlib:atexit (export "atexit")
     (param $fn i32) (result i32) 
     (local $i1$ i32) 
-    global.get $env:onterm_count
+    global.get $crt:onterm_count
     i32.const 32
     i32.lt_u
     if
-    ref.data $env:onterm_funcs
-    global.get $env:onterm_count
-    global.get $env:onterm_count
+    ref.data $crt:onterm_funcs
+    global.get $crt:onterm_count
+    global.get $crt:onterm_count
     i32.const 1
     i32.add
-    global.set $env:onterm_count
+    global.set $crt:onterm_count
     i32.const 4
     i32.mul
     i32.add
@@ -1831,25 +1831,25 @@
   (func $stdlib:exit (export "exit")
     (param $status i32) 
     local.get $status
-    call $env:terminate
+    call $crt:terminate
     return
   )
   (func $stdlib:initialize_environ (export "initialize_environ")
     (local $error i32) (local $num_ptrs i32) (local $environ_buf i32) (local $environ_ptrs i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 32
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $fp$
     global.get $stdlib:_environ
     i32.const 0
     i32.ne
     if
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     else
     block $err
@@ -1913,7 +1913,7 @@
     local.get $environ_ptrs
     global.set $stdlib:_environ
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
     end $err
     end
@@ -1944,7 +1944,7 @@
     ref.data $stdlib:empty_environ
     global.set $stdlib:_environ
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $stdlib:getenv (export "getenv")
@@ -2586,13 +2586,13 @@
   (func $stdlib:div (export "div")
     (param $rp$ i32) (param $num i32) (param $den i32) 
     (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     local.get $num
@@ -2612,19 +2612,19 @@
     i32.const 8
     memory.copy
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $stdlib:ldiv (export "ldiv")
     (param $rp$ i32) (param $num i32) (param $den i32) 
     (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     local.get $num
@@ -2644,19 +2644,19 @@
     i32.const 8
     memory.copy
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $stdlib:lldiv (export "lldiv")
     (param $rp$ i32) (param $num i64) (param $den i64) 
     (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     local.set $bp$
-    global.get $env:__stack_pointer
+    global.get $crt:__stack_pointer
     i32.const 16
     i32.sub
-    global.set $env:__stack_pointer
-    global.get $env:__stack_pointer
+    global.set $crt:__stack_pointer
+    global.get $crt:__stack_pointer
     local.tee $fp$
     local.tee $i1$
     local.get $num
@@ -2676,7 +2676,7 @@
     i32.const 16
     memory.copy
     local.get $bp$
-    global.set $env:__stack_pointer
+    global.set $crt:__stack_pointer
     return
   )
   (func $stdlib:mblen (export "mblen")

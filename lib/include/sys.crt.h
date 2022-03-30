@@ -1,7 +1,7 @@
 /* runtime definitions */
 
 #pragma once
-#pragma module "env"
+#pragma module "crt"
 
 #define ONTERM_MAX 32
 typedef void (*onterm_func_t)(void);

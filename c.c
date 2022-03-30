@@ -48,7 +48,7 @@ void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl, size_t sarg, size_t 
   }
   fsbinit(&g_funcsigs);
   g_wasi_mod = intern("wasi_snapshot_preview1");
-  g_crt_mod = intern("env");
+  g_crt_mod = intern("crt");
   g_lm_id = intern("__linear_memory");
   g_sp_id = intern("__stack_pointer");
   g_sb_id = intern("__stack_base");
@@ -3707,7 +3707,7 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
       pic = icbnewbk(&pf->code); pic->in = IN_CALL; pic->id = intern("terminate"); pic->arg2.mod = g_crt_mod;
     } break;
     case MAIN_VOID: {
-      watie_t *pi, *pf; inscode_t *pic; sym_t r;
+      watie_t *pi, *pf; inscode_t *pic;
       /* (import "crt" "__stack_pointer" (global $crt:__stack_pointer (mut i32))) */
       pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
       pi->mod = g_crt_mod; pi->id = g_sp_id; 
@@ -3773,7 +3773,6 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
   /* done */
   fini_compiler();
 }
-
 
 int main(int argc, char **argv)
 {
