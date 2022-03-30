@@ -1025,7 +1025,7 @@ void chbputvf(chbuf_t* pb, const char *fmt, va_list ap)
       unsigned c = va_arg(ap, unsigned);
       chbputlc(c, pb); fmt += 2;
     } else if (fmt[0] == 'w' && fmt[1] == 'c') {
-      wchar_t c = va_arg(ap, wchar_t);
+      wchar_t c = va_arg(ap, int); /* wchar_t promoted to int */
       chbputwc(c, pb); fmt += 2;
     } else if (fmt[0] == 'd') {
       int d = va_arg(ap, int);

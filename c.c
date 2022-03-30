@@ -193,7 +193,7 @@ static ts_t ts_arith_common(ts_t ts1, ts_t ts2)
 }
 
 /* ts2 can be promoted up to ts1 with implicit cast */
-static ts_t ts_arith_assign_compatible(ts_t ts1, ts_t ts2)
+static bool ts_arith_assign_compatible(ts_t ts1, ts_t ts2)
 {
   assert(ts_numerical(ts1) && ts_numerical(ts2));
   if (ts1 == ts2) return true;

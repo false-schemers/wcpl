@@ -1448,7 +1448,7 @@ static void wat_export_datas(watiebuf_t *pdb)
         chbsetf(g_watbuf, "(data (%s)", format_inscode(&pd->ic, &cb));
         chbfini(&cb);
       }
-      if (smod && sname && data_all_zeroes(pc, n)) {
+      if (smod && sname && data_all_zeroes((char *)pc, n)) {
         chbputf(g_watbuf, " size=%z", n); /* .wo shortcut */
       } else {  
         chbputs(" \"", g_watbuf);

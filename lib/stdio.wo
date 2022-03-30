@@ -6730,13 +6730,13 @@
     return
     end
     local.get $value
-    f64.const 0x1.dcd6500000000p+29 (; 1e+009 ;)
+    f64.const 0x1.dcd6500000000p+29 (; 1e+09 ;)
     f64.gt
     if (result i32)
     i32.const 1
     else
     local.get $value
-    f64.const -0x1.dcd6500000000p+29 (; -1e+009 ;)
+    f64.const -0x1.dcd6500000000p+29 (; -1e+09 ;)
     f64.lt
     end
     if

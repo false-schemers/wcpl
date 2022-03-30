@@ -82,15 +82,6 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - `<setjmp.h>`
 - `<signal.h>`
 
-
-# Linking
-
-WCPL uses extended WAT format with symbolic identifiers in place of indices as
-object file format which uses symbolic names for relocatable constants, so no 
-custom sections or relocation tables are needed. Linker's output is regular WAT 
-format with no extensions; WASM format will be an option in the future.
- 
-
 # Installation
 
 Here's how you can compile WCPL on a Unix box; instructions for other
@@ -114,6 +105,10 @@ wcpl -c infile.c -o infile.wo
 ```
 
 If `-o` option is not specified, output goes to standard output.
+WCPL uses extended WAT format with symbolic identifiers in place of indices as
+object file format which uses symbolic names for relocatable constants, so no 
+custom sections or relocation tables are needed.
+
 
 ## Compilation and linking
 
@@ -123,7 +118,9 @@ wcpl -o out.wat infile1.c infile2.c infile3.wo ...
 
 Any mix of source and object files can be given; one of the input files should
 contain implementation of the `main()` procedure. Library dependences are automatically
-loaded and used.
+loaded and used. Linker's output is regular WAT format with no extensions; 
+WASM format will be an option in the future.
+
 
 ## Running executables
 

@@ -688,7 +688,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
   } else if ((c >= '1' && c <= '9')) {
     chbputc(c, pcb);
     goto state_5;
-  } else if ((c == 'L')) {
+  } else if (c == 'L') {
     goto state_4L;
   } else if ((c >= 'A' && c <= 'Z') || c == '_' || (c >= 'a' && c <= 'z')) {
     chbputc(c, pcb);
