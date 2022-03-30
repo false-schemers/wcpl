@@ -2,8 +2,8 @@
 #include <wasi/api.h>
 #include <sys/crt.h>
 
-void *__stack_base;
-void *__heap_base;
+void *stack_base;
+void *heap_base;
 
 char **_argv = NULL;
 int _argc = 0;
@@ -20,12 +20,12 @@ void initialize(void)
     if (args_count == 0) goto err; 
     size_t num_ptrs = args_count + 1;
     if (num_ptrs == 0) goto err; 
-    char *args_buf = __stack_base;
+    char *args_buf = stack_base;
     char *ptrs_buf = args_buf + args_buf_size;
     size_t n = (size_t)ptrs_buf % 16;
     if (n > 0) ptrs_buf += 16-n; 
     char *ptrs_end = ptrs_buf + num_ptrs*sizeof(char*);
-    if (ptrs_end > __heap_base) goto err;
+    if (ptrs_end > heap_base) goto err;
     char **args_ptrs = (char **)ptrs_buf;
     error = args_get((uint8_t **)args_ptrs, (uint8_t *)args_buf);
     if (error != ERRNO_SUCCESS) goto err;

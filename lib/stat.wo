@@ -1,7 +1,7 @@
 (module $stat
-  (import "crt" "__stack_pointer" (global $crt:__stack_pointer (mut i32)))
-  (import "crt" "__linear_memory" (memory $crt:__linear_memory 0))
-  (import "crt" "__stack_pointer" (global $crt:__stack_pointer i32))
+  (import "crt" "sp$" (global $crt:sp$ (mut i32)))
+  (import "crt" "memory" (memory $crt:memory 0))
+  (import "crt" "sp$" (global $crt:sp$ i32))
   (import "wasi_snapshot_preview1" "fd_filestat_get" (func $wasi_snapshot_preview1:fd_filestat_get (param i32) (param i32) (result i32)))
   (import "wasi_snapshot_preview1" "path_create_directory" (func $wasi_snapshot_preview1:path_create_directory (param i32) (param i32) (param i32) (result i32)))
   (import "wasi_snapshot_preview1" "path_filestat_get" (func $wasi_snapshot_preview1:path_filestat_get (param i32) (param i32) (param i32) (param i32) (param i32) (result i32)))
@@ -170,13 +170,13 @@
   (func $stat:fstat (export "fstat")
     (param $fd i32) (param $ps i32) (result i32) 
     (local $error i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     local.set $bp$
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     i32.const 64
     i32.sub
-    global.set $crt:__stack_pointer
-    global.get $crt:__stack_pointer
+    global.set $crt:sp$
+    global.get $crt:sp$
     local.set $fp$
     local.get $fd
     local.get $fp$
@@ -193,7 +193,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
     end
     local.get $fp$
@@ -201,19 +201,19 @@
     call $stat:to_public_stat
     i32.const 0
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
   )
   (func $stat:fstatat (export "fstatat")
     (param $fd i32) (param $path i32) (param $ps i32) (param $atflag i32) (result i32) 
     (local $lflags i32) (local $error i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     local.set $bp$
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     i32.const 64
     i32.sub
-    global.set $crt:__stack_pointer
-    global.get $crt:__stack_pointer
+    global.set $crt:sp$
+    global.get $crt:sp$
     local.set $fp$
     i32.const 0
     local.set $lflags
@@ -247,7 +247,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
     end
     local.get $fp$
@@ -255,19 +255,19 @@
     call $stat:to_public_stat
     i32.const 0
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
   )
   (func $stat:stat (export "stat")
     (param $path i32) (param $ps i32) (result i32) 
     (local $dirfd i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     local.set $bp$
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     i32.const 16
     i32.sub
-    global.set $crt:__stack_pointer
-    global.get $crt:__stack_pointer
+    global.set $crt:sp$
+    global.get $crt:sp$
     local.set $fp$
     local.get $path
     local.get $fp$
@@ -280,7 +280,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
     end
     local.get $dirfd
@@ -290,19 +290,19 @@
     i32.const 0
     call $stat:fstatat
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
   )
   (func $stat:lstat (export "lstat")
     (param $path i32) (param $ps i32) (result i32) 
     (local $dirfd i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     local.set $bp$
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     i32.const 16
     i32.sub
-    global.set $crt:__stack_pointer
-    global.get $crt:__stack_pointer
+    global.set $crt:sp$
+    global.get $crt:sp$
     local.set $fp$
     local.get $path
     local.get $fp$
@@ -315,7 +315,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
     end
     local.get $dirfd
@@ -325,7 +325,7 @@
     i32.const 1
     call $stat:fstatat
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
   )
   (func $stat:mkdirat (export "mkdirat")
@@ -355,13 +355,13 @@
   (func $stat:mkdir (export "mkdir")
     (param $path i32) (param $mode i32) (result i32) 
     (local $dirfd i32) (local $bp$ i32) (local $fp$ i32) 
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     local.set $bp$
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     i32.const 16
     i32.sub
-    global.set $crt:__stack_pointer
-    global.get $crt:__stack_pointer
+    global.set $crt:sp$
+    global.get $crt:sp$
     local.set $fp$
     local.get $path
     local.get $fp$
@@ -374,7 +374,7 @@
     global.set $errno:errno
     i32.const -1
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
     end
     local.get $dirfd
@@ -383,7 +383,7 @@
     local.get $mode
     call $stat:mkdirat
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
   )
 )

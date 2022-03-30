@@ -2835,7 +2835,7 @@ static void parse_optional_export(sws_t *pw, watie_t *pe)
   if (ahead(pw, "(") && peeks(pw, "export")) {
     sym_t id; chbuf_t cb = mkchb();
     dropt(pw); expect(pw, "export");
-    id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
+    id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_$");
     if (id != pe->id) seprintf(pw, "unexpected export rename"); 
     pe->exported = true;
     expect(pw, ")");
@@ -2851,7 +2851,7 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     watie_t *pi = watiebnewbk(&pm->imports, IEK_UNKN);
     dropt(pw);
     pi->mod = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_.");
-    pi->id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_");
+    pi->id = parse_id_string(pw, &cb, STR_az STR_AZ STR_09 "_$");
     parse_import_des(pw, pi);
   } else if (ahead(pw, "data")) {
     watie_t *pd = watiebnewbk(&pm->exports, IEK_DATA);

@@ -1,6 +1,6 @@
 (module $crt
-  (memory $crt:__linear_memory (export "__linear_memory") 2)
-  (global $crt:__stack_pointer (export "__stack_pointer") (mut i32) (i32.const 4242))
-  (global $crt:__stack_base (export "__stack_base") i32 (i32.const 4242))
-  (global $crt:__heap_base (export "__heap_base") i32 (i32.const 4242))
+  (memory $crt:memory (export "memory") 2)
+  (global $crt:sp$ (export "sp$") (mut i32) (i32.const 4242))
+  (global $crt:stack_base (export "stack_base") i32 (i32.const 4242))
+  (global $crt:heap_base (export "heap_base") i32 (i32.const 4242))
 )

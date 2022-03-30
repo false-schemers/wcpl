@@ -1,7 +1,7 @@
 (module $stdlib
-  (import "crt" "__stack_pointer" (global $crt:__stack_pointer (mut i32)))
-  (import "crt" "__linear_memory" (memory $crt:__linear_memory 0))
-  (import "crt" "__stack_pointer" (global $crt:__stack_pointer i32))
+  (import "crt" "sp$" (global $crt:sp$ (mut i32)))
+  (import "crt" "memory" (memory $crt:memory 0))
+  (import "crt" "sp$" (global $crt:sp$ i32))
   (import "string" "memcpy" (func $string:memcpy (param i32) (param i32) (param i32) (result i32)))
   (import "string" "strncmp" (func $string:strncmp (param i32) (param i32) (param i32) (result i32)))
   (import "string" "memset" (func $string:memset (param i32) (param i32) (param i32) (result i32)))
@@ -1836,20 +1836,20 @@
   )
   (func $stdlib:initialize_environ (export "initialize_environ")
     (local $error i32) (local $num_ptrs i32) (local $environ_buf i32) (local $environ_ptrs i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     local.set $bp$
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     i32.const 32
     i32.sub
-    global.set $crt:__stack_pointer
-    global.get $crt:__stack_pointer
+    global.set $crt:sp$
+    global.get $crt:sp$
     local.set $fp$
     global.get $stdlib:_environ
     i32.const 0
     i32.ne
     if
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
     else
     block $err
@@ -1913,7 +1913,7 @@
     local.get $environ_ptrs
     global.set $stdlib:_environ
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
     end $err
     end
@@ -1944,7 +1944,7 @@
     ref.data $stdlib:empty_environ
     global.set $stdlib:_environ
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
   )
   (func $stdlib:getenv (export "getenv")
@@ -2586,13 +2586,13 @@
   (func $stdlib:div (export "div")
     (param $rp$ i32) (param $num i32) (param $den i32) 
     (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     local.set $bp$
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     i32.const 16
     i32.sub
-    global.set $crt:__stack_pointer
-    global.get $crt:__stack_pointer
+    global.set $crt:sp$
+    global.get $crt:sp$
     local.tee $fp$
     local.tee $i1$
     local.get $num
@@ -2612,19 +2612,19 @@
     i32.const 8
     memory.copy
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
   )
   (func $stdlib:ldiv (export "ldiv")
     (param $rp$ i32) (param $num i32) (param $den i32) 
     (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     local.set $bp$
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     i32.const 16
     i32.sub
-    global.set $crt:__stack_pointer
-    global.get $crt:__stack_pointer
+    global.set $crt:sp$
+    global.get $crt:sp$
     local.tee $fp$
     local.tee $i1$
     local.get $num
@@ -2644,19 +2644,19 @@
     i32.const 8
     memory.copy
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
   )
   (func $stdlib:lldiv (export "lldiv")
     (param $rp$ i32) (param $num i64) (param $den i64) 
     (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) 
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     local.set $bp$
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     i32.const 16
     i32.sub
-    global.set $crt:__stack_pointer
-    global.get $crt:__stack_pointer
+    global.set $crt:sp$
+    global.get $crt:sp$
     local.tee $fp$
     local.tee $i1$
     local.get $num
@@ -2676,7 +2676,7 @@
     i32.const 16
     memory.copy
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
   )
   (func $stdlib:mblen (export "mblen")

@@ -1,6 +1,6 @@
 (module $ctype
-  (import "crt" "__stack_pointer" (global $crt:__stack_pointer (mut i32)))
-  (import "crt" "__linear_memory" (memory $crt:__linear_memory 0))
+  (import "crt" "sp$" (global $crt:sp$ (mut i32)))
+  (import "crt" "memory" (memory $crt:memory 0))
   (func $ctype:isupper (export "isupper")
     (param $c i32) (result i32) 
     local.get $c

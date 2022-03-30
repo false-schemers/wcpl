@@ -49,10 +49,10 @@ void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl, size_t sarg, size_t 
   fsbinit(&g_funcsigs);
   g_wasi_mod = intern("wasi_snapshot_preview1");
   g_crt_mod = intern("crt");
-  g_lm_id = intern("__linear_memory");
-  g_sp_id = intern("__stack_pointer");
-  g_sb_id = intern("__stack_base");
-  g_hb_id = intern("__heap_base");
+  g_lm_id = intern("memory");
+  g_sp_id = intern("sp$");
+  g_sb_id = intern("stack_base");
+  g_hb_id = intern("heap_base");
   g_sdbaddr = 1024; /* >0, 16-aligned: address 0 reserved for NULL */
   g_stacksz = sarg; /* 64K default */
   g_argvbsz = aarg; /* 4K default */
@@ -3629,23 +3629,23 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
     case MAIN_ABSENT: {
       if (mod == g_crt_mod) { /* special case */
         watie_t *pe, *pg; inscode_t *pic; 
-        /* (memory $crt:__linear_memory (export "__linear_memory") 2) */
+        /* (memory $crt:memory (export "memory") 2) */
         pe = watiebnewbk(&pwm->exports, IEK_MEM);
         pe->mod = g_crt_mod; pe->id = g_lm_id; pe->exported = true;
         pe->lt = LT_MIN; pe->n = 2; /* patched by linker */
-        /* (global $crt:__stack_pointer (export "__stack_pointer") (mut i32) (i32.const 4242)) */
+        /* (global $crt:sp$ (export "sp$") (mut i32) (i32.const 4242)) */
         watiebdel(&pwm->exports, IEK_GLOBAL, g_crt_mod, g_sp_id);
         pg = watiebnewbk(&pwm->exports, IEK_GLOBAL);
         pg->mod = g_crt_mod; pg->id = g_sp_id; pg->exported = true;
         pg->mut = MT_VAR; pg->vt = VT_I32;
         pic = &pg->ic; pic->in = IN_I32_CONST; pic->arg.i = 4242; /* patched by linker */
-        /* (global $crt:__stack_base (export "__stack_base") i32 (i32.const 42424)) */
+        /* (global $crt:stack_base (export "stack_base") i32 (i32.const 42424)) */
         watiebdel(&pwm->exports, IEK_GLOBAL, g_crt_mod, g_sb_id);
         pg = watiebnewbk(&pwm->exports, IEK_GLOBAL);
         pg->mod = g_crt_mod; pg->id = g_sb_id; pg->exported = true;
         pg->mut = MT_CONST; pg->vt = VT_I32;
         pic = &pg->ic; pic->in = IN_I32_CONST; pic->arg.i = 4242; /* patched by linker */
-        /* (global $crt:__heap_base (export "__heap_base") i32 (i32.const 42424)) */
+        /* (global $crt:heap_base (export "heap_base") i32 (i32.const 42424)) */
         watiebdel(&pwm->exports, IEK_GLOBAL, g_crt_mod, g_hb_id);
         pg = watiebnewbk(&pwm->exports, IEK_GLOBAL);
         pg->mod = g_crt_mod; pg->id = g_hb_id; pg->exported = true;
@@ -3653,11 +3653,11 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
         pic = &pg->ic; pic->in = IN_I32_CONST; pic->arg.i = 4242; /* patched by linker */
       } else { /* regular module without 'main'*/
         watie_t *pi;
-        /* (import "crt" "__stack_pointer" (global $crt:__stack_pointer (mut i32))) */
+        /* (import "crt" "sp$" (global $crt:sp$ (mut i32))) */
         pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
         pi->mod = g_crt_mod; pi->id = g_sp_id; 
         pi->mut = MT_VAR; pi->vt = VT_I32;
-        /* (import "crt" "__linear_memory" (memory $crt:__linear_memory 0)) */
+        /* (import "crt" "memory" (memory $crt:memory 0)) */
         pi = watiebnewbk(&pwm->imports, IEK_MEM); 
         pi->mod = g_crt_mod; pi->id = g_lm_id; 
         pi->lt = LT_MIN; pi->n = 0;
@@ -3665,19 +3665,19 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
     } break;
     case MAIN_ARGC_ARGV: {
       watie_t *pi, *pf; inscode_t *pic;
-      /* (import "crt" "__stack_pointer" (global $crt:__stack_pointer (mut i32))) */
+      /* (import "crt" "sp$" (global $crt:sp$ (mut i32))) */
       pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
       pi->mod = g_crt_mod; pi->id = g_sp_id; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
-      /* (import "crt" "__stack_base" (global $crt:__stack_base i32)) */
+      /* (import "crt" "stack_base" (global $crt:stack_base i32)) */
       pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
       pi->mod = g_crt_mod; pi->id = g_sb_id; 
       pi->mut = MT_CONST; pi->vt = VT_I32;
-      /* (import "crt" "__heap_base" (global $crt:__heap_base i32)) */
+      /* (import "crt" "heap_base" (global $crt:heap_base i32)) */
       pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
       pi->mod = g_crt_mod; pi->id = g_hb_id; 
       pi->mut = MT_CONST; pi->vt = VT_I32;
-      /* (import "crt" "__linear_memory" (memory $crt:__linear_memory 0)) */
+      /* (import "crt" "memory" (memory $crt:memory 0)) */
       pi = watiebnewbk(&pwm->imports, IEK_MEM);
       pi->mod = g_crt_mod; pi->id = g_lm_id; 
       pi->lt = LT_MIN; pi->n = 0;
@@ -3708,11 +3708,11 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
     } break;
     case MAIN_VOID: {
       watie_t *pi, *pf; inscode_t *pic;
-      /* (import "crt" "__stack_pointer" (global $crt:__stack_pointer (mut i32))) */
+      /* (import "crt" "sp$" (global $crt:sp$ (mut i32))) */
       pi = watiebnewbk(&pwm->imports, IEK_GLOBAL);
       pi->mod = g_crt_mod; pi->id = g_sp_id; 
       pi->mut = MT_VAR; pi->vt = VT_I32;
-      /* (import "crt" "__linear_memory" (memory $crt:__linear_memory 0)) */
+      /* (import "crt" "memory" (memory $crt:memory 0)) */
       pi = watiebnewbk(&pwm->imports, IEK_MEM);
       pi->mod = g_crt_mod; pi->id = g_lm_id; 
       pi->lt = LT_MIN; pi->n = 0;
@@ -3841,6 +3841,7 @@ int main(int argc, char **argv)
       if (!pf) exprintf("cannot open output file %s:", ofile_arg);
       write_wat_module(&wm, pf);
       fclose(pf);
+      logef("# object module written to %s\n", ofile_arg);
     } else {
       write_wat_module(&wm, stdout);
     }

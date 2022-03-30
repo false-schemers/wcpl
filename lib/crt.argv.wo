@@ -6,13 +6,13 @@
   (import "stdlib" "calloc" (func $stdlib:calloc (param i32) (param i32) (result i32)))
   (import "stdlib" "free" (func $stdlib:free (param i32)))
   (import "stdlib" "malloc" (func $stdlib:malloc (param i32) (result i32)))
-  (memory $crt:__linear_memory (export "__linear_memory") 2)
+  (memory $crt:memory (export "memory") 2)
   (global $crt:_argv (export "_argv") (mut i32) (i32.const 0))
   (global $crt:_argc (export "_argc") (mut i32) (i32.const 0))
   (global $crt:onterm_count (export "onterm_count") (mut i32) (i32.const 0))
-  (global $crt:__stack_pointer (export "__stack_pointer") (mut i32) (i32.const 4242))
-  (global $crt:__stack_base (export "__stack_base") i32 (i32.const 4242))
-  (global $crt:__heap_base (export "__heap_base") i32 (i32.const 4242))
+  (global $crt:sp$ (export "sp$") (mut i32) (i32.const 4242))
+  (global $crt:stack_base (export "stack_base") i32 (i32.const 4242))
+  (global $crt:heap_base (export "heap_base") i32 (i32.const 4242))
   (data $crt:empty_argv var align=4 size=8
     (ref.data $crt:ds3$
      data.put_ref offset=0))
@@ -21,20 +21,20 @@
   (data $crt:onterm_funcs (export "onterm_funcs") var align=4 size=128)
   (func $crt:initialize (export "initialize")
     (local $error i32) (local $num_ptrs i32) (local $args_buf i32) (local $args_ptrs i32) (local $bp$ i32) (local $fp$ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) 
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     local.set $bp$
-    global.get $crt:__stack_pointer
+    global.get $crt:sp$
     i32.const 32
     i32.sub
-    global.set $crt:__stack_pointer
-    global.get $crt:__stack_pointer
+    global.set $crt:sp$
+    global.get $crt:sp$
     local.set $fp$
     global.get $crt:_argv
     i32.const 0
     i32.ne
     if
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
     else
     block $err
@@ -104,7 +104,7 @@
     i32.load offset=0 align=4
     global.set $crt:_argc
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
     end $err
     end
@@ -137,7 +137,7 @@
     i32.const 1
     global.set $crt:_argc
     local.get $bp$
-    global.set $crt:__stack_pointer
+    global.set $crt:sp$
     return
   )
   (func $crt:terminate (export "terminate")
