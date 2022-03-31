@@ -101,7 +101,7 @@ file.
 ## Single-file compilation
 
 ```
-wcpl -c infile.c -o infile.wo
+wcpl -c -o infile.wo infile.c 
 ```
 
 If `-o` option is not specified, output goes to standard output.
