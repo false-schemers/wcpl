@@ -1,5 +1,6 @@
 /* p.c (wcpl parser) -- esl */
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -2372,10 +2373,8 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
         patch_macro_template(&ids, &pars, pn);
         buffini(&ids); ndbfini(&pars); 
       } else assert(false);
-      if (pn->startpos == -1) {
-        /* built-in macro; use current loc info */
-        pn->pwsid = pw->id; pn->startpos = startpos;
-      }
+      /* use current loc info on outer level */
+      pn->pwsid = pw->id; pn->startpos = startpos;
     } break;
     case TT_INTR_NAME: {
       /* intrinsic application */

@@ -1,5 +1,6 @@
 /* w.c (wasm interface) -- esl */
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -1189,7 +1190,7 @@ char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       break;
     case INSIG_F32: {
       char buf[32]; float f = pic->arg.f;
-      char *s = uftohex(asuint32(f), buf);
+      char *s = uftohex(as_uint32(f), buf);
       chbputf(pcb, " %s", s);
       if (-HUGE_VAL < f && f < HUGE_VAL) {
         sprintf(buf, "%.9g", (double)f); chbputf(pcb, " (; %s ;)", buf);
@@ -1197,7 +1198,7 @@ char *format_inscode(inscode_t *pic, chbuf_t *pcb)
     } break;
     case INSIG_F64: {
       char buf[32]; double d = pic->arg.d;
-      char *s = udtohex(asuint64(d), buf);
+      char *s = udtohex(as_uint64(d), buf);
       chbputf(pcb, " %s", s);
       if (-HUGE_VAL < d && d < HUGE_VAL) {
         sprintf(buf, "%.9g", d); chbputf(pcb, " (; %s ;)", buf);
@@ -2415,14 +2416,14 @@ static float scan_float(sws_t *pw, const char *s)
 {
   unsigned u = hextouf(s);
   if (u == (unsigned)-1) seprintf(pw, "invalid float literal");
-  return asfloat(u);
+  return as_float(u);
 }
 
 static double scan_double(sws_t *pw, const char *s)
 {
   unsigned long long u = hextoud(s);
   if (u == (unsigned long long)-1LL) seprintf(pw, "invalid double literal");
-  return asdouble(u);
+  return as_double(u);
 }
 
 /* size of buffer large enough to hold char escapes */

@@ -1,5 +1,6 @@
 /* c.c (wcpl compiler) -- esl */
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -356,7 +357,7 @@ ts_t numval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t 
         default:       tz = TS_VOID; break;
       }
     } break;
-    case TS_ULLONG: case TS_UINT: {
+    case TS_ULLONG: case TS_ULONG: case TS_UINT: {
       unsigned long long x = vx.u, y = vy.u;
       switch (op) {
         case TT_PLUS:  pvz->u = integral_mask(tz, x + y); break;
@@ -378,7 +379,7 @@ ts_t numval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t 
         default:       tz = TS_VOID; break;
       }
     } break;
-    case TS_LLONG: case TS_INT: {
+    case TS_LLONG: case TS_LONG: case TS_INT: {
       long long x = vx.i, y = vy.i;
       switch (op) {
         case TT_PLUS:  pvz->i = integral_sext(tz, x + y); break;
@@ -2569,7 +2570,7 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op,
     else asm_popbk(&pan->data, &lic); /* old val is no longer on stack */
     if (op) pvn = compile_binary(prn, pdn, op, pvn); /* new val on stack */
     if (!assign_compatible(acode_type(pan), pctn ? pctn : acode_type(pvn)))
-      neprintf(prn, "can't modify lval: unexpected type on the right");
+      neprintf(prn, "can't modify lval: unexpected type on the right (need cast?)");
     if (pctn && !cast_compatible(pctn, acode_type(pvn)))
       neprintf(prn, "can't modify lval: impossible narrowing cast");
     if (pctn && !same_type(pctn, acode_type(pvn))) 
@@ -2636,7 +2637,7 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
   node_t *pcn = npnewcode(prn), *pftn = acode_type(pfn), *psn; size_t i;
   inscode_t cic; size_t alen = ndlen(pftn); bool etc = false;
   if (pftn->ts != TS_FUNCTION) 
-    n2eprintf(ndref(prn, 0), prn, "can't call non-function type");
+    n2eprintf(ndref(prn, 0), prn, "can't call non-function type (function pointers need to be dereferenced)");
   if (alen > 1 && (psn = ndref(pftn, alen-1))->nt == NT_VARDECL
     && ndlen(psn) == 1 && ndref(psn, 0)->ts == TS_ETC) { 
     etc = true;
@@ -2703,7 +2704,10 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
       measure_type(ptni, prn, &size, &align, 0);
       if (ts_bulk(ptni->ts) || size > asz || align > asz)
         n2eprintf(pani, prn, "can't pass argument[%d]: unsupported type for ... call", i);
-      if (ts_numerical(ptni->ts)) assert(ptni->ts == ts_integral_promote(ptni->ts));
+      if (ts_numerical(ptni->ts)) {
+        if (ptni->ts != ts_integral_promote(ptni->ts))
+          n2eprintf(pani, prn, "can't pass argument[%d]: non-promoted type for ... call", i);
+      }
       acode_pushin_id(pcn, IN_LOCAL_GET, pname);
       acode_swapin(pcn, pani); /* arg on stack */
       asm_store(ptni->ts, ptni->ts, (unsigned)((i-basei)*asz), &pcn->data);
@@ -3297,7 +3301,7 @@ static void fundef_peephole(node_t *pcn, int optlvl)
   icbuf_t *picb = &pcn->data; size_t i, nmods;
 repeat:
   for (nmods = i = 0; i < icblen(picb); /* rem or bump i */) {
-    bool nexti = i+1;
+    size_t nexti = i+1;
     if (i > 0) {
       inscode_t *pprevi = icbref(picb, i-1);
       inscode_t *pthisi = icbref(picb, i);

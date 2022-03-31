@@ -1,17 +1,6 @@
 /* l.h (wcpl library) -- esl */
 
-#ifndef _L_H_INCLUDED
-#define _L_H_INCLUDED
-
-#if defined(_MSC_VER) && (_MSC_VER > 1300)
-#pragma warning(disable: 4996)
-#define strtoll _strtoi64 
-#define strtoull _strtoui64
-#endif
-
-#if !defined(true) && !defined(__cplusplus) && !defined(inline) /* cutil hack */ 
-typedef enum { false = 0, true = 1 } bool;
-#endif
+#pragma once
 
 #define STR_az "abcdefghijklmnopqrstuvwxyz"
 #define STR_AZ "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -73,24 +62,23 @@ extern bool fget8bom(FILE *fp);
 extern int int_cmp(const void *pi1, const void *pi2);
 
 /* floating-point reinterpret casts and exact hex i/o */
-extern unsigned long long asuint64(double f); /* NB: WCPL intrinsic */
-extern double asdouble(unsigned long long u); /* NB: WCPL intrinsic */
-extern unsigned asuint32(float f); /* NB: WCPL intrinsic */
-extern float asfloat(unsigned u); /* NB: WCPL intrinsic */
-extern char *udtohex(unsigned long long uval, char buf[32]);
+extern unsigned long long as_uint64(double f); /* NB: asuint64 is WCPL intrinsic */
+extern double as_double(unsigned long long u); /* NB: asdouble is WCPL intrinsic */
+extern unsigned as_uint32(float f); /* NB: asuint32 is WCPL intrinsic */
+extern float as_float(unsigned u); /* NB: asfloat is WCPL intrinsic */
+extern char *udtohex(unsigned long long uval, char *buf); /* buf needs 32 chars */
 extern unsigned long long hextoud(const char *buf); /* -1 on error */
-extern char *uftohex(unsigned uval, char buf[32]);
+extern char *uftohex(unsigned uval, char *buf); /* buf needs 32 chars */
 extern unsigned hextouf(const char *buf); /* -1 on error */
 
 /* dynamic (heap-allocated) 0-terminated strings */
 typedef char* dstr_t;
 #define dsinit(pds) (*(dstr_t*)(pds) = NULL)
 extern void dsicpy(dstr_t* mem, const dstr_t* pds);
-#define dsfini(pds) (free(*(dstr_t*)(pds)))
-extern void (dsfini)(dstr_t* pds); 
+extern void dsfini(dstr_t* pds); 
 extern void dscpy(dstr_t* pds, const dstr_t* pdss);
 extern void dssets(dstr_t* pds, const char *s);
-#define dsclear(pds) dssets(pds, NULL)
+#define dsclear(pds) (dssets(pds, NULL))
 extern int dstr_cmp(const void *pds1, const void *pds2);
 
 /* simple dynamic memory buffers */
@@ -131,39 +119,39 @@ extern size_t bufoff(const buf_t* pb, const void *pe); /* element offset of non-
 extern void bufswap(buf_t* pb1, buf_t* pb2);
 
 /* dstr_t buffers */
-#define dsbuf_t buf_t
-#define dsbinit(mem) bufinit(mem, sizeof(dstr_t))
+typedef buf_t dsbuf_t;
+#define dsbinit(mem) (bufinit(mem, sizeof(dstr_t)))
 extern void dsbicpy(dsbuf_t* mem, const dsbuf_t* pb);
 extern void dsbfini(dsbuf_t* pb);
-#define dsblen(pb) buflen(pb)
+#define dsblen(pb) (buflen(pb))
 #define dsbref(pb, i) ((dstr_t*)bufref(pb, i))
-#define dsbpushbk(pb, pds) dsicpy(bufnewbk(pb), pds)
+#define dsbpushbk(pb, pds) (dsicpy(bufnewbk(pb), pds))
 #define dsbrem(pb, i) do { dsbuf_t *_pb = pb; size_t _i = i; dsfini(bufref(_pb, _i)); bufrem(_pb, _i); } while(0)
-#define dsbqsort(pb) bufqsort(pb, dstr_cmp)
-#define dsbremdups(pb) bufremdups(pb, dstr_cmp, (dsfini))
-#define dsbsearch(pb, pe) bufsearch(pb, pe, dstr_cmp)
-#define dsbbsearch(pb, pe) bufbsearch(pb, pe, dstr_cmp)
+#define dsbqsort(pb) (bufqsort(pb, dstr_cmp))
+#define dsbremdups(pb) (bufremdups(pb, dstr_cmp, (dsfini)))
+#define dsbsearch(pb, pe) (bufsearch(pb, pe, dstr_cmp))
+#define dsbbsearch(pb, pe) (bufbsearch(pb, pe, dstr_cmp))
 
 /* unicode charsets */
-#define ucset_t buf_t
-#define ucsinit(mem) bufinit(mem, sizeof(unsigned)*2)
-#define ucsfini(ps) buffini(ps)
-#define mkucs() mkbuf(sizeof(unsigned)*2)
-#define ucsempty(ps) bufempty(ps)
+typedef buf_t ucset_t;
+#define ucsinit(mem) (bufinit(mem, sizeof(unsigned)*2))
+#define ucsfini(ps) (buffini(ps))
+#define mkucs() (mkbuf(sizeof(unsigned)*2))
+#define ucsempty(ps) (bufempty(ps))
 extern bool ucsin(unsigned uc, const ucset_t *ps);
 extern void ucspushi(ucset_t *ps, unsigned fc, unsigned lc);
 
 /* regular char buffers */
-#define chbuf_t buf_t
-#define chbinit(mem) bufinit(mem, sizeof(char))
-#define chbicpy(mem, pb) buficpy(mem, pb)
-#define chbfini(pb) buffini(pb)
-#define mkchb() mkbuf(sizeof(char))
-#define newchb() newbuf(sizeof(char))
-#define freechb(pb) freebuf(pb)
-#define chblen(pb) buflen(pb)
-#define chbclear(pb) bufclear(pb)
-#define chbputc(c, pb) (*(char*)bufnewbk(pb) = (c))
+typedef buf_t chbuf_t;
+#define chbinit(mem) (bufinit(mem, sizeof(char)))
+#define chbicpy(mem, pb) (buficpy(mem, pb))
+#define chbfini(pb) (buffini(pb))
+#define mkchb() (mkbuf(sizeof(char)))
+#define newchb() (newbuf(sizeof(char)))
+#define freechb(pb) (freebuf(pb))
+#define chblen(pb) (buflen(pb))
+#define chbclear(pb) (bufclear(pb))
+#define chbputc(c, pb) (*(char*)bufnewbk(pb) = (int)(c))
 extern void chbput(const char *s, size_t n, chbuf_t* pcb);
 extern void chbputs(const char *s, chbuf_t* pcb);
 extern void chbputlc(unsigned long uc, chbuf_t* pcb);
@@ -235,6 +223,3 @@ extern char *getfname(const char *path);
 extern size_t spanfbase(const char* path);
 /* returns trailing file extension ("" or ".foo") */
 extern char* getfext(const char* path);
-
-
-#endif /* ndef _L_H_INCLUDED */

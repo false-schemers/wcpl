@@ -1,5 +1,6 @@
 /* l.c (wcpl library) -- esl */
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -23,7 +24,7 @@ int g_quietness = 0; /* how quiet are we? */
 int eoptind = 1; /* start*/
 int eopterr = 1; /* throw errors by default */
 int eoptopt = 0;
-char* eoptarg = 0;
+char* eoptarg = NULL;
 int eoptich = 0;
 
 
@@ -95,7 +96,7 @@ char *strprf(const char *str, const char *prefix)
   assert(str); assert(prefix);
   while (*str && *str == *prefix) ++str, ++prefix;
   if (*prefix) return NULL;
-  else return (char *)str; 
+  return (char *)str; 
 }
 
 char *strsuf(const char *str, const char *suffix)
@@ -142,14 +143,14 @@ void memswap(void *mem1, void *mem2, size_t sz)
 unsigned char *utf8(unsigned long c, unsigned char *s) 
 { /* if c has more than 21 bits (> U+1FFFFF), *s is set to 0 and s does not advance; accepts any other c w/o error */
   int t = (int)!!(c & ~0x7fL) + (int)!!(c & ~0x7ffL) + (int)!!(c & ~0xffffL) + (int)!!(c & ~0x1fffffL);
-  *s = ((c >> t["\0\0\0\x12\0"]) & t["\0\0\0\x07\0"]) | t["\0\0\0\xf0\0"];
-  s += t["\0\0\0\1\0"];
-  *s = ((c >> t["\0\0\x0c\x0c\0"]) & t["\0\0\x0f\x3f\0"]) | t["\0\0\xe0\x80\0"];
-  s += t["\0\0\1\1\0"];
-  *s = ((c >> t["\0\x06\x06\x06\0"]) & t["\0\x1f\x3f\x3f\0"]) | t["\0\xc0\x80\x80\0"];
-  s += t["\0\1\1\1\0"];
-  *s = ((c & t["\x7f\x3f\x3f\x3f\0"])) | t["\0\x80\x80\x80\0"];
-  s += t["\1\1\1\1\0"];
+  *s = (unsigned char)(((c >> t["\0\0\0\x12\0"]) & t["\0\0\0\x07\0"]) | t["\0\0\0\xf0\0"]);
+  s += (unsigned char)(t["\0\0\0\1\0"]);
+  *s = (unsigned char)(((c >> t["\0\0\x0c\x0c\0"]) & t["\0\0\x0f\x3f\0"]) | t["\0\0\xe0\x80\0"]);
+  s += (unsigned char)(t["\0\0\1\1\0"]);
+  *s = (unsigned char)(((c >> t["\0\x06\x06\x06\0"]) & t["\0\x1f\x3f\x3f\0"]) | t["\0\xc0\x80\x80\0"]);
+  s += (unsigned char)(t["\0\1\1\1\0"]);
+  *s = (unsigned char)(((c & t["\x7f\x3f\x3f\x3f\0"])) | t["\0\x80\x80\x80\0"]);
+  s += (unsigned char)(t["\1\1\1\1\0"]);
   return s; 
 }
 
@@ -183,81 +184,82 @@ unsigned long strtocc32(const char *s, char** ep)
   char buf[SBSIZE+1]; 
   int c;
   assert(s);
-  if (!*s) goto err;
-  c = *s++;
-  if (c == '\\') {
-    switch (c = *s++) {
-      case 'a':   c = '\a'; break;
-      case 'b':   c = '\b'; break;
-      case 'f':   c = '\f'; break;
-      case 'n':   c = '\n'; break;
-      case 'r':   c = '\r'; break;
-      case 't':   c = '\t'; break;
-      case 'v':   c = '\v'; break;
-      case '\\':  break;
-      case '\'':  break;
-      case '\"':  break;
-      case '\?':  break;
-      case 'x': {
-        int i = 0; long l;
-        while (i < SBSIZE && (c = *s++) && isxdigit(c))
-          buf[i++] = c;
-        if (i == SBSIZE) goto err;
-        --s;
-        buf[i] = 0; 
-        l = strtol(buf, NULL, 16);
-        c = (int)l & 0xff;
-        if ((long)c != l) goto err; 
-      } break;
-      case 'u': {
-        int i = 0; long l;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        buf[i] = 0;
-        l = strtol(buf, NULL, 16);
-        c = l & 0xffff;
-        if ((long)c != l) goto err; 
-      } break;
-      case 'U': {
-        int i = 0; long l;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
-        buf[i] = 0;
-        l = strtol(buf, NULL, 16);
-        c = l & 0x7fffffff;
-        if ((long)c != l) goto err; 
-      } break;
-      case '0': case '1': case '2': case '3':
-      case '4': case '5': case '6': case '7': {
-        int i = 0;
-        buf[i++] = c; c = *s++;
-        if (c >= '0' && c <= '7') {
-          buf[i++] = c; c = *s++;
-          if (c >= '0' && c <= '7')
+  if (*s) {
+    c = *s++;
+    if (c == '\\') {
+      switch (c = *s++) {
+        case 'a':   c = '\a'; break;
+        case 'b':   c = '\b'; break;
+        case 'f':   c = '\f'; break;
+        case 'n':   c = '\n'; break;
+        case 'r':   c = '\r'; break;
+        case 't':   c = '\t'; break;
+        case 'v':   c = '\v'; break;
+        case '\\':  break;
+        case '\'':  break;
+        case '\"':  break;
+        case '\?':  break;
+        case 'x': {
+          int i = 0; long l;
+          while (i < SBSIZE && (c = *s++) && isxdigit(c))
             buf[i++] = c;
-          else --s;
-        } else --s;
-        buf[i] = 0; 
-        c = (int)strtol(buf, NULL, 8);
-      } break;
-      case 0:
-        goto err;
-      default:
-        /* warn? return as is */
-        break;
+          if (i == SBSIZE) goto err;
+          --s;
+          buf[i] = 0; 
+          l = strtol(buf, NULL, 16);
+          c = (int)l & 0xff;
+          if ((long)c != l) goto err; 
+        } break;
+        case 'u': {
+          int i = 0; long l;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          buf[i] = 0;
+          l = strtol(buf, NULL, 16);
+          c = (int)l & 0xffff;
+          if ((long)c != l) goto err; 
+        } break;
+        case 'U': {
+          int i = 0; long l;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          c = *s++; if (isxdigit(c)) buf[i++] = c; else goto err;
+          buf[i] = 0;
+          l = strtol(buf, NULL, 16);
+          c = (int)l & 0x7fffffff;
+          if ((long)c != l) goto err; 
+        } break;
+        case '0': case '1': case '2': case '3':
+        case '4': case '5': case '6': case '7': {
+          int i = 0;
+          buf[i++] = c; c = *s++;
+          if (c >= '0' && c <= '7') {
+            buf[i++] = c; c = *s++;
+            if (c >= '0' && c <= '7')
+              buf[i++] = c;
+            else --s;
+          } else --s;
+          buf[i] = 0; 
+          c = (int)strtol(buf, NULL, 8);
+        } break;
+        case 0:
+          goto err;
+        default:
+          /* warn? return as is */
+          break;
+      }
     }
+    if (ep) *ep = (char*)s; 
+    return (unsigned long)c;
+  err:;
   }
-  if (ep) *ep = (char*)s; 
-  return (unsigned long)c;
-err:
   if (ep) *ep = (char*)s;
   errno = EINVAL;
   return (unsigned long)(-1);
@@ -286,28 +288,28 @@ int int_cmp(const void *pi1, const void *pi2)
 
 /* floating-point reinterpret casts and exact hex i/o */
 
-unsigned long long asuint64(double f) /* NB: WCPL intrinsic */
+unsigned long long as_uint64(double f) /* NB: asuint64 is WCPL intrinsic */
 {
   union { unsigned long long u; double f; } uf;
   uf.f = f;
   return uf.u;
 }
 
-double asdouble(unsigned long long u) /* NB: WCPL intrinsic */
+double as_double(unsigned long long u) /* NB: asdouble is WCPL intrinsic */
 {
   union { unsigned long long u; double f; } uf;
   uf.u = u;
   return uf.f;
 }
 
-unsigned asuint32(float f) /* NB: WCPL intrinsic */
+unsigned as_uint32(float f) /* NB: asuint32 is WCPL intrinsic */
 {
   union { unsigned u; float f; } uf;
   uf.f = f;
   return uf.u;
 }
 
-float asfloat(unsigned u) /* NB: WCPL intrinsic */
+float as_float(unsigned u) /* NB: asfloat is WCPL intrinsic */
 {
   union { unsigned u; float f; } uf;
   uf.u = u;
@@ -315,7 +317,7 @@ float asfloat(unsigned u) /* NB: WCPL intrinsic */
 }
 
 /* print uint64 representation of double exactly in WASM-compatible hex format */
-char *udtohex(unsigned long long uval, char buf[32]) /* 25 chars (actual requirement), rounded up */
+char *udtohex(unsigned long long uval, char *buf) /* needs 32 chars (25 chars, rounded up) */
 {
   bool dneg = (bool)(uval >> 63ULL);
   int exp2 = (int)((uval >> 52ULL) & 0x07FFULL);
@@ -387,7 +389,7 @@ unsigned long long hextoud(const char *buf)
 }
 
 /* print uint32 representation of double exactly in WASM-compatible hex format */
-char *uftohex(unsigned uval, char buf[32]) /* 17 chars (actual requirement), rounded up */
+char *uftohex(unsigned uval, char *buf) /* needs 32 chars (17 chars, rounded up) */
 {
   bool dneg = (bool)(uval >> 31U);
   int exp2 = (int)((uval >> 23U) & 0x0FFU);
@@ -402,7 +404,7 @@ char *uftohex(unsigned uval, char buf[32]) /* 17 chars (actual requirement), rou
     if (val < 0) val = -val, vneg = true;
     do { dig = val % 10; buf[i++] = '0' + dig; val /= 10; } while (val);
     buf[i++] = vneg ? '-' : '+'; buf[i++] = 'p';
-    for (mdigs = 6, mant <<= 1; mdigs > 0; --mdigs, mant >>= 4ULL) {
+    for (mdigs = 6, mant <<= 1; mdigs > 0; --mdigs, mant >>= 4) {
       dig = (int)(mant % 16); buf[i++] = dig < 10 ? '0' + dig : 'a' + dig - 10;
     }
     buf[i++] = '.'; buf[i++] = '0' + ((exp2 == 0) ? 0 : 1);
@@ -440,7 +442,7 @@ unsigned hextouf(const char *buf)
       dig = val <= '9' ? val - '0'
           : val <= 'F' ? val - 'A' + 10
           : val - 'a' + 10;
-      mant = (mant << 4ULL) | dig;
+      mant = (mant << 4) | dig;
     }
     if (*buf++ != 'p') goto err;
     if (*buf != '+' && *buf != '-') goto err;
@@ -469,7 +471,7 @@ void dsicpy(dstr_t* mem, const dstr_t* pds)
   *mem = ds;
 }
 
-void (dsfini)(dstr_t* pds)
+void dsfini(dstr_t* pds)
 {
   if (pds) free(*pds);
 }
@@ -731,9 +733,9 @@ void bufremdups(buf_t* pb, int (*cmp)(const void *, const void *), void (*fini)(
   while (j < len) {
     /* invariant: elements [0..i] are unique, [i+1,j[ is a gap */
     assert(i < j);
-    if (0 == (cmp)(pdata+i*esz, pdata+j*esz)) {
+    if (0 == (*cmp)(pdata+i*esz, pdata+j*esz)) {
       /* duplicate: drop it */
-      if (fini) (fini)(pdata+j*esz);
+      if (fini) (*fini)(pdata+j*esz);
     } else {
       /* unique: move it */
       ++i; if (i < j) memcpy(pdata+i*esz, pdata+j*esz, esz);
@@ -752,7 +754,7 @@ void* bufsearch(const buf_t* pb, const void *pe, int (*cmp)(const void *, const 
   pdata = (char*)pb->buf;
   pend = pdata + esz*pb->fill;
   while (pdata < pend) {
-    if (0 == (cmp)(pdata, pe))
+    if (0 == (*cmp)(pdata, pe))
       return pdata;
     pdata += esz;
   }
@@ -859,8 +861,8 @@ void chbputlc(unsigned long uc, chbuf_t* pb)
 {
   if (uc < 128) chbputc((unsigned char)uc, pb);
   else {
-    char buf[5], *pc = (char *)utf8(uc, (unsigned char *)buf);
-    chbput(buf, pc-buf, pb);
+    char buf[5], *pc = (char *)utf8(uc, (unsigned char *)&buf[0]);
+    chbput(&buf[0], pc-&buf[0], pb);
   }
 }
 
@@ -869,15 +871,15 @@ void chbputwc(wchar_t wc, chbuf_t* pb)
   assert(WCHAR_MIN <= wc && wc <= WCHAR_MAX);
   if (wc < 128) chbputc((unsigned char)wc, pb);
   else {
-    char buf[5], *pc = (char *)utf8(wc, (unsigned char *)buf);
-    chbput(buf, pc-buf, pb);
+    char buf[5], *pc = (char *)utf8(wc, (unsigned char *)&buf[0]);
+    chbput(&buf[0], pc-&buf[0], pb);
   }
 }
 
 void chbputd(int val, chbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits (w/sign) */
-  char *e = buf + sizeof(buf), *p = e;
+  char *e = &buf[40], *p = e;
   if (val) {
     unsigned m; 
     if (val == INT_MIN) m = INT_MAX + (unsigned)1;
@@ -893,7 +895,7 @@ void chbputd(int val, chbuf_t* pb)
 void chbputld(long val, chbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits (w/sign) */
-  char *e = buf + sizeof(buf), *p = e;
+  char *e = &buf[40], *p = e;
   if (val) {
     unsigned long m; 
     if (val == LONG_MIN) m = LONG_MAX + (unsigned long)1;
@@ -909,7 +911,7 @@ void chbputld(long val, chbuf_t* pb)
 void chbputt(ptrdiff_t val, chbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits (w/sign) */
-  char *e = buf + sizeof(buf), *p = e;
+  char *e = &buf[40], *p = e;
   if (val) {
     size_t m; assert(sizeof(ptrdiff_t) == sizeof(size_t));
     if (val < 0 && val-1 > 0) m = (val-1) + (size_t)1;
@@ -924,8 +926,8 @@ void chbputt(ptrdiff_t val, chbuf_t* pb)
 
 void chbputu(unsigned val, chbuf_t* pb)
 {
-  char buf[39]; /* enough up to 128 bits */
-  char *e = buf + sizeof(buf), *p = e;
+  char buf[39+1]; /* enough up to 128 bits */
+  char *e = &buf[40], *p = e;
   if (val) {
     unsigned m = val; 
     do *--p = (int)(m%10) + '0';
@@ -936,8 +938,8 @@ void chbputu(unsigned val, chbuf_t* pb)
 
 void chbputx(unsigned val, chbuf_t* pb)
 {
-  char buf[33]; /* enough up to 128 bits */
-  char *e = buf + sizeof(buf), *p = e;
+  char buf[39+1]; /* enough up to 128 bits */
+  char *e = &buf[40], *p = e;
   if (val) {
     unsigned m = val, d; 
     do *--p = (int)(d = (m%16), d < 10 ? d + '0' : d-10 + 'a');
@@ -948,8 +950,8 @@ void chbputx(unsigned val, chbuf_t* pb)
 
 void chbputlu(unsigned long val, chbuf_t* pb)
 {
-  char buf[39]; /* enough up to 128 bits */
-  char *e = buf + sizeof(buf), *p = e;
+  char buf[39+1]; /* enough up to 128 bits */
+  char *e = &buf[40], *p = e;
   if (val) {
     unsigned long m = val; 
     do *--p = (int)(m%10) + '0';
@@ -960,8 +962,8 @@ void chbputlu(unsigned long val, chbuf_t* pb)
 
 void chbputllu(unsigned long long val, chbuf_t* pb)
 {
-  char buf[39]; /* enough up to 128 bits */
-  char *e = buf + sizeof(buf), *p = e;
+  char buf[39+1]; /* enough up to 128 bits */
+  char *e = &buf[40], *p = e;
   if (val) {
     unsigned long long m = val; 
     do *--p = (int)(m%10) + '0';
@@ -972,8 +974,8 @@ void chbputllu(unsigned long long val, chbuf_t* pb)
 
 void chbputz(size_t val, chbuf_t* pb)
 {
-  char buf[39]; /* enough up to 128 bits */
-  char *e = buf + sizeof(buf), *p = e;
+  char buf[39+1]; /* enough up to 128 bits */
+  char *e = &buf[40], *p = e;
   if (val) {
     size_t m = val; 
     do *--p = (int)(m%10) + '0';
@@ -985,7 +987,7 @@ void chbputz(size_t val, chbuf_t* pb)
 void chbputll(long long val, chbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits (w/sign) */
-  char *e = buf + sizeof(buf), *p = e;
+  char *e = &buf[40], *p = e;
   if (val) {
     unsigned long long m;
     if (val == LLONG_MIN) m = LLONG_MAX + (unsigned long long)1;
@@ -1058,7 +1060,7 @@ void chbputvf(chbuf_t* pb, const char *fmt, va_list ap)
       double g = va_arg(ap, double);
       chbputg(g, pb); fmt += 1;
     } else {
-      assert(0 && "unsupported chbputvf format directive");
+      assert(0 && !!"unsupported chbputvf format directive");
       break;
     } 
   }
@@ -1170,7 +1172,7 @@ char *fgetlb(chbuf_t *pcb, FILE *fp)
   char buf[256], *line; size_t len;
   assert(fp); assert(pcb);
   chbclear(pcb);
-  line = fgets(buf, sizeof(buf), fp);
+  line = fgets(buf, 256, fp); /* sizeof(buf) */
   if (!line) return NULL;
   len = strlen(line);
   if (len > 0 && line[len-1] == '\n') {
@@ -1180,7 +1182,7 @@ char *fgetlb(chbuf_t *pcb, FILE *fp)
   } else for (;;) {
     if (len > 0 && line[len-1] == '\r') line[len-1] = 0;
     chbputs(line, pcb);
-    line = fgets(buf, sizeof(buf), fp);
+    line = fgets(buf, 256, fp); /* sizeof(buf) */
     if (!line) break;
     len = strlen(line);
     if (len > 0 && line[len-1] == '\n') {
@@ -1652,16 +1654,16 @@ void eoptreset(void)
   eoptind = 1;
   eopterr = 1;
   eoptopt = 0;
-  eoptarg = 0;
+  eoptarg = NULL;
   eoptich = 0;
 }
 
 int egetopt(int argc, char* argv[], const char* opts)
 {
-  char c, *popt;
+  int c; char *popt;
 
   /* set the name of the program if it isn't done already */
-  if (progname() == 0) setprogname(argv[0]);
+  if (progname() == NULL) setprogname(argv[0]);
 
   /* check if it's time to stop */
   if (eoptich == 0) { 
@@ -1680,7 +1682,7 @@ int egetopt(int argc, char* argv[], const char* opts)
   c = argv[eoptind][++eoptich];
 
   /* check if it's legal */
-  if (c == ':' || (popt = strchr(opts, c)) == 0) {
+  if (c == ':' || (popt = strchr(opts, c)) == NULL) {
     if (eopterr) {
       eusage("illegal option: -%c", c);
     }
@@ -1712,7 +1714,7 @@ int egetopt(int argc, char* argv[], const char* opts)
       ++eoptind;
       eoptich = 0;
     }
-    eoptarg  = 0;
+    eoptarg  = NULL;
   }
 
   /* eoptopt, eoptind and eoptarg are updated */

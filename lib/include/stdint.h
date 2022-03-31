@@ -1,6 +1,7 @@
 /* Fixed width integer types */
 
 #pragma once
+#include <wchar.h>
 
 /* intptr_t is built-in */
 /* uintptr_t is built-in */
@@ -11,11 +12,6 @@
 #define PTRDIFF_MIN INTPTR_MIN
 #define PTRDIFF_MAX INTPTR_MAX
 #define SIZE_MAX UINTPTR_MAX
-
-#define WCHAR_MIN (-1-0x7fffffff) /* utf-32 */
-#define WCHAR_MAX (0x7fffffff) /* utf-32 */
-#define WINT_MIN WCHAR_MIN
-#define WINT_MAX WCHAR_MAX
 
 typedef int8_t int_fast8_t;
 typedef int64_t int_fast64_t;

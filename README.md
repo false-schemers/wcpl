@@ -29,11 +29,14 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 
 # C and library features not yet supported
 
-- implicit conversions of arrays to element pointers; explicit `&arr[0]` required
+- `sizeof(expr)`, `alignof(expr)`, and `offsetof(expr, field)`
+- implicit conversions of arrays to element pointers; explicit `&arr[0]` required for now
+- implicit promotions of char and short types as vararg ... arguments (for now it's reported as an error)
+- implicit conversion of 0 to NULL (also currently reported as an error)
 - taking address of a global scalar var (for now, `&` works for global arrays/structs/unions only)
-- `{}` initializers for locals
+- `{}` initializers for locals in function scope
 - `static` variables in function scope
-- structures/unions as parameters
+- structures/unions/arrays as parameters
 - static inline functions in header files
 
 # C features that won't be supported
