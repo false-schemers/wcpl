@@ -1424,11 +1424,13 @@ state_59:
     unreadchar();
     goto err;
   }
-/* state_60 merged with state_73 */
 state_61:
   readchar();
   if (c == EOF) {
     goto err;
+  } else if (c == '.') {
+    chbputc(c, pcb);
+    goto state_90;
   } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
     chbputc(c, pcb);
     goto state_70;
@@ -1450,7 +1452,6 @@ state_62:
     unreadchar();
     goto err;
   }
-/* state_63 merged with state_74 */
 state_64:
   readchar();
   if (c == EOF) {
@@ -1539,6 +1540,12 @@ state_70:
   readchar();
   if (c == EOF) {
     return TT_INT;
+  } else if (c == '.') {
+    chbputc(c, pcb);
+    goto state_91;
+  } else if (c == 'P' || c == 'p') {
+    chbputc(c, pcb);
+    goto state_62; 
   } else if (c == 'U' || c == 'u') {
     goto state_74;
   } else if (c == 'L' || c == 'l') {
@@ -1553,8 +1560,6 @@ state_70:
     unreadchar();
     return TT_INT;
   }
-/* state_71 merged with state_73 */
-/* state_72 merged with state_74 */
 state_73:
   readchar();
   if (c == EOF) {
@@ -1623,6 +1628,31 @@ state_77:
   } else {
     chbputc(c, pcb);
     return TT_WHITESPACE;
+  }
+state_90:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+    chbputc(c, pcb);
+    goto state_91;
+  } else {
+    unreadchar();
+    goto err;
+  }
+state_91:
+  readchar();
+  if (c == EOF) {
+    goto err;
+  } else if (c == 'P' || c == 'p') {
+    chbputc(c, pcb);
+    goto state_62;
+  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+    chbputc(c, pcb);
+    goto state_91;
+  } else {
+    unreadchar();
+    goto err;
   }
 
 err:
