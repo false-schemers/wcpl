@@ -27,7 +27,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - user object modules should be provided explicitly as command line arguments
 - lookup directories should end in separator char (`/` on Un*x, `\` on Windows), file name is just appended to it
 
-# C and library features not yet supported
+# C and library features not yet supported or supported partially
 
 - adjacent string literals concatenation
 - `sizeof(expr)`, `alignof(expr)`, and `offsetof(expr, field)`
@@ -41,6 +41,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - `static` variables in function scope
 - structures/unions/arrays as parameters
 - static inline functions in header files
+- built-in `__DATE__` and `__TIME__` macros (use `gmtime` for now) 
 
 # C features that won't be supported
 

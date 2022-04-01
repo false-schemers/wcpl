@@ -441,11 +441,11 @@ void init_symbols(void)
   intern_symbol("__DATE__", TT_MACRO_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
   pn->ts = TS_STRING; chbputtime("%b %d %Y", gmtime(&now), &pn->data);
-  wrap_node(pn, NT_MACRODEF); pn->name = intern("__DATE__");
+  chbputc(0, &pn->data); wrap_node(pn, NT_MACRODEF); pn->name = intern("__DATE__");
   intern_symbol("__TIME__", TT_MACRO_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
   pn->ts = TS_STRING; chbputtime("%X", gmtime(&now), &pn->data);
-  wrap_node(pn, NT_MACRODEF); pn->name = intern("__TIME__");
+  chbputc(0, &pn->data); wrap_node(pn, NT_MACRODEF); pn->name = intern("__TIME__");
 }
 
 /* simple comparison of NT_TYPE nodes for equivalence */
@@ -2482,6 +2482,15 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
   }
 }
 
+static bool concat_strlit(node_t *ptn, node_t *psn)
+{
+  if (ptn->ts != psn->ts) return false; /* todo: cast "foo" to L"foo" and concat */
+  if (ptn->ts == TS_LSTRING) { bufpopbk(&ptn->data); bufpopbk(&ptn->data); bufpopbk(&ptn->data); }
+  bufpopbk(&ptn->data); /* drop one or four zero bytes at end */
+  bufcat(&ptn->data, &psn->data); /* include terminating zero in psn */
+  return true;
+}
+
 static void parse_concat_expr(pws_t *pw, node_t *pn)
 {
   parse_primary_expr(pw, pn);
@@ -2491,8 +2500,7 @@ static void parse_concat_expr(pws_t *pw, node_t *pn)
     if (tk == TT_STRING || tk == TT_LSTRING || tk == TT_MACRO_NAME) {
       node_t nd = mknd();
       parse_primary_expr(pw, &nd);
-      if (pn->ts == nd.ts) { bufpopbk(&pn->data); bufcat(&pn->data, &nd.data); }
-      else reprintf(pw, startpos, "invalid string literal continuation");
+      if (!concat_strlit(pn, &nd)) reprintf(pw, startpos, "invalid string literal continuation");
       ndfini(&nd);
     } else break;
   }          
