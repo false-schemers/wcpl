@@ -1688,608 +1688,612 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
   chbclear(pcb);
   while (true) {
     switch (state) {
-    case 0: 
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (c == '\"') {
-        chbputc(c, pcb);
-        state = 9; continue;
-      } else if (c == '0') {
-        chbputc(c, pcb);
-        state = 8; continue;
-      } else if ((c >= '1' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 7; continue;
-      } else if (c == '+' || c == '-') {
-        chbputc(c, pcb);
-        state = 6; continue;
-      } else if (c == '!' || (c >= '#' && c <= '\'') || c == '*' || (c >= '.' && c <= '/') || c == ':' || (c >= '<' && c <= 'Z') || c == '\\' || (c >= '^' && c <= 'z') || c == '|' || c == '~') {
-        chbputc(c, pcb);
-        state = 5; continue;
-      } else if (c == ')') {
-        chbputc(c, pcb);
-        state = 4; continue;
-      } else if (c == '(') {
-        chbputc(c, pcb);
-        state = 3; continue;
-      } else if (c == ';') {
-        chbputc(c, pcb);
-        state = 2; continue;
-      } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
-        chbputc(c, pcb);
-        state = 1; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 1:
-      readchar();
-      if (c == EOF) {
-        return WT_WHITESPACE;
-      } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
-        chbputc(c, pcb);
-        state = 1; continue;
-      } else {
-        unreadchar();
-        return WT_WHITESPACE;
-      }
-    case 2:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (c == ';') {
-        chbputc(c, pcb);
-        state = 43; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 3:
-      readchar();
-      if (c == EOF) {
-        return WT_LPAR;
-      } else if (c == ';') {
-        chbputc(c, pcb);
-        state = 42; continue;
-      } else {
-        unreadchar();
-        return WT_LPAR;
-      }
-    case 4:
-      return WT_RPAR;
-    case 5:
-      readchar();
-      if (c == EOF) {
-        return WT_IDCHARS;
-      } else if (c == '!' || (c >= '#' && c <= '\'') || (c >= '*' && c <= ':') || (c >= '<' && c <= 'Z') || c == '\\' || (c >= '^' && c <= 'z') || c == '|' || c == '~') {
-        chbputc(c, pcb);
-        state = 5; continue;
-      } else {
-        unreadchar();
-        return WT_IDCHARS;
-      }
-    case 6:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (c == 'i') {
-        chbputc(c, pcb);
-        state = 38; continue;
-      } else if (c == 'n') {
-        chbputc(c, pcb);
-        state = 37; continue;
-      } else if (c == '0') {
-        chbputc(c, pcb);
-        state = 8; continue;
-      } else if ((c >= '1' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 7; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 7:
-      readchar();
-      if (c == EOF) {
-        return WT_INT;
-      } else if (c == '.') {
-        chbputc(c, pcb);
-        state = 22; continue;
-      } else if (c == 'E' || c == 'e') {
-        chbputc(c, pcb);
-        state = 21; continue;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 7; continue;
-      } else {
-        unreadchar();
-        return WT_INT;
-      }
-    case 8:
-      readchar();
-      if (c == EOF) {
-        return WT_INT;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 23; continue;
-      } else if (c == '.') {
-        chbputc(c, pcb);
-        state = 22; continue;
-      } else if (c == 'E' || c == 'e') {
-        chbputc(c, pcb);
-        state = 21; continue;
-      } else if (c == 'X' || c == 'x') {
-        chbputc(c, pcb);
-        state = 20; continue;
-      } else {
-        unreadchar();
-        return WT_INT;
-      }
-    case 9:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (c == '\"') {
-        chbputc(c, pcb);
-        state = 13; continue;
-      } else if (c == '\\') {
-        chbputc(c, pcb);
-        state = 12; continue;
-      } else if (is8chead(c)) { 
-        int u = c & 0xFF;
-        if (u < 0xE0) { chbputc(c, pcb); state = state_10d; continue; }
-        if (u < 0xF0) { chbputc(c, pcb); state = state_10dd; continue; }
-        if (u < 0xF8) { chbputc(c, pcb); state = state_10ddd; continue; }
-        if (u < 0xFC) { chbputc(c, pcb); state = state_10dddd; continue; }
-        if (u < 0xFE) { chbputc(c, pcb); state = state_10ddddd; continue; }
-        unreadchar();
-        break;
-      } else if (!(c == '\n' || c == '\"' || c == '\\')) {
-        chbputc(c, pcb);
-        state = 9; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case state_10ddddd:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (is8ctail(c)) {
-        chbputc(c, pcb);
-        state = state_10dddd; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case state_10dddd:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (is8ctail(c)) {
-        chbputc(c, pcb);
-        state = state_10ddd; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case state_10ddd:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (is8ctail(c)) {
-        chbputc(c, pcb);
-        state = state_10dd; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case state_10dd:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (is8ctail(c)) {
-        chbputc(c, pcb);
-        state = state_10d; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case state_10d:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (is8ctail(c)) {
-        chbputc(c, pcb);
-        state = 9; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 12:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (c == 'u') {
-        chbputc(c, pcb);
-        state = 16; continue;
-      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        unreadchar();
-        state = 15; continue;
-      } else if ((c >= '\t' && c <= '\n') || c == '\r' || c == ' ') {
-        chbputc(c, pcb);
-        state = 14; continue;
-      } else if (c == '\"' || c == '\'' || c == '\\' || c == 'n' || c == 'r' || c == 't') {
-        chbputc(c, pcb);
-        state = 9; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 13:
-      return WT_STRING;
-    case 14:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '\t' && c <= '\n') || c == '\r' || c == ' ') {
-        chbputc(c, pcb);
-        state = 14; continue;
-      } else if (c == '\\') {
-        chbputc(c, pcb);
-        state = 9; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 15:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
-        state = 19; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 16:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (c == '{') {
-        chbputc(c, pcb);
-        state = 17; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 17:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
-        state = 18; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 18:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
-        state = 18; continue;
-      } else if (c == '}') {
-        chbputc(c, pcb);
-        state = 9; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 19:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
-        state = 9; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 20:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
-        state = 29; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 21:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 28; continue;
-      } else if (c == '+' || c == '-') {
-        chbputc(c, pcb);
-        state = 27; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 22:
-      readchar();
-      if (c == EOF) {
+      case 0: 
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (c == '\"') {
+          chbputc(c, pcb);
+          state = 9; continue;
+        } else if (c == '0') {
+          chbputc(c, pcb);
+          state = 8; continue;
+        } else if ((c >= '1' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 7; continue;
+        } else if (c == '+' || c == '-') {
+          chbputc(c, pcb);
+          state = 6; continue;
+        } else if (c == '!' || (c >= '#' && c <= '\'') || c == '*' || (c >= '.' && c <= '/') || c == ':' || (c >= '<' && c <= 'Z') 
+                || c == '\\' || (c >= '^' && c <= 'z') || c == '|' || c == '~') {
+          chbputc(c, pcb);
+          state = 5; continue;
+        } else if (c == ')') {
+          chbputc(c, pcb);
+          state = 4; continue;
+        } else if (c == '(') {
+          chbputc(c, pcb);
+          state = 3; continue;
+        } else if (c == ';') {
+          chbputc(c, pcb);
+          state = 2; continue;
+        } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
+          chbputc(c, pcb);
+          state = 1; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 1:
+        readchar();
+        if (c == EOF) {
+          return WT_WHITESPACE;
+        } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
+          chbputc(c, pcb);
+          state = 1; continue;
+        } else {
+          unreadchar();
+          return WT_WHITESPACE;
+        }
+      case 2:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (c == ';') {
+          chbputc(c, pcb);
+          state = 43; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 3:
+        readchar();
+        if (c == EOF) {
+          return WT_LPAR;
+        } else if (c == ';') {
+          chbputc(c, pcb);
+          state = 42; continue;
+        } else {
+          unreadchar();
+          return WT_LPAR;
+        }
+      case 4:
+        return WT_RPAR;
+      case 5:
+        readchar();
+        if (c == EOF) {
+          return WT_IDCHARS;
+        } else if (c == '!' || (c >= '#' && c <= '\'') || (c >= '*' && c <= ':') || (c >= '<' && c <= 'Z') || c == '\\' 
+                || (c >= '^' && c <= 'z') || c == '|' || c == '~') {
+          chbputc(c, pcb);
+          state = 5; continue;
+        } else {
+          unreadchar();
+          return WT_IDCHARS;
+        }
+      case 6:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (c == 'i') {
+          chbputc(c, pcb);
+          state = 38; continue;
+        } else if (c == 'n') {
+          chbputc(c, pcb);
+          state = 37; continue;
+        } else if (c == '0') {
+          chbputc(c, pcb);
+          state = 8; continue;
+        } else if ((c >= '1' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 7; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 7:
+        readchar();
+        if (c == EOF) {
+          return WT_INT;
+        } else if (c == '.') {
+          chbputc(c, pcb);
+          state = 22; continue;
+        } else if (c == 'E' || c == 'e') {
+          chbputc(c, pcb);
+          state = 21; continue;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 7; continue;
+        } else {
+          unreadchar();
+          return WT_INT;
+        }
+      case 8:
+        readchar();
+        if (c == EOF) {
+          return WT_INT;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 23; continue;
+        } else if (c == '.') {
+          chbputc(c, pcb);
+          state = 22; continue;
+        } else if (c == 'E' || c == 'e') {
+          chbputc(c, pcb);
+          state = 21; continue;
+        } else if (c == 'X' || c == 'x') {
+          chbputc(c, pcb);
+          state = 20; continue;
+        } else {
+          unreadchar();
+          return WT_INT;
+        }
+      case 9:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (c == '\"') {
+          chbputc(c, pcb);
+          state = 13; continue;
+        } else if (c == '\\') {
+          chbputc(c, pcb);
+          state = 12; continue;
+        } else if (is8chead(c)) { 
+          int u = c & 0xFF;
+          if (u < 0xE0) { chbputc(c, pcb); state = state_10d; continue; }
+          if (u < 0xF0) { chbputc(c, pcb); state = state_10dd; continue; }
+          if (u < 0xF8) { chbputc(c, pcb); state = state_10ddd; continue; }
+          if (u < 0xFC) { chbputc(c, pcb); state = state_10dddd; continue; }
+          if (u < 0xFE) { chbputc(c, pcb); state = state_10ddddd; continue; }
+          unreadchar();
+          return WT_EOF;
+        } else if (!(c == '\n' || c == '\"' || c == '\\')) {
+          chbputc(c, pcb);
+          state = 9; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case state_10ddddd:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (is8ctail(c)) {
+          chbputc(c, pcb);
+          state = state_10dddd; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case state_10dddd:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (is8ctail(c)) {
+          chbputc(c, pcb);
+          state = state_10ddd; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case state_10ddd:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (is8ctail(c)) {
+          chbputc(c, pcb);
+          state = state_10dd; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case state_10dd:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (is8ctail(c)) {
+          chbputc(c, pcb);
+          state = state_10d; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case state_10d:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (is8ctail(c)) {
+          chbputc(c, pcb);
+          state = 9; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 12:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (c == 'u') {
+          chbputc(c, pcb);
+          state = 16; continue;
+        } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+          unreadchar();
+          state = 15; continue;
+        } else if ((c >= '\t' && c <= '\n') || c == '\r' || c == ' ') {
+          chbputc(c, pcb);
+          state = 14; continue;
+        } else if (c == '\"' || c == '\'' || c == '\\' || c == 'n' || c == 'r' || c == 't') {
+          chbputc(c, pcb);
+          state = 9; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 13:
+        return WT_STRING;
+      case 14:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '\t' && c <= '\n') || c == '\r' || c == ' ') {
+          chbputc(c, pcb);
+          state = 14; continue;
+        } else if (c == '\\') {
+          chbputc(c, pcb);
+          state = 9; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 15:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+          chbputc(c, pcb);
+          state = 19; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 16:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (c == '{') {
+          chbputc(c, pcb);
+          state = 17; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 17:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+          chbputc(c, pcb);
+          state = 18; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 18:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+          chbputc(c, pcb);
+          state = 18; continue;
+        } else if (c == '}') {
+          chbputc(c, pcb);
+          state = 9; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 19:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+          chbputc(c, pcb);
+          state = 9; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 20:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+          chbputc(c, pcb);
+          state = 29; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 21:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 28; continue;
+        } else if (c == '+' || c == '-') {
+          chbputc(c, pcb);
+          state = 27; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 22:
+        readchar();
+        if (c == EOF) {
+          return WT_FLOAT;
+        } else if (c == 'E' || c == 'e') {
+          chbputc(c, pcb);
+          state = 24; continue;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 22; continue;
+        } else {
+          unreadchar();
+          return WT_FLOAT;
+        }
+      case 23:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 23; continue;
+        } else if (c == '.') {
+          chbputc(c, pcb);
+          state = 22; continue;
+        } else if (c == 'E' || c == 'e') {
+          chbputc(c, pcb);
+          state = 21; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 24:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 26; continue;
+        } else if (c == '+' || c == '-') {
+          chbputc(c, pcb);
+          state = 25; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 25:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 26; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 26:
+        readchar();
+        if (c == EOF) {
+          return WT_FLOAT;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 26; continue;
+        } else {
+          unreadchar();
+          return WT_FLOAT;
+        }
+      case 27:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 28; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 28:
+        readchar();
+        if (c == EOF) {
+          return WT_FLOAT;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 28; continue;
+        } else {
+          unreadchar();
+          return WT_FLOAT;
+        }
+      case 29:
+        readchar();
+        if (c == EOF) {
+          return WT_INT;
+        } else if (c == 'P' || c == 'p') {
+          chbputc(c, pcb);
+          state = 31; continue;
+        } else if (c == '.') {
+          chbputc(c, pcb);
+          state = 30; continue;
+        } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+          chbputc(c, pcb);
+          state = 29; continue;
+        } else {
+          unreadchar();
+          return WT_INT;
+        }
+      case 30:
+        readchar();
+        if (c == EOF) {
+          return WT_FLOAT;
+        } else if (c == 'P' || c == 'p') {
+          chbputc(c, pcb);
+          state = 34; continue;
+        } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+          chbputc(c, pcb);
+          state = 30; continue;
+        } else {
+          unreadchar();
+          return WT_FLOAT;
+        }
+      case 31:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 33; continue;
+        } else if (c == '+' || c == '-') {
+          chbputc(c, pcb);
+          state = 32; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 32:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 33; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 33:
+        readchar();
+        if (c == EOF) {
+          return WT_FLOAT;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 33; continue;
+        } else {
+          unreadchar();
+          return WT_FLOAT;
+        }
+      case 34:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 36; continue;
+        } else if (c == '+' || c == '-') {
+          chbputc(c, pcb);
+          state = 35; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 35:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 36; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 36:
+        readchar();
+        if (c == EOF) {
+          return WT_FLOAT;
+        } else if ((c >= '0' && c <= '9')) {
+          chbputc(c, pcb);
+          state = 36; continue;
+        } else {
+          unreadchar();
+          return WT_FLOAT;
+        }
+      case 37:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (c == 'a') {
+          chbputc(c, pcb);
+          state = 41; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 38:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (c == 'n') {
+          chbputc(c, pcb);
+          state = 39; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 39:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (c == 'f') {
+          chbputc(c, pcb);
+          state = 40; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 40:
         return WT_FLOAT;
-      } else if (c == 'E' || c == 'e') {
-        chbputc(c, pcb);
-        state = 24; continue;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 22; continue;
-      } else {
-        unreadchar();
-        return WT_FLOAT;
-      }
-    case 23:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 23; continue;
-      } else if (c == '.') {
-        chbputc(c, pcb);
-        state = 22; continue;
-      } else if (c == 'E' || c == 'e') {
-        chbputc(c, pcb);
-        state = 21; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 24:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 26; continue;
-      } else if (c == '+' || c == '-') {
-        chbputc(c, pcb);
-        state = 25; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 25:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 26; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 26:
-      readchar();
-      if (c == EOF) {
-        return WT_FLOAT;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 26; continue;
-      } else {
-        unreadchar();
-        return WT_FLOAT;
-      }
-    case 27:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 28; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 28:
-      readchar();
-      if (c == EOF) {
-        return WT_FLOAT;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 28; continue;
-      } else {
-        unreadchar();
-        return WT_FLOAT;
-      }
-    case 29:
-      readchar();
-      if (c == EOF) {
-        return WT_INT;
-      } else if (c == 'P' || c == 'p') {
-        chbputc(c, pcb);
-        state = 31; continue;
-      } else if (c == '.') {
-        chbputc(c, pcb);
-        state = 30; continue;
-      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
-        state = 29; continue;
-      } else {
-        unreadchar();
-        return WT_INT;
-      }
-    case 30:
-      readchar();
-      if (c == EOF) {
-        return WT_FLOAT;
-      } else if (c == 'P' || c == 'p') {
-        chbputc(c, pcb);
-        state = 34; continue;
-      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
-        state = 30; continue;
-      } else {
-        unreadchar();
-        return WT_FLOAT;
-      }
-    case 31:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 33; continue;
-      } else if (c == '+' || c == '-') {
-        chbputc(c, pcb);
-        state = 32; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 32:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 33; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 33:
-      readchar();
-      if (c == EOF) {
-        return WT_FLOAT;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 33; continue;
-      } else {
-        unreadchar();
-        return WT_FLOAT;
-      }
-    case 34:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 36; continue;
-      } else if (c == '+' || c == '-') {
-        chbputc(c, pcb);
-        state = 35; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 35:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 36; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 36:
-      readchar();
-      if (c == EOF) {
-        return WT_FLOAT;
-      } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
-        state = 36; continue;
-      } else {
-        unreadchar();
-        return WT_FLOAT;
-      }
-    case 37:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (c == 'a') {
-        chbputc(c, pcb);
-        state = 41; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 38:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (c == 'n') {
-        chbputc(c, pcb);
-        state = 39; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 39:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (c == 'f') {
-        chbputc(c, pcb);
-        state = 40; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 40:
-      return WT_FLOAT;
-    case 41:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (c == 'n') {
-        chbputc(c, pcb);
-        state = 40; continue;
-      } else {
-        unreadchar();
-        break;
-      }
-    case 42:
-      return WT_BCSTART;
-    case 43:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (!(c == '\n')) {
-        chbputc(c, pcb);
-        state = 44; continue;
-      } else {
-        chbputc(c, pcb);
-        state = 45; continue;
-      }
-    case 44:
-      readchar();
-      if (c == EOF) {
-        break;
-      } else if (!(c == '\n')) {
-        chbputc(c, pcb);
-        state = 44; continue;
-      } else {
-        chbputc(c, pcb);
-        state = 45; continue;
-      }
-    case 45:
-      return WT_LC;
+      case 41:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (c == 'n') {
+          chbputc(c, pcb);
+          state = 40; continue;
+        } else {
+          unreadchar();
+          return WT_EOF;
+        }
+      case 42:
+        return WT_BCSTART;
+      case 43:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (!(c == '\n')) {
+          chbputc(c, pcb);
+          state = 44; continue;
+        } else {
+          chbputc(c, pcb);
+          state = 45; continue;
+        }
+      case 44:
+        readchar();
+        if (c == EOF) {
+          return WT_EOF;
+        } else if (!(c == '\n')) {
+          chbputc(c, pcb);
+          state = 44; continue;
+        } else {
+          chbputc(c, pcb);
+          state = 45; continue;
+        }
+      case 45:
+        return WT_LC;
+      default:
+        assert(false);
     }
   }
   return WT_EOF;

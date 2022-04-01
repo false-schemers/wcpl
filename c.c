@@ -100,7 +100,8 @@ static valtype_t ts2vt(ts_t ts)
   switch (ts) {
     case TS_CHAR:  case TS_UCHAR:
     case TS_SHORT: case TS_USHORT:
-    case TS_INT:   case TS_UINT:  
+    case TS_INT:   case TS_UINT:
+    case TS_ENUM:
       return VT_I32;
     case TS_LONG:  case TS_ULONG:  
     case TS_PTR: 
@@ -145,6 +146,7 @@ valtype_t ts_to_blocktype(ts_t ts)
     case TS_VOID:                   return BT_VOID;
     case TS_LONG:  case TS_ULONG:   /* fall thru (assumes wasm32) */
     case TS_PTR:                    /* fall thru (assumes wasm32) */
+    case TS_ENUM:
     case TS_INT:   case TS_UINT:    return VT_I32;
     case TS_LLONG: case TS_ULLONG:  return VT_I64;
     case TS_FLOAT:                  return VT_F32;
@@ -159,7 +161,7 @@ static ts_t ts_integral_promote(ts_t ts)
   switch (ts) {
     case TS_CHAR:  case TS_UCHAR: 
     case TS_SHORT: case TS_USHORT:
-    case TS_INT:   
+    case TS_INT:   case TS_ENUM:   
       return TS_INT;
     case TS_UINT:  
     case TS_LONG:  case TS_ULONG:

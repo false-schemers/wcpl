@@ -267,7 +267,7 @@ static void vrprintf(pws_t *pw, int startpos, const char *fmt, va_list args)
 {
   chbuf_t cb = mkchb(); const char *s;
   int ln = 0, off = 0; assert(fmt);
-  if (pw && pw->infile) chbputf(&cb, "%s:", pw->infile);
+  if (pw != NULL && pw->infile != NULL) chbputf(&cb, "%s:", pw->infile);
   if (pw && startpos >= 0) {
     pos2lnoff(pw, startpos, &ln, &off);
     if (ln > 0) chbputf(&cb, "%d:%d:", ln, off+1);
@@ -311,14 +311,14 @@ static void intern_symbol(const char *name, tt_t tt, int info)
 {
   int *pt = bufnewbk(&g_syminfo);
   pt[0] = intern(name), pt[1] = tt, pt[2] = info;
-  bufqsort(&g_syminfo, int_cmp);	
+  bufqsort(&g_syminfo, &int_cmp);	
 }
 
 /* NB: unintern_symbol does not touch g_nodes! */
 static void unintern_symbol(const char *name)
 {
   sym_t s = intern(name);
-  int *pi = bufbsearch(&g_syminfo, &s, int_cmp);
+  int *pi = bufbsearch(&g_syminfo, &s, &int_cmp);
   if (pi) bufrem(&g_syminfo, bufoff(&g_syminfo, pi));
 }
 
@@ -444,7 +444,10 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
 {
   node_t *ptn1 = (node_t*)pctn1, *ptn2 = (node_t*)pctn2;
   assert(ptn1->nt == NT_TYPE && ptn2->nt == NT_TYPE);
+  if (ptn1->ts == TS_ENUM && ptn2->ts == TS_INT) return true;
+  if (ptn1->ts == TS_INT && ptn2->ts == TS_ENUM) return true;
   if (ptn1->ts != ptn2->ts) return false;
+  if (ptn1->ts == TS_ENUM && (ptn1->name && ptn2->name && ptn1->name != ptn2->name)) return false;
   if (ptn1->ts == TS_STRUCT || ptn1->ts == TS_UNION || 
       ptn1->ts == TS_FUNCTION || ptn1->ts == TS_PTR) {
     size_t i;
@@ -497,7 +500,7 @@ const node_t *post_symbol(sym_t mod, node_t *pvn, bool final, bool hide)
   node_t *pin = NULL; int *pi, info;
   assert(pvn->nt == NT_VARDECL && pvn->name && ndlen(pvn) == 1);
   assert(ndref(pvn, 0)->nt == NT_TYPE);
-  if ((pi = bufbsearch(&g_syminfo, &pvn->name, int_cmp)) != NULL) {
+  if ((pi = bufbsearch(&g_syminfo, &pvn->name, &int_cmp)) != NULL) {
     /* see if what's there is an older one with the same name */
     if (pi[1] == TT_IDENTIFIER && pi[2] >= 0) {
       assert(pi[2] < (int)buflen(&g_nodes));
@@ -540,15 +543,15 @@ void fini_symbols(void)
 static tt_t lookup_symbol(const char *name, int *pinfo)
 {
   sym_t s = intern(name);
-  int *pi = bufbsearch(&g_syminfo, &s, int_cmp);
+  int *pi = bufbsearch(&g_syminfo, &s, &int_cmp);
   if (pinfo) *pinfo = pi ? pi[2] : -1;
-  return pi ? (tt_t)pi[1] : TT_IDENTIFIER;  
+  return pi != NULL ? (tt_t)pi[1] : TT_IDENTIFIER;  
 }
 
 static bool check_once(const char *fname)
 {
   sym_t o = internf("once %s", fname);
-  int *pi = bufbsearch(&g_syminfo, &o, int_cmp);
+  int *pi = bufbsearch(&g_syminfo, &o, &int_cmp);
   if (pi != NULL) return false;
   intern_symbol(symname(o), TT_EOF, -1);
   return true;   
@@ -557,7 +560,7 @@ static bool check_once(const char *fname)
 const node_t *lookup_global(sym_t name)
 {
   const node_t *pn = NULL;
-  int *pi = bufbsearch(&g_syminfo, &name, int_cmp);
+  int *pi = bufbsearch(&g_syminfo, &name, &int_cmp);
   if (pi && pi[1] == TT_IDENTIFIER && pi[2] >= 0) {
     assert(pi[2] < (int)buflen(&g_nodes));
     pn = bufref(&g_nodes, (size_t)pi[2]);
@@ -584,7 +587,7 @@ const node_t *lookup_eus_type(ts_t ts, sym_t name)
   }
   if (!name || !tag || tt == TT_EOF) return NULL;
   s = internf("%s %s", tag, symname(name));
-  pi = bufbsearch(&g_syminfo, &s, int_cmp);
+  pi = bufbsearch(&g_syminfo, &s, &int_cmp);
   if (pi) {
     assert(pi[1] == tt);
     assert(pi[2] < (int)buflen(&g_nodes));
@@ -598,1070 +601,1095 @@ const node_t *lookup_eus_type(ts_t ts, sym_t name)
 /* tokenizer */
 
 /* split input into tokens */
+#define readchar() (c = *pcuri < endi ? tbase[(*pcuri)++] : fetchline(pw, &tbase, &endi))
+#define unreadchar() ((*pcuri)--)
+#define state_10d 78
+#define state_10dd 79
+#define state_10ddd 80
+#define state_10dddd 81
+#define state_10ddddd 82
+#define state_4L 83
+#define state_73LL 84
 static tt_t lex(pws_t *pw, chbuf_t *pcb)
 {
   char *tbase = chbdata(&pw->chars);
   int *pcuri = &pw->curi;
   int endi = (int)chblen(&pw->chars);
-  int c; bool longprefix = false;
-#define readchar() c = *pcuri < endi ? tbase[(*pcuri)++] : fetchline(pw, &tbase, &endi)
-#define unreadchar() (*pcuri)--
+  int c, state = 0; bool longprefix = false;
   chbclear(pcb);
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '^') {
-    chbputc(c, pcb);
-    goto state_29;
-  } else if (c == '%') {
-    chbputc(c, pcb);
-    goto state_28;
-  } else if (c == '|') {
-    chbputc(c, pcb);
-    goto state_27;
-  } else if (c == '&') {
-    chbputc(c, pcb);
-    goto state_26;
-  } else if (c == '!') {
-    chbputc(c, pcb);
-    goto state_25;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    goto state_24;
-  } else if (c == '<') {
-    chbputc(c, pcb);
-    goto state_23;
-  } else if (c == '>') {
-    chbputc(c, pcb);
-    goto state_22;
-  } else if (c == '#') {
-    chbputc(c, pcb);
-    goto state_21;
-  } else if (c == ';') {
-    chbputc(c, pcb);
-    return TT_SEMICOLON;
-  } else if (c == ',') {
-    chbputc(c, pcb);
-    return TT_COMMA;
-  } else if (c == '}') {
-    chbputc(c, pcb);
-    return TT_RBRC;
-  } else if (c == '{') {
-    chbputc(c, pcb);
-    return TT_LBRC;
-  } else if (c == ']') {
-    chbputc(c, pcb);
-    return TT_RBRK;
-  } else if (c == '[') {
-    chbputc(c, pcb);
-    return TT_LBRK;
-  } else if (c == ')') {
-    chbputc(c, pcb);
-    return TT_RPAR;
-  } else if (c == '(') {
-    chbputc(c, pcb);
-    return TT_LPAR;
-  } else if (c == '?') {
-    chbputc(c, pcb);
-    return TT_QMARK;
-  } else if (c == ':') {
-    chbputc(c, pcb);
-    return TT_COLON;
-  } else if (c == '~') {
-    chbputc(c, pcb);
-    return TT_TILDE;
-  } else if (c == '\"') {
-    goto state_11;
-  } else if (c == '\'') {
-    goto state_10;
-  } else if (c == '-') {
-    chbputc(c, pcb);
-    goto state_9;
-  } else if (c == '+') {
-    chbputc(c, pcb);
-    goto state_8;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_7;
-  } else if (c == '0') {
-    chbputc(c, pcb);
-    goto state_6;
-  } else if ((c >= '1' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_5;
-  } else if (c == 'L') {
-    goto state_4L;
-  } else if ((c >= 'A' && c <= 'Z') || c == '_' || (c >= 'a' && c <= 'z')) {
-    chbputc(c, pcb);
-    goto state_4;
-  } else if (c == '*') {
-    chbputc(c, pcb);
-    goto state_3;
-  } else if (c == '/') {
-    chbputc(c, pcb);
-    goto state_2;
-  } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
-    chbputc(c, pcb);
-    goto state_1;
-  } else {
-    unreadchar();
-    goto err;
+  while (true) {
+    switch (state) {
+    case 0: 
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '^') {
+        chbputc(c, pcb);
+        state = 29; continue;
+      } else if (c == '%') {
+        chbputc(c, pcb);
+        state = 28; continue;
+      } else if (c == '|') {
+        chbputc(c, pcb);
+        state = 27; continue;
+      } else if (c == '&') {
+        chbputc(c, pcb);
+        state = 26; continue;
+      } else if (c == '!') {
+        chbputc(c, pcb);
+        state = 25; continue;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        state = 24; continue;
+      } else if (c == '<') {
+        chbputc(c, pcb);
+        state = 23; continue;
+      } else if (c == '>') {
+        chbputc(c, pcb);
+        state = 22; continue;
+      } else if (c == '#') {
+        chbputc(c, pcb);
+        state = 21; continue;
+      } else if (c == ';') {
+        chbputc(c, pcb);
+        return TT_SEMICOLON;
+      } else if (c == ',') {
+        chbputc(c, pcb);
+        return TT_COMMA;
+      } else if (c == '}') {
+        chbputc(c, pcb);
+        return TT_RBRC;
+      } else if (c == '{') {
+        chbputc(c, pcb);
+        return TT_LBRC;
+      } else if (c == ']') {
+        chbputc(c, pcb);
+        return TT_RBRK;
+      } else if (c == '[') {
+        chbputc(c, pcb);
+        return TT_LBRK;
+      } else if (c == ')') {
+        chbputc(c, pcb);
+        return TT_RPAR;
+      } else if (c == '(') {
+        chbputc(c, pcb);
+        return TT_LPAR;
+      } else if (c == '?') {
+        chbputc(c, pcb);
+        return TT_QMARK;
+      } else if (c == ':') {
+        chbputc(c, pcb);
+        return TT_COLON;
+      } else if (c == '~') {
+        chbputc(c, pcb);
+        return TT_TILDE;
+      } else if (c == '\"') {
+        state = 11; continue;
+      } else if (c == '\'') {
+        state = 10; continue;
+      } else if (c == '-') {
+        chbputc(c, pcb);
+        state = 9; continue;
+      } else if (c == '+') {
+        chbputc(c, pcb);
+        state = 8; continue;
+      } else if (c == '.') {
+        chbputc(c, pcb);
+        state = 7; continue;
+      } else if (c == '0') {
+        chbputc(c, pcb);
+        state = 6; continue;
+      } else if ((c >= '1' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 5; continue;
+      } else if (c == 'L') {
+        state = state_4L; continue;
+      } else if ((c >= 'A' && c <= 'Z') || c == '_' || (c >= 'a' && c <= 'z')) {
+        chbputc(c, pcb);
+        state = 4; continue;
+      } else if (c == '*') {
+        chbputc(c, pcb);
+        state = 3; continue;
+      } else if (c == '/') {
+        chbputc(c, pcb);
+        state = 2; continue;
+      } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
+        chbputc(c, pcb);
+        state = 1; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 1:
+      readchar();
+      if (c == EOF) {
+        return TT_WHITESPACE;
+      } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
+        chbputc(c, pcb);
+        state = 1; continue;
+      } else {
+        unreadchar();
+        return TT_WHITESPACE;
+      }
+    case 2:
+      readchar();
+      if (c == EOF) {
+        return TT_SLASH;
+      } else if (c == '*') {
+        chbputc(c, pcb);
+        state = 76; continue;
+      } else if (c == '/') {
+        chbputc(c, pcb);
+        state = 75; continue;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_SLASH_ASN;
+      } else {
+        unreadchar();
+        return TT_SLASH;
+      }
+    case 3:
+      readchar();
+      if (c == EOF) {
+        return TT_STAR;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_STAR_ASN;
+      } else {
+        unreadchar();
+        return TT_STAR;
+      }
+    case state_4L:
+      readchar();
+      if (c == EOF) {
+        chbputc('L', pcb);
+        return lookup_symbol(chbdata(pcb), NULL);
+      } else if (c == '\"') {
+        longprefix = true;
+        state = 11; continue;
+      } else if (c == '\'') {
+        longprefix = true;
+        state = 10; continue;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || c == '_' || (c >= 'a' && c <= 'z')) {
+        chbputc('L', pcb);
+        chbputc(c, pcb);
+        state = 4; continue;
+      } else {
+        unreadchar();
+        chbputc('L', pcb);
+        return lookup_symbol(chbdata(pcb), NULL);
+      }
+    case 4:
+      readchar();
+      if (c == EOF) {
+        return lookup_symbol(chbdata(pcb), NULL);
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || c == '_' || (c >= 'a' && c <= 'z')) {
+        chbputc(c, pcb);
+        state = 4; continue;
+      } else {
+        unreadchar();
+        return lookup_symbol(chbdata(pcb), NULL);
+      }
+    case 5:
+      readchar();
+      if (c == EOF) {
+        return TT_INT;
+      } else if (c == 'U' || c == 'u') {
+        state = 74; continue;
+      } else if (c == 'L' || c == 'l') {
+        readchar();
+        if (c == 'L' || c == 'l') { 
+          state = state_73LL; continue; 
+        }
+        if (c != EOF) unreadchar();
+        state = 73; continue;
+      } else if (c == '.') {
+        chbputc(c, pcb);
+        state = 66; continue;
+      } else if (c == 'E' || c == 'e') {
+        chbputc(c, pcb);
+        state = 62; continue;
+      } else if ((c >= '0' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 5; continue;
+      } else {
+        unreadchar();
+        return TT_INT;
+      }
+    case 6:
+      readchar();
+      if (c == EOF) {
+        return TT_INT;
+      } else if (c == '.') {
+        chbputc(c, pcb);
+        state = 66; continue;
+      } else if ((c >= '8' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 65; continue;
+      } else if ((c >= '0' && c <= '7')) {
+        chbputc(c, pcb);
+        state = 64; continue;
+      } else if (c == 'U' || c == 'u') {
+        state = 74; continue;
+      } else if (c == 'E' || c == 'e') {
+        chbputc(c, pcb);
+        state = 62; continue;
+      } else if (c == 'X' || c == 'x') {
+        chbputc(c, pcb);
+        state = 61; continue;
+      } else if (c == 'L' || c == 'l') {
+        readchar();
+        if (c == 'L' || c == 'l') { 
+          state = state_73LL; continue;
+        }
+        if (c != EOF) unreadchar();
+        state = 73; continue;
+      } else {
+        unreadchar();
+        return TT_INT;
+      }
+    case 7:
+      readchar();
+      if (c == EOF) {
+        return TT_DOT;
+      } else if (c == '.') {
+        chbputc(c, pcb);
+        state = 55; continue;
+      } else if ((c >= '0' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 54; continue;
+      } else {
+        unreadchar();
+        return TT_DOT;
+      }
+    case 8:
+      readchar();
+      if (c == EOF) {
+        return TT_PLUS;
+      } else if (c == '+') {
+        chbputc(c, pcb);
+        return TT_PLUS_PLUS;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_PLUS_ASN;
+      } else {
+        unreadchar();
+        return TT_PLUS;
+      }
+    case 9:
+      readchar();
+      if (c == EOF) {
+        return TT_MINUS;
+      } else if (c == '-') {
+        chbputc(c, pcb);
+        return TT_MINUS_MINUS;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_MINUS_ASN;
+      } else if (c == '>') {
+        chbputc(c, pcb);
+        return TT_ARROW;
+      } else {
+        unreadchar();
+        return TT_MINUS;
+      }
+    case 10:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '\\') {
+        chbputc(c, pcb);
+        state = 44; continue;
+      } else if (is8chead(c)) { 
+        int u = c & 0xFF;
+        if (u < 0xE0) { chbputc(c, pcb); state = state_10d; continue; }
+        if (u < 0xF0) { chbputc(c, pcb); state = state_10dd; continue; }
+        if (u < 0xF8) { chbputc(c, pcb); state = state_10ddd; continue; }
+        if (u < 0xFC) { chbputc(c, pcb); state = state_10dddd; continue; }
+        if (u < 0xFE) { chbputc(c, pcb); state = state_10ddddd; continue; }
+        unreadchar();
+        return TT_EOF;
+      } else if (!(c == '\n' || c == '\'' || c == '\\')) {
+        chbputc(c, pcb);
+        state = 43; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case state_10ddddd:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (is8ctail(c)) {
+        chbputc(c, pcb);
+        state = state_10dddd; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case state_10dddd:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (is8ctail(c)) {
+        chbputc(c, pcb);
+        state = state_10ddd; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case state_10ddd:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (is8ctail(c)) {
+        chbputc(c, pcb);
+        state = state_10dd; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case state_10dd:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (is8ctail(c)) {
+        chbputc(c, pcb);
+        state = state_10d; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case state_10d:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (is8ctail(c)) {
+        chbputc(c, pcb);
+        state = 43; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 11:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '\\') {
+        chbputc(c, pcb);
+        state = 34; continue;
+      } else if (c == '\"') {
+        return longprefix ? TT_LSTRING : TT_STRING;
+      } else if (!(c == '\n' || c == '\"' || c == '\\')) {
+        chbputc(c, pcb);
+        state = 11; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 21:
+      readchar();
+      if (c == EOF) {
+        return TT_HASH;
+      } else if (c == '#') {
+        chbputc(c, pcb);
+        state = 32; continue;
+      } else {
+        unreadchar();
+        return TT_HASH;
+      }
+    case 22:
+      readchar();
+      if (c == EOF) {
+        return TT_GT;
+      } else if (c == '>') {
+        chbputc(c, pcb);
+        state = 31; continue;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_GE;
+      } else {
+        unreadchar();
+        return TT_GT;
+      }
+    case 23:
+      readchar();
+      if (c == EOF) {
+        return TT_LT;
+      } else if (c == '<') {
+        chbputc(c, pcb);
+        state = 30; continue;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_LE;
+      } else {
+        unreadchar();
+        return TT_LT;
+      }
+    case 24:
+      readchar();
+      if (c == EOF) {
+        return TT_ASN;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_EQ;
+      } else {
+        unreadchar();
+        return TT_ASN;
+      }
+    case 25:
+      readchar();
+      if (c == EOF) {
+        return TT_NOT;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_NE;
+      } else {
+        unreadchar();
+        return TT_NOT;
+      }
+    case 26:
+      readchar();
+      if (c == EOF) {
+        return TT_AND;
+      } else if (c == '&') {
+        chbputc(c, pcb);
+        return TT_AND_AND;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_AND_ASN;
+      } else {
+        unreadchar();
+        return TT_AND;
+      }
+    case 27:
+      readchar();
+      if (c == EOF) {
+        return TT_OR;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_OR_ASN;
+      } else if (c == '|') {
+        chbputc(c, pcb);
+        return TT_OR_OR;
+      } else {
+        unreadchar();
+        return TT_OR;
+      }
+    case 28:
+      readchar();
+      if (c == EOF) {
+        return TT_REM;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_REM_ASN;
+      } else {
+        unreadchar();
+        return TT_REM;
+      }
+    case 29:
+      readchar();
+      if (c == EOF) {
+        return TT_XOR;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_XOR_ASN;
+      } else {
+        unreadchar();
+        return TT_XOR;
+      }
+    case 30:
+      readchar();
+      if (c == EOF) {
+        return TT_SHL;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_SHL_ASN;
+      } else {
+        unreadchar();
+        return TT_SHL;
+      }
+    case 31:
+      readchar();
+      if (c == EOF) {
+        return TT_SHR;
+      } else if (c == '=') {
+        chbputc(c, pcb);
+        return TT_SHR_ASN;
+      } else {
+        unreadchar();
+        return TT_SHR;
+      }
+    case 32:
+      return TT_HASHHASH;
+    case 34:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '7')) {
+        chbputc(c, pcb);
+        state = 37; continue;
+      } else if (c == 'u') {
+        chbputc(c, pcb);
+        state = 36; continue;
+      } else if (c == 'x') {
+        chbputc(c, pcb);
+        state = 35; continue;
+      } else if (c == '\"' || c == '\'' || c == '?' || c == '\\' || (c >= 'a' && c <= 'b') || c == 'f' || c == 'n' || c == 'r' || c == 't' || c == 'v') {
+        chbputc(c, pcb);
+        state = 11; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 35:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 42; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 36:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 39; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 37:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '7')) {
+        chbputc(c, pcb);
+        state = 38; continue;
+      } else if (c == '\\') {
+        chbputc(c, pcb);
+        state = 34; continue;
+      } else if (c == '\"') {
+        return longprefix ? TT_LSTRING : TT_STRING;
+      } else if (!(c == '\n' || c == '\"' || (c >= '0' && c <= '7') || c == '\\')) {
+        chbputc(c, pcb);
+        state = 11; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 38:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '\\') {
+        chbputc(c, pcb);
+        state = 34; continue;
+      } else if (c == '\"') {
+        return longprefix ? TT_LSTRING : TT_STRING;
+      } else if (!(c == '\n' || c == '\"' || c == '\\')) {
+        chbputc(c, pcb);
+        state = 11; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 39:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 40; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 40:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 41; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 41:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 11; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 42:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 42; continue;
+      } else if (c == '\\') {
+        chbputc(c, pcb);
+        state = 34; continue;
+      } else if (c == '\"') {
+        return longprefix ? TT_LSTRING : TT_STRING;
+      } else if (!(c == '\n' || c == '\"' || (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || c == '\\' || (c >= 'a' && c <= 'f'))) {
+        chbputc(c, pcb);
+        state = 11; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 43:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '\'') {
+        return longprefix ? TT_LCHAR : TT_CHAR;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 44:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '7')) {
+        chbputc(c, pcb);
+        state = 47; continue;
+      } else if (c == 'u') {
+        chbputc(c, pcb);
+        state = 46; continue;
+      } else if (c == 'x') {
+        chbputc(c, pcb);
+        state = 45; continue;
+      } else if (c == '\"' || c == '\'' || c == '?' || c == '\\' || (c >= 'a' && c <= 'b') || c == 'f' || c == 'n' || c == 'r' || c == 't' || c == 'v') {
+        chbputc(c, pcb);
+        state = 43; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 45:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 53; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 46:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 50; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 47:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '\'') {
+        return longprefix ? TT_LCHAR : TT_CHAR;
+      } else if ((c >= '0' && c <= '7')) {
+        chbputc(c, pcb);
+        state = 48; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 48:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '\'') {
+        return longprefix ? TT_LCHAR : TT_CHAR;
+      } else if ((c >= '0' && c <= '7')) {
+        chbputc(c, pcb);
+        state = 43; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 50:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 51; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 51:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 52; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 52:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 43; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 53:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 53; continue;
+      } else if (c == '\'') {
+        return longprefix ? TT_LCHAR : TT_CHAR;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 54:
+      readchar();
+      if (c == EOF) {
+        return TT_DOUBLE;
+      } else if (c == 'F' || c == 'f') {
+        return TT_FLOAT;
+      } else if (c == 'E' || c == 'e') {
+        chbputc(c, pcb);
+        state = 57; continue;
+      } else if ((c >= '0' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 54; continue;
+      } else {
+        unreadchar();
+        return TT_DOUBLE;
+      }
+    case 55:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '.') {
+        chbputc(c, pcb);
+        state = 56; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 56:
+      return TT_ELLIPSIS;
+    case 57:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '+' || c == '-') {
+        chbputc(c, pcb);
+        state = 59; continue;
+      } else if ((c >= '0' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 58; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 58:
+      readchar();
+      if (c == EOF) {
+        return TT_DOUBLE;
+      } else if (c == 'F' || c == 'f') {
+        return TT_FLOAT;
+      } else if ((c >= '0' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 58; continue;
+      } else {
+        unreadchar();
+        return TT_DOUBLE;
+      }
+    case 59:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 58; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 61:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '.') {
+        chbputc(c, pcb);
+        state = 90; continue;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 70; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 62:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '+' || c == '-') {
+        chbputc(c, pcb);
+        state = 69; continue;
+      } else if ((c >= '0' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 68; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 64:
+      readchar();
+      if (c == EOF) {
+        return TT_INT;
+      } else if (c == '.') {
+        chbputc(c, pcb);
+        state = 66; continue;
+      } else if ((c >= '8' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 65; continue;
+      } else if ((c >= '0' && c <= '7')) {
+        chbputc(c, pcb);
+        state = 64; continue;
+      } else if (c == 'U' || c == 'u') {
+        state = 74; continue;
+      } else if (c == 'E' || c == 'e') {
+        chbputc(c, pcb);
+        state = 62; continue;
+      } else if (c == 'L' || c == 'l') {
+        readchar();
+        if (c == 'L' || c == 'l') {
+          state = state_73LL; continue;
+        }
+        if (c != EOF) unreadchar();
+        state = 73; continue;
+      } else {
+        unreadchar();
+        return TT_INT;
+      }
+    case 65:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '.') {
+        chbputc(c, pcb);
+        state = 66; continue;
+      } else if ((c >= '0' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 65; continue;
+      } else if (c == 'E' || c == 'e') {
+        chbputc(c, pcb);
+        state = 62; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 66:
+      readchar();
+      if (c == EOF) {
+        return TT_DOUBLE;
+      } else if (c == 'F' || c == 'f') {
+        return TT_FLOAT;
+      } else if (c == 'E' || c == 'e') {
+        chbputc(c, pcb);
+        state = 57; continue;
+      } else if ((c >= '0' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 54; continue;
+      } else {
+        unreadchar();
+        return TT_DOUBLE;
+      }
+    case 68:
+      readchar();
+      if (c == EOF) {
+        return TT_DOUBLE;
+      } else if (c == 'F' || c == 'f') {
+        return TT_FLOAT;
+      } else if ((c >= '0' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 68; continue;
+      } else {
+        unreadchar();
+        return TT_DOUBLE;
+      }
+    case 69:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9')) {
+        chbputc(c, pcb);
+        state = 68; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 70:
+      readchar();
+      if (c == EOF) {
+        return TT_INT;
+      } else if (c == '.') {
+        chbputc(c, pcb);
+        state = 91; continue;
+      } else if (c == 'P' || c == 'p') {
+        chbputc(c, pcb);
+        state = 62; continue; 
+      } else if (c == 'U' || c == 'u') {
+        state = 74; continue;
+      } else if (c == 'L' || c == 'l') {
+        readchar();
+        if (c == 'L' || c == 'l') {
+          state = state_73LL;
+          continue;
+        }
+        if (c != EOF) unreadchar();
+        state = 73; continue;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 70; continue;
+      } else {
+        unreadchar();
+        return TT_INT;
+      }
+    case 73:
+      readchar();
+      if (c == EOF) {
+        return TT_LONG;
+      } else if (c == 'U' || c == 'u') {
+        return TT_ULONG;
+      } else {
+        unreadchar();
+        return TT_LONG;
+      }
+    case state_73LL:
+      readchar();
+      if (c == EOF) {
+        return TT_LLONG;
+      } else if (c == 'U' || c == 'u') {
+        return TT_ULLONG;
+      } else {
+        unreadchar();
+        return TT_LLONG;
+      }
+    case 74:
+      readchar();
+      if (c == EOF) {
+        return TT_UINT;
+      } else if (c == 'L' || c == 'l') {
+        readchar();
+        if (c == 'L' || c == 'l') return TT_ULLONG;
+        if (c != EOF) unreadchar();
+        return TT_ULONG;
+      } else {
+        unreadchar();
+        return TT_UINT;
+      }
+    case 75:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (!(c == '\n')) {
+        chbputc(c, pcb);
+        state = 75; continue;
+      } else {
+        chbputc(c, pcb);
+        return TT_WHITESPACE;
+      }
+    case 76:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (!(c == '*')) {
+        chbputc(c, pcb);
+        state = 76; continue;
+      } else {
+        chbputc(c, pcb);
+        state = 77; continue;
+      }
+    case 77:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == '*') {
+        chbputc(c, pcb);
+        state = 77; continue;
+      } else if (!(c == '*' || c == '/')) {
+        chbputc(c, pcb);
+        state = 76; continue;
+      } else {
+        chbputc(c, pcb);
+        return TT_WHITESPACE;
+      }
+    case 90:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 91; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    case 91:
+      readchar();
+      if (c == EOF) {
+        return TT_EOF;
+      } else if (c == 'P' || c == 'p') {
+        chbputc(c, pcb);
+        state = 62; continue;
+      } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+        chbputc(c, pcb);
+        state = 91; continue;
+      } else {
+        unreadchar();
+        return TT_EOF;
+      }
+    }
   }
-state_1:
-  readchar();
-  if (c == EOF) {
-    return TT_WHITESPACE;
-  } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
-    chbputc(c, pcb);
-    goto state_1;
-  } else {
-    unreadchar();
-    return TT_WHITESPACE;
-  }
-state_2:
-  readchar();
-  if (c == EOF) {
-    return TT_SLASH;
-  } else if (c == '*') {
-    chbputc(c, pcb);
-    goto state_76;
-  } else if (c == '/') {
-    chbputc(c, pcb);
-    goto state_75;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_SLASH_ASN;
-  } else {
-    unreadchar();
-    return TT_SLASH;
-  }
-state_3:
-  readchar();
-  if (c == EOF) {
-    return TT_STAR;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_STAR_ASN;
-  } else {
-    unreadchar();
-    return TT_STAR;
-  }
-state_4L:
-  readchar();
-  if (c == EOF) {
-    chbputc('L', pcb);
-    return lookup_symbol(chbdata(pcb), NULL);
-  } else if (c == '\"') {
-    longprefix = true;
-    goto state_11;
-  } else if (c == '\'') {
-    longprefix = true;
-    goto state_10;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || c == '_' || (c >= 'a' && c <= 'z')) {
-    chbputc('L', pcb);
-    chbputc(c, pcb);
-    goto state_4;
-  } else {
-    unreadchar();
-    chbputc('L', pcb);
-    return lookup_symbol(chbdata(pcb), NULL);
-  }
-state_4:
-  readchar();
-  if (c == EOF) {
-    return lookup_symbol(chbdata(pcb), NULL);
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || c == '_' || (c >= 'a' && c <= 'z')) {
-    chbputc(c, pcb);
-    goto state_4;
-  } else {
-    unreadchar();
-    return lookup_symbol(chbdata(pcb), NULL);
-  }
-state_5:
-  readchar();
-  if (c == EOF) {
-    return TT_INT;
-  } else if (c == 'U' || c == 'u') {
-    goto state_74;
-  } else if (c == 'L' || c == 'l') {
-    readchar();
-    if (c == 'L' || c == 'l') goto state_73LL;
-    if (c != EOF) unreadchar();
-    goto state_73;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_66;
-  } else if (c == 'E' || c == 'e') {
-    chbputc(c, pcb);
-    goto state_62;
-  } else if ((c >= '0' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_5;
-  } else {
-    unreadchar();
-    return TT_INT;
-  }
-state_6:
-  readchar();
-  if (c == EOF) {
-    return TT_INT;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_66;
-  } else if ((c >= '8' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_65;
-  } else if ((c >= '0' && c <= '7')) {
-    chbputc(c, pcb);
-    goto state_64;
-  } else if (c == 'U' || c == 'u') {
-    goto state_74;
-  } else if (c == 'E' || c == 'e') {
-    chbputc(c, pcb);
-    goto state_62;
-  } else if (c == 'X' || c == 'x') {
-    chbputc(c, pcb);
-    goto state_61;
-  } else if (c == 'L' || c == 'l') {
-    readchar();
-    if (c == 'L' || c == 'l') goto state_73LL;
-    if (c != EOF) unreadchar();
-    goto state_73;
-  } else {
-    unreadchar();
-    return TT_INT;
-  }
-state_7:
-  readchar();
-  if (c == EOF) {
-    return TT_DOT;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_55;
-  } else if ((c >= '0' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_54;
-  } else {
-    unreadchar();
-    return TT_DOT;
-  }
-state_8:
-  readchar();
-  if (c == EOF) {
-    return TT_PLUS;
-  } else if (c == '+') {
-    chbputc(c, pcb);
-    return TT_PLUS_PLUS;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_PLUS_ASN;
-  } else {
-    unreadchar();
-    return TT_PLUS;
-  }
-state_9:
-  readchar();
-  if (c == EOF) {
-    return TT_MINUS;
-  } else if (c == '-') {
-    chbputc(c, pcb);
-    return TT_MINUS_MINUS;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_MINUS_ASN;
-  } else if (c == '>') {
-    chbputc(c, pcb);
-    return TT_ARROW;
-  } else {
-    unreadchar();
-    return TT_MINUS;
-  }
-state_10:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '\\') {
-    chbputc(c, pcb);
-    goto state_44;
-  } else if (is8chead(c)) { 
-    int u = c & 0xFF;
-    if (u < 0xE0) { chbputc(c, pcb); goto state_10d; }
-    if (u < 0xF0) { chbputc(c, pcb); goto state_10dd; }
-    if (u < 0xF8) { chbputc(c, pcb); goto state_10ddd; }
-    if (u < 0xFC) { chbputc(c, pcb); goto state_10dddd; }
-    if (u < 0xFE) { chbputc(c, pcb); goto state_10ddddd; }
-    unreadchar();
-    goto err;
-  } else if (!(c == '\n' || c == '\'' || c == '\\')) {
-    chbputc(c, pcb);
-    goto state_43;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_10ddddd:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (is8ctail(c)) {
-    chbputc(c, pcb);
-    goto state_10dddd;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_10dddd:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (is8ctail(c)) {
-    chbputc(c, pcb);
-    goto state_10ddd;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_10ddd:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (is8ctail(c)) {
-    chbputc(c, pcb);
-    goto state_10dd;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_10dd:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (is8ctail(c)) {
-    chbputc(c, pcb);
-    goto state_10d;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_10d:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (is8ctail(c)) {
-    chbputc(c, pcb);
-    goto state_43;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_11:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '\\') {
-    chbputc(c, pcb);
-    goto state_34;
-  } else if (c == '\"') {
-    return longprefix ? TT_LSTRING : TT_STRING;
-  } else if (!(c == '\n' || c == '\"' || c == '\\')) {
-    chbputc(c, pcb);
-    goto state_11;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_21:
-  readchar();
-  if (c == EOF) {
-    return TT_HASH;
-  } else if (c == '#') {
-    chbputc(c, pcb);
-    goto state_32;
-  } else {
-    unreadchar();
-    return TT_HASH;
-  }
-state_22:
-  readchar();
-  if (c == EOF) {
-    return TT_GT;
-  } else if (c == '>') {
-    chbputc(c, pcb);
-    goto state_31;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_GE;
-  } else {
-    unreadchar();
-    return TT_GT;
-  }
-state_23:
-  readchar();
-  if (c == EOF) {
-    return TT_LT;
-  } else if (c == '<') {
-    chbputc(c, pcb);
-    goto state_30;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_LE;
-  } else {
-    unreadchar();
-    return TT_LT;
-  }
-state_24:
-  readchar();
-  if (c == EOF) {
-    return TT_ASN;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_EQ;
-  } else {
-    unreadchar();
-    return TT_ASN;
-  }
-state_25:
-  readchar();
-  if (c == EOF) {
-    return TT_NOT;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_NE;
-  } else {
-    unreadchar();
-    return TT_NOT;
-  }
-state_26:
-  readchar();
-  if (c == EOF) {
-    return TT_AND;
-  } else if (c == '&') {
-    chbputc(c, pcb);
-    return TT_AND_AND;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_AND_ASN;
-  } else {
-    unreadchar();
-    return TT_AND;
-  }
-state_27:
-  readchar();
-  if (c == EOF) {
-    return TT_OR;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_OR_ASN;
-  } else if (c == '|') {
-    chbputc(c, pcb);
-    return TT_OR_OR;
-  } else {
-    unreadchar();
-    return TT_OR;
-  }
-state_28:
-  readchar();
-  if (c == EOF) {
-    return TT_REM;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_REM_ASN;
-  } else {
-    unreadchar();
-    return TT_REM;
-  }
-state_29:
-  readchar();
-  if (c == EOF) {
-    return TT_XOR;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_XOR_ASN;
-  } else {
-    unreadchar();
-    return TT_XOR;
-  }
-state_30:
-  readchar();
-  if (c == EOF) {
-    return TT_SHL;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_SHL_ASN;
-  } else {
-    unreadchar();
-    return TT_SHL;
-  }
-state_31:
-  readchar();
-  if (c == EOF) {
-    return TT_SHR;
-  } else if (c == '=') {
-    chbputc(c, pcb);
-    return TT_SHR_ASN;
-  } else {
-    unreadchar();
-    return TT_SHR;
-  }
-state_32:
-  return TT_HASHHASH;
-state_34:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '7')) {
-    chbputc(c, pcb);
-    goto state_37;
-  } else if (c == 'u') {
-    chbputc(c, pcb);
-    goto state_36;
-  } else if (c == 'x') {
-    chbputc(c, pcb);
-    goto state_35;
-  } else if (c == '\"' || c == '\'' || c == '?' || c == '\\' || (c >= 'a' && c <= 'b') || c == 'f' || c == 'n' || c == 'r' || c == 't' || c == 'v') {
-    chbputc(c, pcb);
-    goto state_11;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_35:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_42;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_36:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_39;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_37:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '7')) {
-    chbputc(c, pcb);
-    goto state_38;
-  } else if (c == '\\') {
-    chbputc(c, pcb);
-    goto state_34;
-  } else if (c == '\"') {
-    return longprefix ? TT_LSTRING : TT_STRING;
-  } else if (!(c == '\n' || c == '\"' || (c >= '0' && c <= '7') || c == '\\')) {
-    chbputc(c, pcb);
-    goto state_11;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_38:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '\\') {
-    chbputc(c, pcb);
-    goto state_34;
-  } else if (c == '\"') {
-    return longprefix ? TT_LSTRING : TT_STRING;
-  } else if (!(c == '\n' || c == '\"' || c == '\\')) {
-    chbputc(c, pcb);
-    goto state_11;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_39:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_40;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_40:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_41;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_41:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_11;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_42:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_42;
-  } else if (c == '\\') {
-    chbputc(c, pcb);
-    goto state_34;
-  } else if (c == '\"') {
-    return longprefix ? TT_LSTRING : TT_STRING;
-  } else if (!(c == '\n' || c == '\"' || (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || c == '\\' || (c >= 'a' && c <= 'f'))) {
-    chbputc(c, pcb);
-    goto state_11;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_43:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '\'') {
-    return longprefix ? TT_LCHAR : TT_CHAR;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_44:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '7')) {
-    chbputc(c, pcb);
-    goto state_47;
-  } else if (c == 'u') {
-    chbputc(c, pcb);
-    goto state_46;
-  } else if (c == 'x') {
-    chbputc(c, pcb);
-    goto state_45;
-  } else if (c == '\"' || c == '\'' || c == '?' || c == '\\' || (c >= 'a' && c <= 'b') || c == 'f' || c == 'n' || c == 'r' || c == 't' || c == 'v') {
-    chbputc(c, pcb);
-    goto state_43;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_45:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_53;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_46:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_50;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_47:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '\'') {
-    return longprefix ? TT_LCHAR : TT_CHAR;
-  } else if ((c >= '0' && c <= '7')) {
-    chbputc(c, pcb);
-    goto state_48;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_48:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '\'') {
-    return longprefix ? TT_LCHAR : TT_CHAR;
-  } else if ((c >= '0' && c <= '7')) {
-    chbputc(c, pcb);
-    goto state_43;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_50:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_51;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_51:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_52;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_52:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_43;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_53:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_53;
-  } else if (c == '\'') {
-    return longprefix ? TT_LCHAR : TT_CHAR;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_54:
-  readchar();
-  if (c == EOF) {
-    return TT_DOUBLE;
-  } else if (c == 'F' || c == 'f') {
-    return TT_FLOAT;
-  } else if (c == 'E' || c == 'e') {
-    chbputc(c, pcb);
-    goto state_57;
-  } else if ((c >= '0' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_54;
-  } else {
-    unreadchar();
-    return TT_DOUBLE;
-  }
-state_55:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_56;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_56:
-  return TT_ELLIPSIS;
-state_57:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '+' || c == '-') {
-    chbputc(c, pcb);
-    goto state_59;
-  } else if ((c >= '0' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_58;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_58:
-  readchar();
-  if (c == EOF) {
-    return TT_DOUBLE;
-  } else if (c == 'F' || c == 'f') {
-    return TT_FLOAT;
-  } else if ((c >= '0' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_58;
-  } else {
-    unreadchar();
-    return TT_DOUBLE;
-  }
-state_59:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_58;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_61:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_90;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_70;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_62:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '+' || c == '-') {
-    chbputc(c, pcb);
-    goto state_69;
-  } else if ((c >= '0' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_68;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_64:
-  readchar();
-  if (c == EOF) {
-    return TT_INT;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_66;
-  } else if ((c >= '8' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_65;
-  } else if ((c >= '0' && c <= '7')) {
-    chbputc(c, pcb);
-    goto state_64;
-  } else if (c == 'U' || c == 'u') {
-    goto state_74;
-  } else if (c == 'E' || c == 'e') {
-    chbputc(c, pcb);
-    goto state_62;
-  } else if (c == 'L' || c == 'l') {
-    readchar();
-    if (c == 'L' || c == 'l') goto state_73LL;
-    if (c != EOF) unreadchar();
-    goto state_73;
-  } else {
-    unreadchar();
-    return TT_INT;
-  }
-state_65:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_66;
-  } else if ((c >= '0' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_65;
-  } else if (c == 'E' || c == 'e') {
-    chbputc(c, pcb);
-    goto state_62;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_66:
-  readchar();
-  if (c == EOF) {
-    return TT_DOUBLE;
-  } else if (c == 'F' || c == 'f') {
-    return TT_FLOAT;
-  } else if (c == 'E' || c == 'e') {
-    chbputc(c, pcb);
-    goto state_57;
-  } else if ((c >= '0' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_54;
-  } else {
-    unreadchar();
-    return TT_DOUBLE;
-  }
-state_68:
-  readchar();
-  if (c == EOF) {
-    return TT_DOUBLE;
-  } else if (c == 'F' || c == 'f') {
-    return TT_FLOAT;
-  } else if ((c >= '0' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_68;
-  } else {
-    unreadchar();
-    return TT_DOUBLE;
-  }
-state_69:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9')) {
-    chbputc(c, pcb);
-    goto state_68;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_70:
-  readchar();
-  if (c == EOF) {
-    return TT_INT;
-  } else if (c == '.') {
-    chbputc(c, pcb);
-    goto state_91;
-  } else if (c == 'P' || c == 'p') {
-    chbputc(c, pcb);
-    goto state_62; 
-  } else if (c == 'U' || c == 'u') {
-    goto state_74;
-  } else if (c == 'L' || c == 'l') {
-    readchar();
-    if (c == 'L' || c == 'l') goto state_73LL;
-    if (c != EOF) unreadchar();
-    goto state_73;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_70;
-  } else {
-    unreadchar();
-    return TT_INT;
-  }
-state_73:
-  readchar();
-  if (c == EOF) {
-    return TT_LONG;
-  } else if (c == 'U' || c == 'u') {
-    return TT_ULONG;
-  } else {
-    unreadchar();
-    return TT_LONG;
-  }
-state_73LL:
-  readchar();
-  if (c == EOF) {
-    return TT_LLONG;
-  } else if (c == 'U' || c == 'u') {
-    return TT_ULLONG;
-  } else {
-    unreadchar();
-    return TT_LLONG;
-  }
-state_74:
-  readchar();
-  if (c == EOF) {
-    return TT_UINT;
-  } else if (c == 'L' || c == 'l') {
-    readchar();
-    if (c == 'L' || c == 'l') return TT_ULLONG;
-    if (c != EOF) unreadchar();
-    return TT_ULONG;
-  } else {
-    unreadchar();
-    return TT_UINT;
-  }
-state_75:
-  readchar();
-  if (c == EOF) {
-    goto eoferr;
-  } else if (!(c == '\n')) {
-    chbputc(c, pcb);
-    goto state_75;
-  } else {
-    chbputc(c, pcb);
-    return TT_WHITESPACE;
-  }
-state_76:
-  readchar();
-  if (c == EOF) {
-    goto eoferr;
-  } else if (!(c == '*')) {
-    chbputc(c, pcb);
-    goto state_76;
-  } else {
-    chbputc(c, pcb);
-    goto state_77;
-  }
-state_77:
-  readchar();
-  if (c == EOF) {
-    goto eoferr;
-  } else if (c == '*') {
-    chbputc(c, pcb);
-    goto state_77;
-  } else if (!(c == '*' || c == '/')) {
-    chbputc(c, pcb);
-    goto state_76;
-  } else {
-    chbputc(c, pcb);
-    return TT_WHITESPACE;
-  }
-state_90:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_91;
-  } else {
-    unreadchar();
-    goto err;
-  }
-state_91:
-  readchar();
-  if (c == EOF) {
-    goto err;
-  } else if (c == 'P' || c == 'p') {
-    chbputc(c, pcb);
-    goto state_62;
-  } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-    chbputc(c, pcb);
-    goto state_91;
-  } else {
-    unreadchar();
-    goto err;
-  }
-
-err:
-eoferr:
   return TT_EOF;
+}
+#undef state_10d
+#undef state_10dd
+#undef state_10ddd
+#undef state_10dddd
+#undef state_10ddddd
+#undef state_4L
+#undef state_73LL
 #undef readchar
 #undef unreadchar
-}
 
 static tt_t peekt(pws_t *pw) 
 { 
@@ -2227,7 +2255,8 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       }
       expect(pw, TT_RPAR, ")");
     } break;
-    case TT_INT: case_i32: { /* 0 .. 2147483647 (INT32_MIN is written as = -2147483647-1) */
+    case TT_LONG: /* longs are the same size as pointers; wasm32 */
+    case TT_INT: { /* 0 .. 2147483647 (INT32_MIN is written as = -2147483647-1) */
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       if (errno = 0, ul = strtoul(ns, NULL, 0), !errno && ul <= 0x7FFFFFFFUL) {
@@ -2236,7 +2265,8 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       pn->ts = TS_INT;
       dropt(pw);
     } break;
-    case TT_UINT: case_u32: { /* 0 .. 4294967295 */
+    case TT_ULONG: /* ulongs are the same size as pointers; wasm32 */
+    case TT_UINT: { /* 0 .. 4294967295 */
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       if (errno = 0, ul = strtoul(ns, NULL, 0), !errno && ul <= 0xFFFFFFFFUL) {
@@ -2245,13 +2275,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       pn->ts = TS_UINT;
       dropt(pw);
     } break;
-    case TT_LONG: /* longs are the same size as pointers */
-      if (1) goto case_i32; /* wasm32 model */
-      else goto case_i64; /* wasm64 model */
-    case TT_ULONG: /* ulongs are the same size as pointers */
-      if (1) goto case_u32; /* wasm32 model */
-      else goto case_u64; /* wasm64 model */
-    case TT_LLONG: case_i64: { /* 0 .. 9223372036854775807 (INT64_MIN is written as = -9223372036854775807-1) */
+    case TT_LLONG: { /* 0 .. 9223372036854775807 (INT64_MIN is written as = -9223372036854775807-1) */
       char *ns = pw->tokstr; unsigned long long ull;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       if (errno = 0, ull = strtoull(ns, NULL, 0), !errno && ull <= 0x7FFFFFFFFFFFFFFFULL) {
@@ -2260,7 +2284,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       pn->ts = TS_LLONG;
       dropt(pw);
     } break;
-    case TT_ULLONG: case_u64: { /* 0 .. 18446744073709551615 */
+    case TT_ULLONG: { /* 0 .. 18446744073709551615 */
       char *ns = pw->tokstr; unsigned long long ull;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       if (errno = 0, ull = strtoull(ns, NULL, 0), !errno && ull <= 0xFFFFFFFFFFFFFFFFULL) {
@@ -2320,7 +2344,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       while (*ns && (errno = 0, ul = strtocc32(ns, &ns), !errno && ul <= 0x10FFFFUL)) {
-        chbput4le(ul, &pn->data); /* 4 bytes, in LE order */
+        chbput4le((unsigned)ul, &pn->data); /* 4 bytes, in LE order */
       }
       chbput4le(0, &pn->data); /* terminating zero wchar, C-style */
       if (*ns) reprintf(pw, startpos+(int)(ns-pw->tokstr), "long string literal char overflow");
@@ -2836,7 +2860,7 @@ static void load_typedef_type(pws_t *pw, node_t *pn, sym_t tn)
 }
 
 /* parse enum body (name? + enumlist?) */
-void parse_enum_body(pws_t *pw, node_t *pn)
+static void parse_enum_body(pws_t *pw, node_t *pn)
 {
   ndset(pn, NT_TYPE, pw->id, peekpos(pw));
   pn->ts = TS_ENUM;
@@ -2848,7 +2872,7 @@ void parse_enum_body(pws_t *pw, node_t *pn)
       node_t *pni = ndnewbk(pn), *pnv; int *pi;
       ndset(pni, NT_VARDECL, pw->id, peekpos(pw));
       pni->name = getid(pw);
-      pi = bufbsearch(&g_syminfo, &pni->name, int_cmp);
+      pi = bufbsearch(&g_syminfo, &pni->name, &int_cmp);
       if (pi) neprintf(pni, "enum constant name is already in use");
       pnv = ndnewbk(pni);
       if (peekt(pw) == TT_ASN) {
@@ -2871,7 +2895,7 @@ void parse_enum_body(pws_t *pw, node_t *pn)
     /* register this enum type for lazy fetch */
     const char *tag = "enum"; tt_t tt = TT_ENUM_KW;
     sym_t s = internf("%s %s", tag, symname(pn->name));
-    int *pinfo = bufbsearch(&g_syminfo, &s, int_cmp);
+    int *pinfo = bufbsearch(&g_syminfo, &s, &int_cmp);
     if (pinfo) {
       reprintf(pw, pn->startpos, "redefinition of %s", symname(s));
     } else {
@@ -2882,7 +2906,7 @@ void parse_enum_body(pws_t *pw, node_t *pn)
 }
 
 /* parse struct or union body (name? + declist?) */
-void parse_sru_body(pws_t *pw, ts_t sru, node_t *pn)
+static void parse_sru_body(pws_t *pw, ts_t sru, node_t *pn)
 {
   size_t i;
   ndset(pn, NT_TYPE, pw->id, peekpos(pw));
@@ -2910,7 +2934,7 @@ void parse_sru_body(pws_t *pw, ts_t sru, node_t *pn)
     const char *tag = (sru == TS_STRUCT) ? "struct" : "union";
     tt_t tt = (sru == TS_STRUCT) ? TT_STRUCT_KW : TT_UNION_KW;
     sym_t s = internf("%s %s", tag, symname(pn->name));
-    int *pinfo = bufbsearch(&g_syminfo, &s, int_cmp);
+    int *pinfo = bufbsearch(&g_syminfo, &s, &int_cmp);
     if (pinfo) {
       reprintf(pw, pn->startpos, "redefinition of %s", symname(s));
     } else {
@@ -3053,19 +3077,20 @@ static void parse_postfix_declarator(pws_t *pw, node_t *pn)
 
 static void parse_unary_declarator(pws_t *pw, node_t *pn)
 {
-  retry: switch (peekt(pw)) {
-    case TT_CONST_KW: case TT_VOLATILE_KW: {
-      dropt(pw); /* allowed but ignored */
-      goto retry;
-    } break;
-    case TT_STAR: {
-      dropt(pw);
-      parse_unary_declarator(pw, pn);
-      wrap_type_pointer(pn);
-    } break;
-    default: {
-      parse_postfix_declarator(pw, pn);
-    } break;
+  { retry: switch (peekt(pw)) {
+      case TT_CONST_KW: case TT_VOLATILE_KW: {
+        dropt(pw); /* allowed but ignored */
+        goto retry;
+      } break;
+      case TT_STAR: {
+        dropt(pw);
+        parse_unary_declarator(pw, pn);
+        wrap_type_pointer(pn);
+      } break;
+      default: {
+        parse_postfix_declarator(pw, pn);
+      } break;
+    }
   }
 }
 
@@ -3479,11 +3504,12 @@ static void parse_include_directive(pws_t *pw, node_t *pn, int startpos)
   dropt(pw);
   if (peekt(pw) == TT_STRING) {
     char *sep, *s;
+    const char *cs = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_/";
     if ((sep = strsuf(pw->tokstr, ".h")) != NULL) chbset(&cb, pw->tokstr, sep-pw->tokstr);
     else if ((sep = strsuf(pw->tokstr, ".wh")) != NULL) chbset(&cb, pw->tokstr, sep-pw->tokstr);
     else chbsets(&cb, pw->tokstr);
     s = chbdata(&cb);
-    if (strspn(s, STR_az STR_AZ STR_09 "_/") != strlen(s))
+    if (strspn(s, cs) != strlen(s))
       reprintf(pw, peekpos(pw), "unsupported module name in include directive");
     dropt(pw);
     strtrc(s, '/', '.');
@@ -3836,7 +3862,8 @@ static void dump(node_t *pn, FILE* fp, int indent)
     } break;
     case NT_IDENTIFIER: {
       fputs(symname(pn->name), fp);
-      goto out;
+      if (!indent) fputc('\n', fp);
+      return;
     } break;
     case NT_SUBSCRIPT: {
       fprintf(fp, "(subscript");
@@ -3899,11 +3926,12 @@ static void dump(node_t *pn, FILE* fp, int indent)
       }  
       fputs(")", fp);
       chbfini(&cb);
-      goto out;
+      if (!indent) fputc('\n', fp);
+      return;
     }
     case NT_BLOCK: {
       if (!pn->name) fprintf(fp, "(block");
-      else if (!pn->op) fprintf(fp, "(block %s", symname(pn->name)); /* top-level special */
+      else if (pn->op == 0) fprintf(fp, "(block %s", symname(pn->name)); /* top-level special */
       else fprintf(fp, "(block %s %s", op_name(pn->op), symname(pn->name)); /* labeled */
     } break;
     case NT_IF: {
@@ -3987,7 +4015,7 @@ static void dump(node_t *pn, FILE* fp, int indent)
   } else {
     fputc(')', fp);
   }
-  out: if (!indent) fputc('\n', fp);
+  if (!indent) fputc('\n', fp);
 }
 
 
