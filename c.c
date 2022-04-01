@@ -1880,9 +1880,10 @@ static inscode_t *asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
         case TS_UCHAR:  in = IN_I32_LOAD8_U;  align = 0; break;
         case TS_SHORT:  in = IN_I32_LOAD16_S; align = 1; break;
         case TS_USHORT: in = IN_I32_LOAD16_U; align = 1; break;
-        case TS_PTR: case TS_LONG: case TS_ULONG: /* wasm32 assumed */
-        case TS_INT: case TS_UINT: case TS_ENUM:
+        case TS_PTR:    case TS_LONG:   case TS_ULONG: /* wasm32 assumed */
+        case TS_INT:    case TS_UINT:   case TS_ENUM:
           in = IN_I32_LOAD; align = 2; break;
+        default: assert(false);
       } break;
     case TS_LLONG: case TS_ULLONG:
       switch (tsfrom) {
@@ -1890,11 +1891,12 @@ static inscode_t *asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
         case TS_UCHAR:  in = IN_I64_LOAD8_U;  align = 0; break;
         case TS_SHORT:  in = IN_I64_LOAD16_S; align = 1; break;
         case TS_USHORT: in = IN_I64_LOAD16_U; align = 1; break;
-        case TS_PTR: case TS_ULONG: /* wasm32 assumed */
+        case TS_PTR:    case TS_ULONG: /* wasm32 assumed */
         case TS_UINT:   in = IN_I64_LOAD32_U; align = 2; break; 
-        case TS_LONG: /* wasm32 assumed */
-        case TS_INT: case TS_ENUM: in = IN_I64_LOAD32_S; align = 2; break; 
-        case TS_LLONG: case TS_ULLONG: in = IN_I64_LOAD; align = 3; break;
+        case TS_LONG:   /* wasm32 assumed */
+        case TS_INT:    case TS_ENUM:   in = IN_I64_LOAD32_S; align = 2; break; 
+        case TS_LLONG:  case TS_ULLONG: in = IN_I64_LOAD; align = 3; break;
+        default: assert(false);
       } break;
     case TS_FLOAT:
       switch (tsfrom) {
@@ -1904,6 +1906,7 @@ static inscode_t *asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
       switch (tsfrom) {
         case TS_DOUBLE: in = IN_F64_LOAD; align = 3; break;      
       } break;
+    default: assert(false);
   }
   assert(in);
   pin = icbnewbk(pdata); 
@@ -1927,6 +1930,7 @@ static void asm_instr_load_to_store(const inscode_t *plic, inscode_t *psic)
     case IN_I64_LOAD8_S:  case IN_I64_LOAD8_U:  in = IN_I64_STORE8; break;
     case IN_I64_LOAD16_S: case IN_I64_LOAD16_U: in = IN_I64_STORE16; break;
     case IN_I64_LOAD32_S: case IN_I64_LOAD32_U: in = IN_I64_STORE32; break;
+    default: assert(false);
   }
   assert(in);
   *psic = *plic; psic->in = in;
@@ -1943,7 +1947,11 @@ static inscode_t *asm_store(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata
 /* produce cast instructions as needed to convert tsn to cast_compatible ttn type */
 static void asm_cast(const node_t *ptpn, const node_t *ptan, icbuf_t *pdata)
 {
-  if (ts_numerical(ptpn->ts) && ts_numerical(ptan->ts)) {
+  if (ptpn->ts == TS_ENUM && ts_numerical(ptan->ts)) {
+    asm_numerical_cast(TS_INT, ptan->ts, pdata);
+  } else if (ts_numerical(ptpn->ts) && ptan->ts == TS_ENUM) {
+    asm_numerical_cast(ptpn->ts, TS_INT, pdata);
+  } else if (ts_numerical(ptpn->ts) && ts_numerical(ptan->ts)) {
     asm_numerical_cast(ptpn->ts, ptan->ts, pdata);
   } else if (ptpn->ts == TS_PTR && ptan->ts == TS_PTR) {
     /* no representation change */
