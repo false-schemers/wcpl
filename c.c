@@ -1730,18 +1730,29 @@ static const node_t *lookup_var_type(sym_t name, buf_t *prib, sym_t *pmod)
 static bool assign_compatible(const node_t *ptpn, const node_t *ptan)
 {
   if (same_type(ptan, ptpn)) return true;
-  if (ts_numerical(ptan->ts) && ts_numerical(ptpn->ts)) 
-    return ts_arith_common(ptan->ts, ptpn->ts) == ptpn->ts; /* can be promoted up */
-  if (ptan->ts == TS_ARRAY && ptpn->ts == TS_PTR)
+  /* with numericals, enums behave like ints */
+  if (ptpn->ts == TS_ENUM && ts_numerical(ptan->ts)) 
+    return ts_arith_assign_compatible(TS_INT, ptan->ts);
+  if (ts_numerical(ptpn->ts) && ptan->ts == TS_ENUM) 
+    return ts_arith_assign_compatible(ptpn->ts, TS_INT);
+  /* numerical rval should be promotable to lval's type  */
+  if (ts_numerical(ptpn->ts) && ts_numerical(ptan->ts)) 
+    return ts_arith_assign_compatible(ptpn->ts, ptan->ts);
+  /* array can be assigned to its element ptr */
+  if (ptpn->ts == TS_PTR && ptan->ts == TS_ARRAY)
     return same_type(ndcref(ptan, 0), ndcref(ptpn, 0));
-  if (ptan->ts == TS_PTR && ptpn->ts == TS_PTR)
-    return ndcref(ptan, 0)->ts == TS_VOID || ndcref(ptpn, 0)->ts == TS_VOID;
+  /* void pointers can be assined to/from other pointers */
+  if (ptpn->ts == TS_PTR && ptan->ts == TS_PTR)
+    return ndcref(ptpn, 0)->ts == TS_VOID || ndcref(ptan, 0)->ts == TS_VOID;
   return false;
 }
 
 /* check if tan type can be cast to tpn type */
 static bool cast_compatible(const node_t *ptpn, const node_t *ptan)
 {
+  /* enum can be cast to a numerical and vice versa */
+  if (ptpn->ts == TS_ENUM && ts_numerical(ptan->ts)) return true; 
+  if (ts_numerical(ptpn->ts) && ptan->ts == TS_ENUM) return true; 
   /* any two number types can be explicitly cast to each other */
   if (ts_numerical(ptpn->ts) && ts_numerical(ptan->ts)) return true; 
   /* any two pointer types can be explicitly cast to each other */
@@ -1866,14 +1877,15 @@ static inscode_t *asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
   instr_t in = 0; unsigned align = 0; inscode_t *pin;
   switch (tsto) { /* TS_PTR or result of ts_integral_promote(tsfrom) */
     case TS_PTR: case TS_LONG: case TS_ULONG: /* wasm32 */
-    case TS_INT: case TS_UINT:
+    case TS_INT: case TS_UINT: case TS_ENUM:
       switch (tsfrom) {
         case TS_CHAR:   in = IN_I32_LOAD8_S;  align = 0; break;
         case TS_UCHAR:  in = IN_I32_LOAD8_U;  align = 0; break;
         case TS_SHORT:  in = IN_I32_LOAD16_S; align = 1; break;
         case TS_USHORT: in = IN_I32_LOAD16_U; align = 1; break;
         case TS_PTR: case TS_LONG: case TS_ULONG: /* wasm32 assumed */
-        case TS_INT: case TS_UINT: in = IN_I32_LOAD; align = 2; break;
+        case TS_INT: case TS_UINT: case TS_ENUM:
+          in = IN_I32_LOAD; align = 2; break;
       } break;
     case TS_LLONG: case TS_ULLONG:
       switch (tsfrom) {
@@ -1884,7 +1896,7 @@ static inscode_t *asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
         case TS_PTR: case TS_ULONG: /* wasm32 assumed */
         case TS_UINT:   in = IN_I64_LOAD32_U; align = 2; break; 
         case TS_LONG: /* wasm32 assumed */
-        case TS_INT :   in = IN_I64_LOAD32_S; align = 2; break; 
+        case TS_INT: case TS_ENUM: in = IN_I64_LOAD32_S; align = 2; break; 
         case TS_LLONG: case TS_ULLONG: in = IN_I64_LOAD; align = 3; break;
       } break;
     case TS_FLOAT:
@@ -2266,7 +2278,9 @@ static node_t *compile_cast(node_t *prn, const node_t *ptn, node_t *pan)
 {
   node_t *pcn, *patn = acode_type(pan);
   if (ptn->ts == TS_VOID) ; /* ok, any value can be dropped */
-  else if (!cast_compatible(ptn, patn)) neprintf(prn, "compile: impossible cast");
+  else if (!cast_compatible(ptn, patn)) {
+    n2eprintf(prn, pan, "compile: impossible cast");
+  }
   pcn = npnewcode(prn); ndcpy(ndnewbk(pcn), ptn);
   acode_swapin(pcn, pan);
   if (ptn->ts == TS_VOID) acode_pushin(pcn, IN_DROP);
@@ -2311,6 +2325,13 @@ static node_t *compile_binary(node_t *prn, node_t *pan1, tt_t op, node_t *pan2)
 {
   node_t *patn1 = acode_type(pan1), *patn2 = acode_type(pan2); 
   ts_t ts1 = patn1->ts, ts2 = patn2->ts;
+  if (((ts1 == TS_ENUM && ts2 == TS_ENUM && 
+        (patn1->name == 0 || patn2->name == 0 || patn1->name == patn2->name)) ||
+       (ts1 == TS_ENUM && ts_numerical(ts2)) || (ts_numerical(ts1) && ts2 == TS_ENUM))
+      && op >= TT_LT && op <= TT_NE) {
+    if (ts1 == TS_ENUM) ts1 = TS_INT;
+    if (ts2 == TS_ENUM) ts2 = TS_INT;
+  }
   if (ts_numerical(ts1) && ts_numerical(ts2)) {
     ts_t rts = ts_arith_common(ts1, ts2); 
     node_t rtn = mknd(), *prtn, *pcn = npnewcode(prn); ndsettype(&rtn, rts);
@@ -2423,7 +2444,7 @@ node_t *compile_intsel(node_t *prn, node_t *pan)
   node_t *patn = acode_type(pan);
   if (patn->ts != TS_INT) {
     node_t tn = mknd(); ndsettype(&tn, TS_INT);
-    if (!assign_compatible(&tn, patn)) neprintf(prn, "integer expression is expected"); 
+    if (!assign_compatible(&tn, patn)) n2eprintf(pan, prn, "integer selector expression is expected"); 
     if (!same_type(&tn, patn)) pan = compile_cast(prn, &tn, pan);
   }
   return pan;
@@ -2437,7 +2458,7 @@ static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan
   if (ts_numerical(patn2->ts) && ts_numerical(patn3->ts)) 
     pctn = ndsettype(&nt, ts_arith_common(patn2->ts, patn3->ts));
   else if (same_type(patn2, patn3)) pctn = patn2;
-  else neprintf(prn, "incompatible types of ?: operator branches");
+  else neprintf(prn, "incompatible types of logical operator branches");
   use_select = acode_simple_noeff(pan2) && acode_simple_noeff(pan3);
   if (!same_type(pctn, patn2)) pan2 = compile_cast(prn, pctn, pan2);
   if (!same_type(pctn, patn3)) pan3 = compile_cast(prn, pctn, pan3);

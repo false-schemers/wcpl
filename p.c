@@ -2407,7 +2407,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           parse_base_type(pw, ptn);
           if (parse_declarator(pw, ptn)) 
             reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
-          if (ptn->ts != TS_PTR && !(TS_INT <= ptn->ts && ptn->ts <= TS_DOUBLE))
+          if (ptn->ts != TS_PTR && ptn->ts != TS_ENUM && !(TS_INT <= ptn->ts && ptn->ts <= TS_DOUBLE))
             reprintf(pw, startpos, "unsuported vararg type");
           expect(pw, TT_RPAR, ")"); 
         } break;

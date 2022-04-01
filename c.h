@@ -1,7 +1,6 @@
 /* c.h (wcpl compiler) -- esl */
 
-#ifndef _C_H_INCLUDED
-#define _C_H_INCLUDED
+#pragma once
 
 /* globals */
 extern long    g_optlvl;   /* -O arg */
@@ -28,7 +27,3 @@ extern size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld, node_t **ppftn
 extern bool arithmetic_eval(node_t *pen, node_t *prn);
 /* evaluate integer expression pen statically, putting result into pi */
 extern bool arithmetic_eval_to_int(node_t *pen, int *pri);
-
-
-
-#endif /* ndef _C_H_INCLUDED */

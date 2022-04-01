@@ -1,7 +1,6 @@
 /* p.h (wcpl parser) -- esl */
 
-#ifndef _P_H_INCLUDED
-#define _P_H_INCLUDED
+#pragma once
 
 /* module names and files */
 extern sym_t base_from_path(const char *path);
@@ -53,7 +52,7 @@ extern int pwsid(pws_t *pw);
 extern sym_t pwscurmod(pws_t *pw);
 
 /* buffers of grammar nodes */
-#define ndbuf_t buf_t
+typedef buf_t ndbuf_t;
 
 /* symbol table */
 extern buf_t g_syminfo; /* triples of <sym_t, tt_t, info> sorted by sym */
@@ -150,24 +149,24 @@ extern node_t *ndset(node_t *dst, nt_t nt, int pwsid, int startpos);
 extern node_t *ndsettype(node_t *dst, ts_t ts);
 extern void ndclear(node_t* pn);
 extern void ndrem(node_t* pn, size_t i);
-#define ndswap(pn1, pn2) memswap(pn1, pn2, sizeof(node_t))
-#define ndbinit(mem) bufinit(mem, sizeof(node_t))
+#define ndswap(pn1, pn2) (memswap(pn1, pn2, sizeof(node_t)))
+#define ndbinit(mem) (bufinit(mem, sizeof(node_t)))
 extern void ndbicpy(buf_t* mem, const ndbuf_t* pb);
 extern void ndbfini(ndbuf_t* pb);
 extern void ndbclear(ndbuf_t* pb);
-#define ndblen(pb) buflen(pb)
+#define ndblen(pb) (buflen(pb))
 #define ndbref(pb, i) ((node_t*)bufref(pb, i))
-#define ndbnewbk(pb) ndinit(bufnewbk(pb))
-#define ndbinsnew(pb, i) ndinit(bufins(pb, i))
-#define ndbpushbk(pb, pn) ndicpy(bufnewbk(pb), pn)
+#define ndbnewbk(pb) (ndinit(bufnewbk(pb)))
+#define ndbinsnew(pb, i) (ndinit(bufins(pb, i)))
+#define ndbpushbk(pb, pn) (ndicpy(bufnewbk(pb), pn))
 #define ndbrem(pb, i) do { ndbuf_t *_pb = pb; size_t _i = i; ndfini(bufref(_pb, _i)); bufrem(_pb, _i); } while(0)
-#define ndlen(pn) ndblen(&(pn)->body)
-#define ndref(pn, i) ndbref(&(pn)->body, i)
-#define ndcref(pn, i) ndbref(&((node_t*)(pn))->body, i)
-#define ndnewfr(pn) ndbinsnew(&(pn)->body, 0)
-#define ndnewbk(pn) ndbnewbk(&(pn)->body)
-#define ndpushbk(pn, psn) ndbpushbk(&(pn)->body, psn)
-#define ndinsnew(pn, i) ndbinsnew(&(pn)->body, i)
+#define ndlen(pn) (ndblen(&(pn)->body))
+#define ndref(pn, i) (ndbref(&(pn)->body, i))
+#define ndcref(pn, i) (ndbref(&((node_t*)(pn))->body, i))
+#define ndnewfr(pn) (ndbinsnew(&(pn)->body, 0))
+#define ndnewbk(pn) (ndbnewbk(&(pn)->body))
+#define ndpushbk(pn, psn) (ndbpushbk(&(pn)->body, psn))
+#define ndinsnew(pn, i) (ndbinsnew(&(pn)->body, i))
 extern node_t *ndinsfr(node_t *pn, nt_t nt);
 extern node_t *ndinsbk(node_t *pn, nt_t nt);
 
@@ -239,7 +238,7 @@ extern const node_t *post_symbol(sym_t mod, node_t *pvn, bool final, bool hide);
 /* return ptr to NT_IMPORT node or NULL if name is not declared */
 extern const node_t *lookup_global(sym_t name);
 /* mark NT_IMPORT node as referenced (affects imports only) */
-void mark_global_referenced(const node_t *pgn);
+extern void mark_global_referenced(const node_t *pgn);
 /* return ptr to NT_TYPE node or NULL if name is not declared */
 extern const node_t *lookup_eus_type(ts_t ts, sym_t name); /* enum/union/struct */
 
@@ -253,5 +252,3 @@ extern const char *ts_name(ts_t ts);
 extern const char *sc_name(sc_t sc);
 extern const char *intr_name(intr_t intr);
 extern const char *op_name(tt_t op); /* operators only */
-
-#endif /* ndef _P_H_INCLUDED */

@@ -1,8 +1,6 @@
 /* w.h (wasm interface) -- esl */
 
-#ifndef _W_H_INCLUDED
-#define _W_H_INCLUDED
-
+#pragma once
 
 /* wasm binary types */
 
@@ -321,11 +319,11 @@ typedef struct funcsig {
 extern funcsig_t* fsinit(funcsig_t* pf);
 extern void fsfini(funcsig_t* pf);
 typedef buf_t fsbuf_t; 
-#define fsbinit(mem) bufinit(mem, sizeof(funcsig_t))
+#define fsbinit(mem) (bufinit(mem, sizeof(funcsig_t)))
 extern void fsbfini(fsbuf_t* pb);
-#define fsblen(pb) buflen(pb)
+#define fsblen(pb) (buflen(pb))
 #define fsbref(pb, i) ((funcsig_t*)bufref(pb, i))
-#define fsbnewbk(pb) fsinit(bufnewbk(pb))
+#define fsbnewbk(pb) (fsinit(bufnewbk(pb)))
 extern unsigned fsintern(fsbuf_t* pb, funcsig_t *pfs); /* may clear pfs */
 extern unsigned funcsig(fsbuf_t* pb, size_t argc, size_t retc, ...);
 
@@ -344,19 +342,19 @@ typedef struct inscode {
 } inscode_t;
 
 typedef buf_t icbuf_t; 
-#define icbinit(mem) bufinit(mem, sizeof(inscode_t))
-#define icbfini(pb) buffini(pb)
-#define icblen(pb) buflen(pb)
+#define icbinit(mem) (bufinit(mem, sizeof(inscode_t)))
+#define icbfini(pb) (buffini(pb))
+#define icblen(pb) (buflen(pb))
 #define icbref(pb, i) ((inscode_t*)bufref(pb, i))
 #define icbrem(pb, i) (bufrem(pb, i))
 #define icbnewfr(pb) ((inscode_t*)bufnewfr(pb))
 #define icbnewbk(pb) ((inscode_t*)bufnewbk(pb))
-#define icbpopbk(pb) bufpopbk(pb)
+#define icbpopbk(pb) (bufpopbk(pb))
 
-#define vtblen(pb) buflen(pb)
+#define vtblen(pb) (buflen(pb))
 #define vtbref(pb, i) ((valtype_t*)bufref(pb, i))
 #define vtbnewbk(pb) ((valtype_t*)bufnewbk(pb))
-#define idxblen(pb) buflen(pb)
+#define idxblen(pb) (buflen(pb))
 #define idxbref(pb, i) ((unsigned*)bufref(pb, i))
 #define idxbnewbk(pb) ((unsigned*)bufnewbk(pb))
 
@@ -378,12 +376,12 @@ typedef struct entry {
 extern entry_t* entinit(entry_t* pf, entkind_t ek);
 extern void entfini(entry_t* pf);
 typedef buf_t entbuf_t; 
-#define entbinit(mem) bufinit(mem, sizeof(entry_t))
+#define entbinit(mem) (bufinit(mem, sizeof(entry_t)))
 extern void entbfini(entbuf_t* pb);
-#define entblen(pb) buflen(pb)
+#define entblen(pb) (buflen(pb))
 #define entbref(pb, i) ((entry_t*)bufref(pb, i))
-#define entbnewbk(pb, ek) entinit(bufnewbk(pb), ek)
-#define entbins(pb, i, ek) entinit(bufins(pb, i), ek)
+#define entbnewbk(pb, ek) (entinit(bufnewbk(pb), ek))
+#define entbins(pb, i, ek) (entinit(bufins(pb, i), ek))
 
 typedef struct dseg {
   dsmode_t dsm;
@@ -395,11 +393,11 @@ typedef struct dseg {
 extern dseg_t* dseginit(dseg_t* ps, dsmode_t dsm);
 extern void dsegfini(dseg_t* ps);
 typedef buf_t dsegbuf_t; 
-#define dsegbinit(mem) bufinit(mem, sizeof(dseg_t))
+#define dsegbinit(mem) (bufinit(mem, sizeof(dseg_t)))
 extern void dsegbfini(dsegbuf_t* pb);
-#define dsegblen(pb) buflen(pb)
+#define dsegblen(pb) (buflen(pb))
 #define dsegbref(pb, i) ((dseg_t*)bufref(pb, i))
-#define dsegbnewbk(pb, dsm) dseginit(bufnewbk(pb), dsm)
+#define dsegbnewbk(pb, dsm) (dseginit(bufnewbk(pb), dsm))
 
 typedef struct eseg {
   esmode_t esm;
@@ -415,11 +413,11 @@ typedef struct eseg {
 extern eseg_t* eseginit(eseg_t* ps, esmode_t esm);
 extern void esegfini(eseg_t* ps);
 typedef buf_t esegbuf_t; 
-#define esegbinit(mem) bufinit(mem, sizeof(eseg_t))
+#define esegbinit(mem) (bufinit(mem, sizeof(eseg_t)))
 extern void esegbfini(esegbuf_t* pb);
-#define esegblen(pb) buflen(pb)
+#define esegblen(pb) (buflen(pb))
 #define esegbref(pb, i) ((eseg_t*)bufref(pb, i))
-#define esegbnewbk(pb, esm) eseginit(bufnewbk(pb), esm)
+#define esegbnewbk(pb, esm) (eseginit(bufnewbk(pb), esm))
 
 
 /* wasm (binary) module for linked executable */
@@ -483,12 +481,12 @@ typedef struct watie {
 extern watie_t* watieinit(watie_t* pie, iekind_t iek);
 extern void watiefini(watie_t* pie);
 typedef buf_t watiebuf_t; 
-#define watiebinit(mem) bufinit(mem, sizeof(watie_t))
+#define watiebinit(mem) (bufinit(mem, sizeof(watie_t)))
 extern void watiebfini(watiebuf_t* pb);
-#define watieblen(pb) buflen(pb)
+#define watieblen(pb) (buflen(pb))
 #define watiebref(pb, i) ((watie_t*)bufref(pb, i))
-#define watiebnewfr(pb, iek) watieinit(bufnewfr(pb), iek)
-#define watiebnewbk(pb, iek) watieinit(bufnewbk(pb), iek)
+#define watiebnewfr(pb, iek) (watieinit(bufnewfr(pb), iek))
+#define watiebnewbk(pb, iek) (watieinit(bufnewbk(pb), iek))
 extern void watiebdel(watiebuf_t* pb, iekind_t iek, sym_t mod, sym_t id);
 
 typedef enum main {
@@ -508,11 +506,11 @@ extern void wat_module_clear(wat_module_t* pm);
 extern void wat_module_fini(wat_module_t* pm);
 
 typedef buf_t wat_module_buf_t; 
-#define wat_module_buf_init(mem) bufinit(mem, sizeof(wat_module_t))
+#define wat_module_buf_init(mem) (bufinit(mem, sizeof(wat_module_t)))
 extern void wat_module_buf_fini(wat_module_buf_t* pb);
-#define wat_module_buf_len(pb) buflen(pb)
+#define wat_module_buf_len(pb) (buflen(pb))
 #define wat_module_buf_ref(pb, i) ((wat_module_t*)bufref(pb, i))
-#define wat_module_buf_newbk(pb) wat_module_init(bufnewbk(pb))
+#define wat_module_buf_newbk(pb) (wat_module_init(bufnewbk(pb)))
 
 /* read/write 'object' wat text module */
 extern void read_wat_module(const char *fname, wat_module_t* pm);
@@ -521,5 +519,3 @@ extern void write_wat_module(wat_module_t* pm, FILE *pf);
 
 /* linker */
 extern void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm); 
-
-#endif /* ndef _W_H_INCLUDED */

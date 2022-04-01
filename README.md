@@ -10,7 +10,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - `sizeof(type)`, `alignof(type)`, and `offsetof(type, field)` are supported
 - static evaluation of expressions (numerics only in general, numerics+static pointers in top-level initializers)
 - `asuint32`, `asfloat`, `asuint64`, `asdouble` reinterpret-cast-style intrinsics
-- limited macros: `#define FOO 1234`, `#define FOO (expr)`, `#define FOO do {...} while (0)` as well as 
+- top-level macros: `#define FOO 1234`, `#define FOO (expr)`, `#define FOO do {...} while (0)` as well as 
   corresponding parameterized forms (`#define FOO(a, b) ...`)   
 - `const` and `volatile` specifiers are allowed but ignored
 - variables can be declared at any top-level position in a block
@@ -29,10 +29,13 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 
 # C and library features not yet supported
 
+- adjacent string literals concatenation
 - `sizeof(expr)`, `alignof(expr)`, and `offsetof(expr, field)`
 - implicit conversions of arrays to element pointers; explicit `&arr[0]` required for now
 - implicit promotions of char and short types as vararg ... arguments (for now it's reported as an error)
-- implicit conversion of 0 to NULL (also currently reported as an error)
+- implicit conversion of `0` to `NULL` (also currently reported as an error)
+- implicit conversion of pointer to boolean (now requires explicit `!= NULL`)
+- implicit conversion of function pointer to function (reported as an error)
 - taking address of a global scalar var (for now, `&` works for global arrays/structs/unions only)
 - `{}` initializers for locals in function scope
 - `static` variables in function scope
