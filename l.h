@@ -111,6 +111,7 @@ extern void *bufnewfr(buf_t* pb);
 extern void  bufpopfr(buf_t* pb);
 extern void *bufalloc(buf_t* pb, size_t n);
 extern void bufrev(buf_t* pb);
+extern void bufcat(buf_t* pb, const buf_t* pab);
 extern void bufqsort(buf_t* pb, int (*cmp)(const void *, const void *)); /* unstable */
 extern void bufremdups(buf_t* pb, int (*cmp)(const void *, const void *), void (*fini)(void *)); /* adjacent */
 extern void* bufsearch(const buf_t* pb, const void *pe, int (*cmp)(const void *, const void *)); /* linear */
@@ -169,6 +170,7 @@ extern void chbputg(double v, chbuf_t* pcb);
 extern void chbputvf(chbuf_t* pcb, const char *fmt, va_list ap);
 extern void chbputf(chbuf_t* pcb, const char *fmt, ...);
 extern void chbput4le(unsigned v, chbuf_t* pcb);
+extern void chbputtime(const char *fmt, const struct tm *tp, chbuf_t* pcb);
 extern void chbinsc(chbuf_t* pcb, size_t n, int c);
 extern void chbinss(chbuf_t* pcb, size_t n, const char *s);
 extern char* chbset(chbuf_t* pcb, const char *s, size_t n);

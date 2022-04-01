@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <wchar.h>
+#include <time.h>
 #include <math.h>
 #include "l.h"
 
@@ -713,6 +714,13 @@ void bufrev(buf_t* pb)
   }
 }
 
+void bufcat(buf_t* pb, const buf_t* pab)
+{
+  size_t an = buflen(pab);
+  assert(pb->esz == pab->esz);
+  memcpy(bufalloc(pb, an), pab->buf, an*pab->esz);
+}
+
 /* unstable sort */
 void bufqsort(buf_t* pb, int (*cmp)(const void *, const void *))
 {
@@ -1081,6 +1089,13 @@ void chbput4le(unsigned v, chbuf_t* pb)
   chbputc(v & 0xFF, pb); v >>= 8;
   chbputc(v & 0xFF, pb); v >>= 8;
   chbputc(v & 0xFF, pb);
+}
+
+void chbputtime(const char *fmt, const struct tm *tp, chbuf_t* pcb)
+{
+  char buf[201]; /* always enough? */
+  assert(fmt); assert(pcb);
+  if (tp != NULL && strftime(buf, 200, fmt, tp)) chbputs(buf, pcb);
 }
 
 void chbinsc(chbuf_t* pcb, size_t n, int c)

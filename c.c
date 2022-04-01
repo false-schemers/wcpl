@@ -140,7 +140,7 @@ static bool ts_unsigned(ts_t ts)
   return false;
 }
 
-valtype_t ts_to_blocktype(ts_t ts)
+static valtype_t ts_to_blocktype(ts_t ts)
 {
   switch (ts) {
     case TS_VOID:                   return BT_VOID;
@@ -203,7 +203,7 @@ static bool ts_arith_assign_compatible(ts_t ts1, ts_t ts2)
   return ts_arith_common(ts1, ts2) == ts1;
 }
 
-unsigned long long integral_mask(ts_t ts, unsigned long long u)
+static unsigned long long integral_mask(ts_t ts, unsigned long long u)
 {
   switch (ts) {
     case TS_CHAR: case TS_UCHAR:    
@@ -222,7 +222,7 @@ unsigned long long integral_mask(ts_t ts, unsigned long long u)
   return u;
 }
 
-long long integral_sext(ts_t ts, long long i)
+static long long integral_sext(ts_t ts, long long i)
 {
   switch (ts) {
     case TS_CHAR: case TS_UCHAR:
@@ -245,7 +245,7 @@ long long integral_sext(ts_t ts, long long i)
   return i;
 }
 
-void numval_convert(ts_t tsto, ts_t tsfrom, numval_t *pnv)
+static void numval_convert(ts_t tsto, ts_t tsfrom, numval_t *pnv)
 {
   assert(pnv);
   assert(ts_numerical(tsto) && ts_numerical(tsfrom));
@@ -270,10 +270,10 @@ void numval_convert(ts_t tsto, ts_t tsfrom, numval_t *pnv)
 }
 
 /* unary operation with a number */
-ts_t numval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
+static ts_t numval_unop(tt_t op, ts_t tx, const numval_t *pvx, numval_t *pvz)
 {
   ts_t tz = ts_integral_promote(tx);
-  numval_convert(tz, tx, &vx);
+  numval_t vx = *pvx; numval_convert(tz, tx, &vx);
   switch (tz) {
     case TS_DOUBLE: {
       double x = vx.d;
@@ -322,10 +322,11 @@ ts_t numval_unop(tt_t op, ts_t tx, numval_t vx, numval_t *pvz)
 }  
 
 /* binary operation between two numbers */
-ts_t numval_binop(tt_t op, ts_t tx, numval_t vx, ts_t ty, numval_t vy, numval_t *pvz)
+static ts_t numval_binop(tt_t op, ts_t tx, const numval_t *pvx, ts_t ty, const numval_t *pvy, numval_t *pvz)
 {
   ts_t tz = ts_arith_common(tx, ty);
-  numval_convert(tz, tx, &vx), numval_convert(tz, ty, &vy);
+  numval_t vx = *pvx; numval_convert(tz, tx, &vx);
+  numval_t vy = *pvy; numval_convert(tz, ty, &vy);
   switch (tz) {
     case TS_DOUBLE: {
       double x = vx.d, y = vy.d;
@@ -678,7 +679,7 @@ bool static_eval(node_t *pn, seval_t *pr)
         }
       } else if (static_eval(ndref(pn, 0), &rx)) {
         if (ts_numerical(rx.ts)) {
-          numval_t vz; ts_t tz = numval_unop(pn->op, rx.ts, rx.val, &vz);
+          numval_t vz; ts_t tz = numval_unop(pn->op, rx.ts, &rx.val, &vz);
           if (tz != TS_VOID) { pr->ts = tz; pr->val = vz; ok = true; }
         } else if (rx.ts == TS_PTR && pn->op == TT_NOT) {
           pr->ts = TS_INT; pr->val.i = 0; ok = true; /* dseg ptr != NULL */
@@ -691,7 +692,7 @@ bool static_eval(node_t *pn, seval_t *pr)
       assert(ndlen(pn) == 2); 
       if (static_eval(ndref(pn, 0), &rx) && static_eval(ndref(pn, 1), &ry)) {
         if (ts_numerical(rx.ts) && ts_numerical(ry.ts)) {
-          numval_t vz; ts_t tz = numval_binop(pn->op, rx.ts, rx.val, ry.ts, ry.val, &vz);
+          numval_t vz; ts_t tz = numval_binop(pn->op, rx.ts, &rx.val, ry.ts, &ry.val, &vz);
           if (tz != TS_VOID) { pr->ts = tz; pr->val = vz; ok = true; }
         } else if (rx.ts == TS_PTR && ry.ts == TS_INT && (pn->op == TT_MINUS || pn->op == TT_PLUS)) {
           rx.val.i = (pn->op == TT_MINUS) ? rx.val.i - ry.val.i : rx.val.i + ry.val.i;
@@ -843,7 +844,7 @@ static void post_vardecl(sym_t mod, node_t *pn, bool final, bool hide)
    * NONE is to be changed to EXTERN when actually referenced from module */
   pin = post_symbol(mod, pn, final, hide);
   if (getverbosity() > 0) {
-    fprintf(stderr, "%s final=%d, hide=%d =>\n", symname(pn->name), final, hide);
+    fprintf(stderr, "%s final=%d, hide=%d =>\n", symname(pn->name), (int)final, (int)hide);
     dump_node(pin, stderr);
   }
 }
@@ -1104,7 +1105,7 @@ static sym_t henv_lookup(sym_t oname, henv_t *phe, int *pupc)
 {
   if (pupc) *pupc = 0;
   while (phe) {
-    sym_t *pon = bufsearch(&phe->idmap, &oname, sym_cmp);
+    sym_t *pon = bufsearch(&phe->idmap, &oname, &sym_cmp);
     if (pon) return pon[1];
     phe = phe->up; if (pupc) *pupc += 1;
   }
@@ -1220,7 +1221,7 @@ static void fundef_hoist_locals(node_t *pdn)
     node_t *ptni = ndref(ptn, i); 
     sym_t name = (ptni->nt == NT_VARDECL) ? ptni->name : 0;
     if (name) {
-      sym_t *pon = bufsearch(&he.idmap, &name, sym_cmp);
+      sym_t *pon = bufsearch(&he.idmap, &name, &sym_cmp);
       if (pon) n2eprintf(ptni, pdn, "duplicate parameter id: %s", symname(name));
       else pon = bufnewbk(&he.idmap), pon[0] = pon[1] = name; 
     }
@@ -1258,34 +1259,32 @@ int case_cmp(const void *p1, const void *p2)
   return i1 < i2 ? -1 : 1;
 }
 
-#if 0 /* NYI */
-/* convert init display to a bunch of assignments */
-static void init_wasmify(node_t *pvn, node_t *ptn, node_t *pdn, size_t i, node_t *pbn)
-{
-  /* input assertion: elements pdn[i]... fill bulk type ptn */
-  if (ptn->ts == TS_ARRAY) {
-    int count = 0; node_t *petn, *pcn; assert(ndlen(ptn) == 2);
-    petn = ndref(ptn, 0); pcn = ndref(ptn, 1); 
-    if (!arithmetic_eval_to_int(pcn, &count) || count <= 0)
-       n2eprintf(pcn, ptn, "can't init arrays of nonconstant/nonpositive size");
-    while (count > 0) {
-      if (i < 
-    }
-    
-  } else if (ptn->ts == TS_STRUCT) {
-  } else if (ptn->ts == TS_UNION) {
-  } else {
-    n2eprintf(pvn, pdn, "invalid type for {} initializer");
-  }
-}
-#endif
+///* convert init display to a bunch of assignments */
+//static void init_wasmify(node_t *pvn, node_t *ptn, node_t *pdn, size_t i, node_t *pbn)
+//{
+//  /* input assertion: elements pdn[i]... fill bulk type ptn */
+//  if (ptn->ts == TS_ARRAY) {
+//    int count = 0; node_t *petn, *pcn; assert(ndlen(ptn) == 2);
+//    petn = ndref(ptn, 0); pcn = ndref(ptn, 1); 
+//    if (!arithmetic_eval_to_int(pcn, &count) || count <= 0)
+//       n2eprintf(pcn, ptn, "can't init arrays of nonconstant/nonpositive size");
+//    while (count > 0) {
+//      if (i < 
+//    }
+//    
+//  } else if (ptn->ts == TS_STRUCT) {
+//  } else if (ptn->ts == TS_UNION) {
+//  } else {
+//    n2eprintf(pvn, pdn, "invalid type for {} initializer");
+//  }
+//}
 
 /* convert node wasm conventions, simplify operators and control */
 static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
 {
   switch (pn->nt) {
     case NT_IDENTIFIER: {
-      vi_t *pvi = bufbsearch(pvib, &pn->name, sym_cmp);
+      vi_t *pvi = bufbsearch(pvib, &pn->name, &sym_cmp);
       if (pvi) {
         if (pvi->sc == SC_AUTO && !pvi->fld) { /* indirect */
           pn->name = pvi->reg;
@@ -1308,7 +1307,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
       switch (pn->intr) {
         case INTR_VAETC: { /* () => ap$ */
           sym_t ap = intern("ap$");
-          vi_t *pvi = bufbsearch(pvib, &ap, sym_cmp);
+          vi_t *pvi = bufbsearch(pvib, &ap, &sym_cmp);
           if (!pvi) neprintf(pn, "access to ... in non-vararg function");
           assert(pvi->sc == SC_REGISTER && !pvi->fld);
           pn->nt = NT_IDENTIFIER; pn->name = pvi->reg;
@@ -1340,23 +1339,21 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
         pn->op = TT_DOT;
       } 
     } break;
-#if 0 /* NYI */
-    case NT_ASSIGN: {
-      node_t *pln, *prn;
-      assert(ndlen(pn) == 2);
-      pln = ndref(pn, 0), prn = ndref(pn, 1);
-      if (pn->op == TT_ASN && pln->nt == NT_IDENTIFIER && prn->nt == NT_DISPLAY) {
-        node_t nd = mknd(); ndset(&nd, NT_BLOCK, pn->pwsid, pn->startpos);
-        assert(ndlen(prn) >= 1 && ndref(prn, 0)->nt == NT_TYPE);
-        init_wasmify(pln, ndref(prn, 0), prn, 1, &nd);
-        ndswap(pn, &nd); ndfini(&nd);
-        expr_wasmify(pn, pvib, plib);
-      } else {
-        expr_wasmify(pln, pvib, plib);
-        expr_wasmify(prn, pvib, plib);
-      }
-    } break;
-#endif
+    //case NT_ASSIGN: {
+    //  node_t *pln, *prn;
+    //  assert(ndlen(pn) == 2);
+    //  pln = ndref(pn, 0), prn = ndref(pn, 1);
+    //  if (pn->op == TT_ASN && pln->nt == NT_IDENTIFIER && prn->nt == NT_DISPLAY) {
+    //    node_t nd = mknd(); ndset(&nd, NT_BLOCK, pn->pwsid, pn->startpos);
+    //    assert(ndlen(prn) >= 1 && ndref(prn, 0)->nt == NT_TYPE);
+    //    init_wasmify(pln, ndref(prn, 0), prn, 1, &nd);
+    //    ndswap(pn, &nd); ndfini(&nd);
+    //    expr_wasmify(pn, pvib, plib);
+    //  } else {
+    //    expr_wasmify(pln, pvib, plib);
+    //    expr_wasmify(prn, pvib, plib);
+    //  }
+    //} break;
     case NT_WHILE: {
       /* while (x) s => {{cl: if (x) {s; goto cl;}} bl:} */
       sym_t bl = rpalloc_label(), cl = rpalloc_label();
@@ -1433,7 +1430,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
         if (psn->nt == NT_CASE) { ndswap(ndnewbk(psn), ndref(pni, 0)); ndrem(pni, 0); }
         ndinsbk(psn, NT_GOTO)->name = l; *pl = l; 
       }
-      if (ndlen(pn) > 2) qsort(ndref(pn, 1), ndlen(pn)-1, sizeof(node_t), case_cmp);
+      if (ndlen(pn) > 2) qsort(ndref(pn, 1), ndlen(pn)-1, sizeof(node_t), &case_cmp);
       if (ndlen(pn) == 1 || ndref(pn, 1)->nt != NT_DEFAULT) {
         node_t *psn = ndset(ndinsnew(pn, 1), NT_DEFAULT, pn->pwsid, pn->startpos);
         ndinsbk(psn, NT_GOTO)->name = bl;  
@@ -1459,7 +1456,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
       for (i = 0; i < ndlen(pn); ++i) expr_wasmify(ndref(pn, i), pvib, plib);
     } break;
     case NT_GOTO: {
-      int *pil = bufsearch(plib, &pn->name, sym_cmp);
+      int *pil = bufsearch(plib, &pn->name, &sym_cmp);
       if (!pil) neprintf(pn, "goto to unknown or mispositioned label");
       else assert(pil[1] == 0); /* not a break/continue target */
     } break;
@@ -1470,8 +1467,8 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
         assert(ndlen(pn) == 1);
         expr_wasmify(ndref(pn, 0), pvib, plib);
       }
-      prvi = bufbsearch(pvib, &rp, sym_cmp);
-      pbvi = bufbsearch(pvib, &bp, sym_cmp);
+      prvi = bufbsearch(pvib, &rp, &sym_cmp);
+      pbvi = bufbsearch(pvib, &bp, &sym_cmp);
       if (prvi) { /* return x => { *rp$ = x; return; } */
         if (ndlen(pn) != 1) neprintf(pn, "return value expected"); 
         wrap_node(lift_arg0(pn), NT_ASSIGN); pn->op = TT_ASN;
@@ -1521,22 +1518,20 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
 /* check if node ends in NT_RETURN */
 static bool ends_in_return(node_t *pn)
 {
-#if 1
   return (pn && pn->nt == NT_RETURN);
-#else /* relaxed definition produces invalid WASM! */
-  if (pn) {
-    switch (pn->nt) {
-      case NT_RETURN:
-        return true;
-      case NT_IF:
-        return ndlen(pn) == 3 && 
-          ends_in_return(ndref(pn, 1)) && ends_in_return(ndref(pn, 2));
-      case NT_BLOCK: 
-        return ndlen(pn) > 0 && ends_in_return(ndref(pn, ndlen(pn)-1));
-    }
-  }
-  return false;
-#endif
+  ///* relaxed definition produces invalid WASM! */
+  //if (pn) {
+  //  switch (pn->nt) {
+  //    case NT_RETURN:
+  //      return true;
+  //    case NT_IF:
+  //      return ndlen(pn) == 3 && 
+  //        ends_in_return(ndref(pn, 1)) && ends_in_return(ndref(pn, 2));
+  //    case NT_BLOCK: 
+  //      return ndlen(pn) > 0 && ends_in_return(ndref(pn, ndlen(pn)-1));
+  //  }
+  //}
+  //return false;
 }
 
 /* convert function to wasm conventions, simplify */
@@ -1681,7 +1676,7 @@ static void fundef_wasmify(node_t *pdn)
   }
   
   /* sort vib by name for faster lookup in wasmify_expr */
-  bufqsort(&vib, sym_cmp);
+  bufqsort(&vib, &sym_cmp);
 
   for (/* use current i */; i < ndlen(pbn); ++i) {
     node_t *pni = ndref(pbn, i);
@@ -1693,7 +1688,7 @@ static void fundef_wasmify(node_t *pdn)
   if (ndref(ptn, 0)->ts == TS_VOID && !explicit_tail_ret) {
     /* insert explicit return */
     sym_t bp = intern("bp$"); 
-    vi_t *pvi = bufbsearch(&vib, &bp, sym_cmp);
+    vi_t *pvi = bufbsearch(&vib, &bp, &sym_cmp);
     node_t *psn = ndinsbk(pbn, NT_RETURN);
     if (pvi) psn->name = bp;
   }
@@ -1713,7 +1708,7 @@ typedef struct ri {
 static const node_t *lookup_var_type(sym_t name, buf_t *prib, sym_t *pmod)
 {
   ri_t *pri; const node_t *pgn;
-  if ((pri = bufbsearch(prib, &name, sym_cmp)) != NULL) {
+  if ((pri = bufbsearch(prib, &name, &sym_cmp)) != NULL) {
     *pmod = 0; /* local symbol */
     return pri->ptn;
   } else if ((pgn = lookup_global(name)) != NULL) {
@@ -2100,7 +2095,7 @@ static bool asm_binary(ts_t ts, tt_t op, icbuf_t *pdata)
       } break;
     default: assert(false);
   }
-  if (!in) return false;
+  if (in == 0) return false;
   icbnewbk(pdata)->in = in; 
   return true;
 }
@@ -2190,7 +2185,8 @@ static int acode_rval_get(node_t *pan)
   if (pan->nt == NT_ACODE && icblen(&pan->data) == 1) {
     instr_t in = icbref(&pan->data, 0)->in;
     return (in == IN_GLOBAL_GET || in == IN_LOCAL_GET) ? in : 0;
-  } else return 0;
+  } 
+  return 0;
 }
 
 /* check if this node is memory load; returns 0 or instruction code */
@@ -2199,7 +2195,8 @@ static int acode_rval_load(node_t *pan)
   if (pan->nt == NT_ACODE && icblen(&pan->data) >= 1) {
     instr_t in = icbref(&pan->data, icblen(&pan->data)-1)->in;
     return (in >= IN_I32_LOAD && in <= IN_I64_LOAD32_U) ? in : 0;
-  } else return 0;
+  } 
+  return 0;
 }
 
 /* push argument-less instruction in to the end of pcn code */
@@ -2408,7 +2405,7 @@ static node_t *compile_unary(node_t *prn, tt_t op, node_t *pan)
       if (asm_binary(rts, TT_XOR, &pcn->data)) return pcn;
     } else if (op == TT_NOT && (rts == TS_FLOAT || rts == TS_DOUBLE)) {
       /* no EQZ instructions for floats; !x => x==0.0 */
-      if (rts == TS_FLOAT) v.f = 0.0; else v.d = 0.0;
+      if (rts == TS_FLOAT) v.f = 0.0f; else v.d = 0.0;
       asm_numerical_const(rts, &v, icbnewbk(&pcn->data)); 
       acode_swapin(pcn, pan);
       if (rts != ts) asm_numerical_cast(rts, ts, &pcn->data);
@@ -2435,9 +2432,9 @@ node_t *compile_booltest(node_t *prn, node_t *pan)
     numval_t v; node_t *pzn = compile_numlit(prn, TS_ULONG, (v.i = 0, &v));
     if (patn->ts == TS_PTR) pan = compile_cast(prn, acode_type(pzn), pan);
     return compile_binary(prn, pan, TT_NE, pzn);
-  } else { /* good as-is */
-    return pan;
-  }
+  } 
+  /* else good as-is */
+  return pan;
 }
 
 /* compile x to serve as an integer selector */
@@ -2452,6 +2449,17 @@ node_t *compile_intsel(node_t *prn, node_t *pan)
   return pan;
 }
 
+/* check for pointer type compatibility; returns common type or NULL */
+static node_t *common_ptr_type(node_t *patn1, node_t *patn2)
+{
+  assert(patn1->ts == TS_PTR && patn2->ts == TS_PTR);
+  assert(ndlen(patn1) == 1 && ndlen(patn2) == 1);
+  if (ndref(patn1, 0)->ts == TS_VOID) return patn2;
+  if (ndref(patn2, 0)->ts == TS_VOID) return patn1;
+  if (same_type(ndref(patn1, 0), ndref(patn2, 0))) return patn1;
+  return NULL;
+}
+
 /* compile x ? y : z operator */
 static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan3)
 {
@@ -2459,6 +2467,7 @@ static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan
   node_t nt = mknd(), *pcn = npnewcode(prn), *pctn = NULL; bool use_select;
   if (ts_numerical(patn2->ts) && ts_numerical(patn3->ts)) 
     pctn = ndsettype(&nt, ts_arith_common(patn2->ts, patn3->ts));
+  else if (patn2->ts == TS_PTR && patn3->ts == TS_PTR && (pctn = common_ptr_type(patn2, patn3)) != NULL) /* ok */; 
   else if (same_type(patn2, patn3)) pctn = patn2;
   else neprintf(prn, "incompatible types of logical operator branches");
   use_select = acode_simple_noeff(pan2) && acode_simple_noeff(pan3);
@@ -2509,6 +2518,7 @@ static node_t *compile_ataddr(node_t *prn, node_t *pan)
     asm_load(ptn->ts, petn->ts, 0, &pcn->data);
     return pcn;
   }
+  return NULL; /* never */
 } 
 
 /* compile x.fld; expects bulk struct/union type */
@@ -2648,10 +2658,9 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op,
     pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; 
     pic->id = pname; pic->arg.u = VT_I32; /* wasm32 */ 
     return pan;    
-  } else {
-    neprintf(prn, "not a valid lvalue");
-    return NULL;
   }
+  neprintf(prn, "not a valid lvalue");
+  return NULL;
 } 
 
 /* compile call expression; pdn != NULL for suspected bulk return call */
@@ -2712,7 +2721,7 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     /* collect remaining arguments into a stack array of va_arg_t */
     sym_t pname = rpalloc(VT_I32); /* arg frame ptr (wasm32) */
     /* frame is an array of uint64s (va_arg_t), aligned to 16 */
-    size_t asz = 8, nargs = buflen(pab)-i, framesz = (nargs*asz + 15) & ~0xFLL, basei;
+    size_t asz = 8, nargs = buflen(pab)-i, framesz = (size_t)((nargs*asz + 15) & ~0xFLL), basei;
     inscode_t *pic = icbnewfr(&pcn->data); pic->in = IN_REGDECL;
     pic->id = pname; pic->arg.u = VT_I32; /* wasm32 pointer */
     acode_pushin_id_mod(pcn, IN_GLOBAL_GET, g_sp_id, g_crt_mod);
@@ -2966,7 +2975,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
               if (ptni->ts != TS_ULONG) asm_numerical_cast(TS_ULONG, ptni->ts, &pan->data);
               acode_pushin_uarg(pan, IN_I32_CONST, 15);  
               acode_pushin(pan, IN_I32_ADD); 
-              acode_pushin_uarg(pan, IN_I32_CONST, 0xFFFFFFF0);
+              acode_pushin_uarg(pan, IN_I32_CONST, 0xFFFFFFF0U);
               acode_pushin(pan, IN_I32_AND);   
               acode_pushin_id(pan, IN_LOCAL_SET, sname);
               acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_crt_mod);
@@ -3131,7 +3140,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
       if (!pcn) { /* failed? must be scalar assignment */
         tt_t op; /* TT_PLUS from TT_PLUS_ASN etc. */
         if (!pan2) pan2 = expr_compile(pvn, prib, NULL);
-        op = (pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? pn->op - 1 : 0;  
+        op = (tt_t)((pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? (int)pn->op - 1 : 0);
         pcn = compile_asncombo(pn, pan, ptn, op, pan2, false); 
       }
     } break;
@@ -3244,7 +3253,7 @@ static node_t *fundef_compile(node_t *pdn)
     if (name) { ri_t *pri = bufnewbk(&rib); pri->name = name; pri->ptn = ptni; }
     ndpushbk(prbn, pdni); /* as-is, entry already converted */
   }
-  bufqsort(&rib, sym_cmp);
+  bufqsort(&rib, &sym_cmp);
 
   /* go over body statements */
   for (/* use current i */; i < ndlen(pbn); ++i) {
@@ -3322,68 +3331,68 @@ static node_t *fundef_flatten(node_t *pdn)
 static void fundef_peephole(node_t *pcn, int optlvl)
 {
   icbuf_t *picb = &pcn->data; size_t i, nmods;
-repeat:
-  for (nmods = i = 0; i < icblen(picb); /* rem or bump i */) {
-    size_t nexti = i+1;
-    if (i > 0) {
-      inscode_t *pprevi = icbref(picb, i-1);
-      inscode_t *pthisi = icbref(picb, i);
-      if (pthisi->in == IN_DROP) {
-        if (pprevi->in == IN_LOCAL_TEE) {
-          pprevi->in = IN_LOCAL_SET;
-          icbrem(picb, i);
-          ++nmods; nexti = i;
-        } else if (pprevi->in == IN_LOCAL_GET || pprevi->in == IN_GLOBAL_GET) {
-          icbrem(picb, i-1);
-          icbrem(picb, i-1);
-          ++nmods; nexti = i-1;
-        } else if (IN_I32_LOAD <= pprevi->in && pprevi->in <= IN_I64_LOAD32_U) {
-          icbrem(picb, i-1);
-          ++nmods; nexti = i-1;
-        }
-      } else if (pthisi->in == IN_LOCAL_GET) {
-        if (pprevi->in == IN_LOCAL_SET && pprevi->id && pprevi->id == pthisi->id) {
-          pprevi->in = IN_LOCAL_TEE;
-          icbrem(picb, i);
-          ++nmods; nexti = i;
-        }
-      } else if (pthisi->in == IN_I32_ADD) {
-        if (pprevi->in == IN_I32_CONST && pprevi->arg.i == 0) {
-          icbrem(picb, i-1);
-          icbrem(picb, i-1);
-          ++nmods; nexti = i-1;
-        }
-      }
-    }
-    if (i >= icblen(picb)) break;
-    if (i > 1) {
-      inscode_t *ppprei = icbref(picb, i-2);
-      inscode_t *pprevi = icbref(picb, i-1);
-      inscode_t *pthisi = icbref(picb, i);
-      if (pthisi->in == IN_I32_MUL) {
-        if (pprevi->in == IN_I32_CONST && ppprei->in == IN_I32_CONST) {
-          unsigned long long n1 = ppprei->arg.u, n2 = pprevi->arg.u;
-          ppprei->arg.u = (n1 * n2) & 0xFFFFFFFF;
-          icbrem(picb, i-1);
-          icbrem(picb, i-1);
-          ++nmods; nexti = i-1; 
-        }
-      } else if (IN_I32_LOAD <= pthisi->in && pthisi->in <= IN_I64_LOAD32_U) {
-        if (pprevi->in == IN_I32_ADD && ppprei->in == IN_I32_CONST) {
-          unsigned long long n = pthisi->arg.u;
-          long long off = ppprei->arg.i;
-          if (off >= 0 && (n + (unsigned long long)off) < 0xFFFFFFFF) { 
-            pthisi->arg.u += (unsigned long long)off;
-            icbrem(picb, i-2);
-            icbrem(picb, i-2);
-            ++nmods; nexti = i-2;
-          }  
+  do {
+    for (nmods = i = 0; i < icblen(picb); /* rem or bump i */) {
+      size_t nexti = i+1;
+      if (i > 0) {
+        inscode_t *pprevi = icbref(picb, i-1);
+        inscode_t *pthisi = icbref(picb, i);
+        if (pthisi->in == IN_DROP) {
+          if (pprevi->in == IN_LOCAL_TEE) {
+            pprevi->in = IN_LOCAL_SET;
+            icbrem(picb, i);
+            ++nmods; nexti = i;
+          } else if (pprevi->in == IN_LOCAL_GET || pprevi->in == IN_GLOBAL_GET) {
+            icbrem(picb, i-1);
+            icbrem(picb, i-1);
+            ++nmods; nexti = i-1;
+          } else if (IN_I32_LOAD <= pprevi->in && pprevi->in <= IN_I64_LOAD32_U) {
+            icbrem(picb, i-1);
+            ++nmods; nexti = i-1;
+          }
+        } else if (pthisi->in == IN_LOCAL_GET) {
+          if (pprevi->in == IN_LOCAL_SET && pprevi->id && pprevi->id == pthisi->id) {
+            pprevi->in = IN_LOCAL_TEE;
+            icbrem(picb, i);
+            ++nmods; nexti = i;
+          }
+        } else if (pthisi->in == IN_I32_ADD) {
+          if (pprevi->in == IN_I32_CONST && pprevi->arg.i == 0) {
+            icbrem(picb, i-1);
+            icbrem(picb, i-1);
+            ++nmods; nexti = i-1;
+          }
         }
       }
+      if (i >= icblen(picb)) break;
+      if (i > 1) {
+        inscode_t *ppprei = icbref(picb, i-2);
+        inscode_t *pprevi = icbref(picb, i-1);
+        inscode_t *pthisi = icbref(picb, i);
+        if (pthisi->in == IN_I32_MUL) {
+          if (pprevi->in == IN_I32_CONST && ppprei->in == IN_I32_CONST) {
+            unsigned long long n1 = ppprei->arg.u, n2 = pprevi->arg.u;
+            ppprei->arg.u = (n1 * n2) & 0xFFFFFFFFU;
+            icbrem(picb, i-1);
+            icbrem(picb, i-1);
+            ++nmods; nexti = i-1; 
+          }
+        } else if (IN_I32_LOAD <= pthisi->in && pthisi->in <= IN_I64_LOAD32_U) {
+          if (pprevi->in == IN_I32_ADD && ppprei->in == IN_I32_CONST) {
+            unsigned long long n = pthisi->arg.u;
+            long long off = ppprei->arg.i;
+            if (off >= 0 && (n + (unsigned long long)off) < 0xFFFFFFFFU) { 
+              pthisi->arg.u += (unsigned long long)off;
+              icbrem(picb, i-2);
+              icbrem(picb, i-2);
+              ++nmods; nexti = i-2;
+            }  
+          }
+        }
+      }
+      i = nexti;
     }
-    i = nexti;
-  }
-  if (nmods > 0 && --optlvl > 0) goto repeat;
+  } while (nmods > 0 && --optlvl > 0);
 }
 
 /* convert function param/result type node to a valtype */
@@ -3803,7 +3812,7 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
 
 int main(int argc, char **argv)
 {
-  int opt;
+  int opt; char *eoarg;
   const char *ifile_arg = "-";
   const char *ofile_arg = NULL;
   bool c_opt = false;
@@ -3841,11 +3850,11 @@ int main(int argc, char **argv)
       case 'c':  c_opt = true; break;
       case 'O':  lvl_arg = atol(eoptarg); break;
       case 'o':  ofile_arg = eoptarg; break;
-      case 'I':  dsbpushbk(&incv, &eoptarg); break;
-      case 'L':  dsbpushbk(&libv, &eoptarg); break;
+      case 'I':  eoarg = eoptarg; dsbpushbk(&incv, &eoarg); break;
+      case 'L':  eoarg = eoptarg; dsbpushbk(&libv, &eoarg); break;
       case 's':  s_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'a':  a_arg = strtoul(eoptarg, NULL, 0); break; 
-      case 'h':  eusage("WCPL 0.01 built on "__DATE__);
+      case 'h':  eusage("WCPL 0.01 built on " __DATE__);
     }
   }
 
@@ -3881,7 +3890,7 @@ int main(int argc, char **argv)
     while (eoptind < argc) {
       wat_module_t *pwm = wat_module_buf_newbk(&wmb);
       ifile_arg = argv[eoptind++];
-      if (strsuf(ifile_arg, ".o") || strsuf(ifile_arg, ".wo") || strsuf(ifile_arg, ".wat")) {
+      if (strsuf(ifile_arg, ".o") != NULL || strsuf(ifile_arg, ".wo") != NULL || strsuf(ifile_arg, ".wat") != NULL) {
         logef("# loading object module from %s\n", ifile_arg);
         read_wat_module(ifile_arg, pwm);
         logef("# object module '%s' loaded\n", symname(pwm->name));

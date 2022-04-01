@@ -7,7 +7,7 @@ extern sym_t base_from_path(const char *path);
 extern sym_t modname_from_path(const char *fname);
 extern struct pws *pws_from_modname(bool sys, sym_t mod);
 
-/* lexical token types */
+/* lexical token types (NB: order is significant!) */
 typedef enum tt {
   TT_WHITESPACE,  TT_IDENTIFIER,  TT_INT,         TT_UINT,
   TT_LONG,        TT_ULONG,       TT_LLONG,       TT_ULLONG,

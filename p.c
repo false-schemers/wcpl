@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <wchar.h>
+#include <time.h>
 #include <math.h>
 #include "l.h"
 #include "w.h"
@@ -324,9 +325,9 @@ static void unintern_symbol(const char *name)
 
 void init_symbols(void)
 {
-  node_t *pn, *psn;
+  node_t *pn, *psn; time_t now;
   bufinit(&g_syminfo, sizeof(int)*3);
-  ndbinit(&g_nodes);
+  ndbinit(&g_nodes); time(&now);
   intern_symbol("asm", TT_ASM_KW, -1);
   intern_symbol("auto", TT_AUTO_KW, -1);
   intern_symbol("break", TT_BREAK_KW, -1);
@@ -437,6 +438,14 @@ void init_symbols(void)
   intern_symbol("va_etc", TT_INTR_NAME, INTR_VAETC);
   intern_symbol("va_arg", TT_INTR_NAME, INTR_VAARG);
   intern_symbol("static_assert", TT_INTR_NAME, INTR_SASSERT);
+  intern_symbol("__DATE__", TT_MACRO_NAME, (int)ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
+  pn->ts = TS_STRING; chbputtime("%b %d %Y", gmtime(&now), &pn->data);
+  wrap_node(pn, NT_MACRODEF); pn->name = intern("__DATE__");
+  intern_symbol("__TIME__", TT_MACRO_NAME, (int)ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
+  pn->ts = TS_STRING; chbputtime("%X", gmtime(&now), &pn->data);
+  wrap_node(pn, NT_MACRODEF); pn->name = intern("__TIME__");
 }
 
 /* simple comparison of NT_TYPE nodes for equivalence */
@@ -2473,6 +2482,22 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
   }
 }
 
+static void parse_concat_expr(pws_t *pw, node_t *pn)
+{
+  parse_primary_expr(pw, pn);
+  if (pn->ts != TS_STRING && pn->ts != TS_LSTRING) return;
+  while (true) {
+    tt_t tk = peekt(pw); int startpos = peekpos(pw);
+    if (tk == TT_STRING || tk == TT_LSTRING || tk == TT_MACRO_NAME) {
+      node_t nd = mknd();
+      parse_primary_expr(pw, &nd);
+      if (pn->ts == nd.ts) { bufpopbk(&pn->data); bufcat(&pn->data, &nd.data); }
+      else reprintf(pw, startpos, "invalid string literal continuation");
+      ndfini(&nd);
+    } else break;
+  }          
+}
+
 static bool postfix_operator_ahead(pws_t *pw)
 {
   switch (peekt(pw)) {
@@ -2486,7 +2511,7 @@ static bool postfix_operator_ahead(pws_t *pw)
 static void parse_postfix_expr(pws_t *pw, node_t *pn)
 {
   int startpos = peekpos(pw);
-  parse_primary_expr(pw, pn);
+  parse_concat_expr(pw, pn);
   /* cast type (t) can't be postfixed */
   if (pn->nt == NT_TYPE) return;
   /* wrap pn into postfix operators */
