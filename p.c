@@ -1849,7 +1849,7 @@ void ndbicpy(ndbuf_t* mem, const ndbuf_t* pb)
 void ndbfini(ndbuf_t* pb)
 {
   node_t *pnd; size_t i;
-  assert(pb); assert(pb->esz = sizeof(node_t));
+  assert(pb); assert(pb->esz == sizeof(node_t));
   pnd = (node_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) ndfini(pnd+i);
   buffini(pb);
@@ -1858,7 +1858,7 @@ void ndbfini(ndbuf_t* pb)
 void ndbclear(ndbuf_t* pb)
 {
   node_t *pnd; size_t i;
-  assert(pb); assert(pb->esz = sizeof(node_t));
+  assert(pb); assert(pb->esz == sizeof(node_t));
   pnd = (node_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) ndfini(pnd+i);
   bufclear(pb);

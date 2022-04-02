@@ -29,7 +29,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 
 # C and library features not yet supported or supported partially
 
-- adjacent string literals concatenation
+- adjacent mixed-char-size string literals concatenation (works for same-char-size)
 - `sizeof(expr)`, `alignof(expr)`, and `offsetof(expr, field)`
 - implicit conversions of arrays to element pointers; explicit `&arr[0]` required for now
 - implicit promotions of char and short types as vararg ... arguments (for now it's reported as an error)
@@ -41,7 +41,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - `static` variables in function scope
 - structures/unions/arrays as parameters
 - static inline functions in header files
-- built-in `__DATE__` and `__TIME__` macros (use `gmtime` for now) 
+- built-in `__DATE__` and `__TIME__` macros use `gmtime`, not `localtime` 
 
 # C features that won't be supported
 

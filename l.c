@@ -843,7 +843,7 @@ void dsbicpy(dsbuf_t* mem, const dsbuf_t* pb)
 void dsbfini(dsbuf_t* pb)
 {
   dstr_t *pds; size_t i;
-  assert(pb); assert(pb->esz = sizeof(dstr_t));
+  assert(pb); assert(pb->esz == sizeof(dstr_t));
   pds = (dstr_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) dsfini(pds+i);
   buffini(pb);

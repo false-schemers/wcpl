@@ -207,7 +207,7 @@ void fsfini(funcsig_t* pf)
 void fsbfini(fsbuf_t* pb)
 {
   funcsig_t *pft; size_t i;
-  assert(pb); assert(pb->esz = sizeof(funcsig_t));
+  assert(pb); assert(pb->esz == sizeof(funcsig_t));
   pft = (funcsig_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) fsfini(pft+i);
   buffini(pb);
@@ -266,7 +266,7 @@ void entfini(entry_t* pe)
 void entbfini(entbuf_t* pb)
 {
   entry_t *pe; size_t i;
-  assert(pb); assert(pb->esz = sizeof(entry_t));
+  assert(pb); assert(pb->esz == sizeof(entry_t));
   pe = (entry_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) entfini(pe+i);
   buffini(pb);
@@ -290,7 +290,7 @@ void dsegfini(dseg_t* ps)
 void dsegbfini(dsegbuf_t* pb)
 {
   dseg_t *pds; size_t i;
-  assert(pb); assert(pb->esz = sizeof(dseg_t));
+  assert(pb); assert(pb->esz == sizeof(dseg_t));
   pds = (dseg_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) dsegfini(pds+i);
   buffini(pb);
@@ -316,7 +316,7 @@ void esegfini(eseg_t* ps)
 void esegbfini(esegbuf_t* pb)
 {
   eseg_t *pes; size_t i;
-  assert(pb); assert(pb->esz = sizeof(eseg_t));
+  assert(pb); assert(pb->esz == sizeof(eseg_t));
   pes = (eseg_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) esegfini(pes+i);
   buffini(pb);
@@ -1262,7 +1262,7 @@ void watiefini(watie_t* pie)
 void watiebfini(watiebuf_t* pb)
 {
   watie_t *pie; size_t i;
-  assert(pb); assert(pb->esz = sizeof(watie_t));
+  assert(pb); assert(pb->esz == sizeof(watie_t));
   pie = (watie_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) watiefini(pie+i);
   buffini(pb);
@@ -1271,7 +1271,7 @@ void watiebfini(watiebuf_t* pb)
 void watiebdel(watiebuf_t* pb, iekind_t iek, sym_t mod, sym_t id)
 {
   watie_t *pie; size_t i;
-  assert(pb); assert(pb->esz = sizeof(watie_t));
+  assert(pb); assert(pb->esz == sizeof(watie_t));
   pie = (watie_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) {
     watie_t *piei = pie+i;
@@ -1305,7 +1305,7 @@ void wat_module_clear(wat_module_t* pm)
 void wat_module_buf_fini(wat_module_buf_t* pb)
 {
   wat_module_t *pm; size_t i;
-  assert(pb); assert(pb->esz = sizeof(wat_module_t));
+  assert(pb); assert(pb->esz == sizeof(wat_module_t));
   pm = (wat_module_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) wat_module_fini(pm+i);
   buffini(pb);
@@ -3193,7 +3193,7 @@ void dsmefini(dsme_t* pe)
 void dsmebfini(dsmebuf_t* pb)
 {
   dsme_t *pe; size_t i;
-  assert(pb); assert(pb->esz = sizeof(dsme_t));
+  assert(pb); assert(pb->esz == sizeof(dsme_t));
   pe = (dsme_t*)(pb->buf);
   for (i = 0; i < pb->fill; ++i) dsmefini(pe+i);
   buffini(pb);
