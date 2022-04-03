@@ -58,7 +58,7 @@
   (data $time:ds15$ const align=1 "Thursday\00")
   (data $time:ds16$ const align=1 "Friday\00")
   (data $time:ds17$ const align=1 "Saturday\00")
-  (data $time:mon_name const align=4 size=48
+  (data $time:mon_name var align=4 size=48
     (ref.data $time:ds19$
      data.put_ref offset=0
      ref.data $time:ds20$
@@ -95,7 +95,7 @@
   (data $time:ds28$ const align=1 "Oct\00")
   (data $time:ds29$ const align=1 "Nov\00")
   (data $time:ds30$ const align=1 "Dec\00")
-  (data $time:mon_full_name const align=4 size=48
+  (data $time:mon_full_name var align=4 size=48
     (ref.data $time:ds32$
      data.put_ref offset=0
      ref.data $time:ds33$

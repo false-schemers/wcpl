@@ -325,8 +325,8 @@ static ts_t numval_unop(tt_t op, ts_t tx, const numval_t *pvx, numval_t *pvz)
 static ts_t numval_binop(tt_t op, ts_t tx, const numval_t *pvx, ts_t ty, const numval_t *pvy, numval_t *pvz)
 {
   ts_t tz = ts_arith_common(tx, ty);
-  numval_t vx = *pvx; numval_convert(tz, tx, &vx);
-  numval_t vy = *pvy; numval_convert(tz, ty, &vy);
+  numval_t vx = *pvx, vy = *pvy; 
+  numval_convert(tz, tx, &vx); numval_convert(tz, ty, &vy);
   switch (tz) {
     case TS_DOUBLE: {
       double x = vx.d, y = vy.d;
@@ -886,7 +886,7 @@ static node_t *vardef_check_type(node_t *ptn)
 }
 
 /* initialize preallocated bulk data with display initializer */
-static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *ptn, node_t *pdn)
+static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *ptn, node_t *pdn)
 {
   if (ts_bulk(ptn->ts) && pdn->nt == NT_DISPLAY) {
     /* element-by-element initialization */
@@ -901,7 +901,7 @@ static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *
       measure_type(petn, ptn, &size, &align, 0);
       for (offi = 0, j = 1; j < ndlen(pdn); ++j) {
         if (offi >= asize) n2eprintf(ndref(pdn, j), pdn, "too many initializers for array");
-        else initialize_bulk_data(pdidx, pd, off+offi, petn, ndref(pdn, j));
+        else pd = initialize_bulk_data(pdidx, pd, off+offi, petn, ndref(pdn, j));
         offi += size;
       }
       /* if (offi < asize) nwprintf(pdn, "warning: too few initializers for array"); */
@@ -917,7 +917,7 @@ static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *
         assert(ptni->nt == NT_VARDECL && ndlen(ptni) == 1);
         offi = measure_offset(ptn, ptni, ptni->name, &pfni);
         if (j < ndlen(pdn)) {
-          initialize_bulk_data(pdidx, pd, off+offi, pfni, ndref(pdn, j));
+          pd = initialize_bulk_data(pdidx, pd, off+offi, pfni, ndref(pdn, j));
         } else {
           neprintf(pdn, "initializer is too short");
         }
@@ -984,6 +984,7 @@ static void initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *
       }
     }
   }
+  return pd;
 }
 
 /* process var declaration in main module */
@@ -1019,7 +1020,7 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
       if (pin) {
         assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
         assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
-        initialize_bulk_data(pdidx, pd, 0, ptn, ndref(pin, 1));
+        pd = initialize_bulk_data(pdidx, pd, 0, ptn, ndref(pin, 1));
       }
       pd->mut = MT_VAR;
     } else { /* compiles to a global */
@@ -2453,6 +2454,7 @@ node_t *compile_intsel(node_t *prn, node_t *pan)
     node_t tn = mknd(); ndsettype(&tn, TS_INT);
     if (!assign_compatible(&tn, patn)) n2eprintf(pan, prn, "integer selector expression is expected"); 
     if (!same_type(&tn, patn)) pan = compile_cast(prn, &tn, pan);
+    ndfini(&tn);
   }
   return pan;
 }

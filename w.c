@@ -3032,6 +3032,7 @@ void load_library_wat_module(sym_t mod, wat_module_t* pm)
     pm->main = MAIN_ABSENT;
     parse_module(pws, pm);
     logef("# '%s' module object loaded\n", symname(mod));
+    freesws(pws);
   } else {
     exprintf("cannot locate object module: '%s'", symname(mod));
   }

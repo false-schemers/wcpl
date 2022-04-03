@@ -2,7 +2,7 @@
   (import "crt" "sp$" (global $crt:sp$ (mut i32)))
   (import "crt" "memory" (memory $crt:memory 0))
   (global $errno:errno (export "errno") (mut i32))
-  (data $errno:_emsg (export "_emsg") const align=4 size=308
+  (data $errno:_emsg (export "_emsg") var align=4 size=308
     (ref.data $errno:ds2$
      data.put_ref offset=0
      ref.data $errno:ds3$

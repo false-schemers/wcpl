@@ -27,7 +27,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - user object modules should be provided explicitly as command line arguments
 - lookup directories should end in separator char (`/` on Un*x, `\` on Windows), file name is just appended to it
 
-# C and library features not yet supported or supported partially
+# C features not yet supported or supported partially
 
 - adjacent mixed-char-size string literals concatenation (works for same-char-size)
 - `sizeof(expr)`, `alignof(expr)`, and `offsetof(expr, field)`

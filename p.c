@@ -158,7 +158,7 @@ void fini_workspaces(void)
 {
   size_t i;
   for (i = 0; i < buflen(&g_pwsbuf); ++i) {
-    freepws(*(pws_t**)bufpopbk(&g_pwsbuf));
+    freepws(*(pws_t**)bufref(&g_pwsbuf, i));
   }
   buffini(&g_pwsbuf);
 }
@@ -3202,7 +3202,10 @@ static void parse_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t
   if (id == 0) reprintf(pw, pw->pos, "declared identifier is missing");
   pn->name = id; pn->sc = sc;
   ndcpy(ndnewbk(pn), &tn); 
-  if (peekt(pw) != TT_ASN) return;
+  if (peekt(pw) != TT_ASN) {
+    ndfini(&tn);
+    return;
+  }
   dropt(pw);
   pn = ndbnewbk(pnb);
   ndset(pn, NT_ASSIGN, pw->id, pw->pos);

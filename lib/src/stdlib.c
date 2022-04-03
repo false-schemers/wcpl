@@ -383,7 +383,6 @@ void initialize_environ(void)
     size_t environ_count, environ_buf_size;
     errno_t error = environ_sizes_get(&environ_count, &environ_buf_size);
     if (error != ERRNO_SUCCESS) goto err;
-    if (environ_count == 0) goto err;
     size_t num_ptrs = environ_count + 1;
     if (num_ptrs == 0) goto err;
     char *environ_buf = malloc(environ_buf_size);
@@ -483,7 +482,8 @@ typedef union header {
 } header_t;
 
 static_assert(sizeof(header_t) == 16, "header is not 16 bytes long");
-#define NALLOC (WASMPAGESIZE/sizeof(header_t)) 
+#define UNITSIZE (sizeof(header_t)) 
+#define NALLOC (WASMPAGESIZE/UNITSIZE) 
 
 static header_t malloc_base;
 static header_t *malloc_freep;
@@ -493,7 +493,7 @@ static header_t *morecore(size_t nunits)
   assert(nunits > 0);
   nunits = ((nunits + NALLOC - 1) / NALLOC) * NALLOC;
 
-  void *freemem = sbrk(WASMPAGESIZE);
+  void *freemem = sbrk((intptr_t)(nunits * UNITSIZE));
   if (freemem == (void *)-1) return NULL;
 
   header_t *insertp = (header_t *)freemem;
