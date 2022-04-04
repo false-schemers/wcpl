@@ -2522,10 +2522,11 @@ static node_t *compile_ataddr(node_t *prn, node_t *pan)
     return pan;
   } else { 
     /* {scalar_t* | x} => {IP(scalar_t) | {scalar_t* | x} fetch} */
+    ts_t oets = petn->ts, pets = ts_numerical(oets) ? ts_integral_promote(oets) : oets;
     node_t *pcn = npnewcode(prn), *ptn = ndpushbk(pcn, petn);
-    if (ts_numerical(petn->ts)) ptn->ts = ts_integral_promote(petn->ts);
+    ptn->ts = pets;
     acode_swapin(pcn, pan);
-    asm_load(ptn->ts, petn->ts, 0, &pcn->data);
+    asm_load(pets, oets, 0, &pcn->data);
     return pcn;
   }
   return NULL; /* never */
@@ -2547,9 +2548,9 @@ static node_t *compile_dot(node_t *prn, node_t *pan, sym_t fld)
   } else { /* field type is fscalar_t */
     /* {bulk_t | x} => {IP(fscalar_t) | {fscalar_t* | {bulk_t | x} +off?} fetch} */
     node_t *psn = npnewcode(prn); wrap_type_pointer(ndpushbk(psn, petn));
-    acode_swapin(psn, pan); petn = acode_type(pcn);
+    acode_swapin(psn, pan);
     if (off > 0) { acode_pushin_uarg(psn, IN_I32_CONST, off); acode_pushin(psn, IN_I32_ADD); }
-    acode_swapin(pcn, psn);
+    acode_swapin(pcn, psn); petn = acode_type(pcn);
     if (ts_numerical(petn->ts)) {
       ts_t ipts = ts_integral_promote(petn->ts);
       asm_load(ipts, petn->ts, 0, &pcn->data);

@@ -506,8 +506,8 @@ buf_t* bufinit(buf_t* pb, size_t esz)
 {
   assert(pb); assert(esz);
   pb->esz = esz;
-  pb->end = 10; /* buf is never NULL */
-  pb->buf = excalloc(pb->end, pb->esz);
+  pb->end = 0;
+  pb->buf = NULL;
   pb->fill = 0;
   return pb;
 }
@@ -519,15 +519,18 @@ buf_t* buficpy(buf_t* mem, const buf_t* pb) /* over non-inited */
   mem->esz = pb->esz;
   mem->end = pb->end; 
   mem->fill = pb->fill;
-  mem->buf = excalloc(pb->end, pb->esz);
-  memcpy(mem->buf, pb->buf, pb->esz*pb->fill);
+  mem->buf = NULL;
+  if (pb->end > 0) {
+    mem->buf = excalloc(pb->end, pb->esz) ;
+    memcpy(mem->buf, pb->buf, pb->esz*pb->fill);
+  }
   return mem;
 }
 
 void *buffini(buf_t* pb)
 {
   assert(pb);
-  free(pb->buf);
+  if (pb->buf) free(pb->buf);
   pb->buf = NULL;
   return pb;
 }
@@ -595,7 +598,10 @@ void bufresize(buf_t* pb, size_t n)
 {
   assert(pb);
   if (n > pb->end) bufgrow(pb, n - pb->end);
-  if (n > pb->fill) memset((char*)pb->buf + pb->fill*pb->esz, 0, (n - pb->fill)*pb->esz);
+  if (n > pb->fill) {
+    assert(pb->buf != NULL);
+    memset((char*)pb->buf + pb->fill*pb->esz, 0, (n - pb->fill)*pb->esz);
+  }
   pb->fill = n;
 }
 
@@ -603,6 +609,7 @@ void* bufref(buf_t* pb, size_t i)
 {
   assert(pb);
   assert(i < pb->fill);
+  assert(pb->buf != NULL);
   return (char*)pb->buf + i*pb->esz;
 }
 
@@ -610,6 +617,7 @@ void bufrem(buf_t* pb, size_t i)
 {
   size_t esz;
   assert(pb); assert(i < pb->fill);
+  assert(pb->buf != NULL);
   esz = pb->esz;
   if (i < pb->fill - 1)
     memmove((char*)pb->buf + i*esz,
@@ -623,6 +631,7 @@ void bufnrem(buf_t* pb, size_t i, size_t cnt)
   if (cnt > 0) {
     size_t esz;
     assert(pb); assert(i + cnt <= pb->fill);
+    assert(pb->buf != NULL);
     esz = pb->esz;
     if (i < pb->fill - cnt)
       memmove((char*)pb->buf + i*esz,
@@ -638,6 +647,7 @@ void* bufins(buf_t* pb, size_t i)
   assert(pb); assert(i <= pb->fill);
   esz = pb->esz;
   if (pb->fill == pb->end) bufgrow(pb, 1);
+  assert(pb->buf != NULL);
   pnewe = (char*)pb->buf + i*esz;
   if (i < pb->fill)
     memmove(pnewe + esz, pnewe,
@@ -651,6 +661,7 @@ void *bufbk(buf_t* pb)
 {
   char* pbk;
   assert(pb); assert(pb->fill > 0);
+  assert(pb->buf != NULL);
   pbk = (char*)pb->buf + (pb->fill-1)*pb->esz;
   return pbk;
 }
@@ -660,6 +671,7 @@ void *bufnewbk(buf_t* pb)
   char* pbk; size_t esz;
   assert(pb);
   if (pb->fill == pb->end) bufgrow(pb, 1);
+  assert(pb->buf != NULL);
   esz = pb->esz;
   pbk = (char*)pb->buf + pb->fill*esz;
   memset(pbk, 0, esz);
@@ -671,6 +683,7 @@ void *bufpopbk(buf_t* pb)
 {
   char* pbk;
   assert(pb); assert(pb->fill > 0);
+  assert(pb->buf != NULL);
   pbk = (char*)pb->buf + (pb->fill-1)*pb->esz;
   pb->fill -= 1;
   return pbk; /* outside but untouched */
@@ -692,6 +705,7 @@ void *bufalloc(buf_t* pb, size_t n)
   assert(pb);
   if (pb->fill + n > pb->end) bufgrow(pb, pb->fill + n - pb->end);
   esz = pb->esz;
+  assert(pb->buf != NULL);
   pbk = (char*)pb->buf + pb->fill*esz;
   memset(pbk, 0, esz*n);
   pb->fill += n;
@@ -708,6 +722,7 @@ void bufrev(buf_t* pb)
   esz = pb->esz;
   i = 0; j = len-1;  
   pdata = (char*)pb->buf;
+  assert(pb->buf != NULL);
   while (i < j) {
     memswap(pdata+i*esz, pdata+j*esz, esz);
     ++i, --j;
@@ -738,6 +753,7 @@ void bufremdups(buf_t* pb, int (*cmp)(const void *, const void *), void (*fini)(
   if (len < 2) return;
   i = 0; j = 1;  
   pdata = (char*)pb->buf;
+  assert(pb->buf != NULL);
   while (j < len) {
     /* invariant: elements [0..i] are unique, [i+1,j[ is a gap */
     assert(i < j);
@@ -758,8 +774,10 @@ void* bufsearch(const buf_t* pb, const void *pe, int (*cmp)(const void *, const 
 {
   size_t esz; char *pdata, *pend; 
   assert(pb); assert(pe); assert(cmp);
+  if (pb->fill == 0) return NULL;
   esz = pb->esz;
   pdata = (char*)pb->buf;
+  assert(pb->buf != NULL);
   pend = pdata + esz*pb->fill;
   while (pdata < pend) {
     if (0 == (*cmp)(pdata, pe))
@@ -780,6 +798,7 @@ size_t bufoff(const buf_t* pb, const void *pe)
 {
   char *p0, *p; size_t off;
   assert(pb); assert(pe);
+  assert(pb->buf != NULL);
   p0 = (char*)pb->buf, p = (char*)pe;
   assert(p >= p0);
   off = (p - p0) / pb->esz;
