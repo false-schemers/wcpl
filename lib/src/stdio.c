@@ -300,6 +300,12 @@ int fputs(const char *s, FILE *fp)
   return 0; /* unreacheable */
 }
 
+int puts(const char *s)
+{
+  if (fputs(s, stdout) == EOF) return EOF;
+  return fputc('\n', stdout);
+}
+
 /* macros in stdio.h
 int feof(FILE *fp)
 {

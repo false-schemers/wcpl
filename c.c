@@ -1520,19 +1520,25 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
 static bool ends_in_return(node_t *pn)
 {
   return (pn && pn->nt == NT_RETURN);
-  ///* relaxed definition produces invalid WASM! */
-  //if (pn) {
-  //  switch (pn->nt) {
-  //    case NT_RETURN:
-  //      return true;
-  //    case NT_IF:
-  //      return ndlen(pn) == 3 && 
-  //        ends_in_return(ndref(pn, 1)) && ends_in_return(ndref(pn, 2));
-  //    case NT_BLOCK: 
-  //      return ndlen(pn) > 0 && ends_in_return(ndref(pn, ndlen(pn)-1));
-  //  }
-  //}
-  //return false;
+}
+
+/* check if body contains ALLOCA calls */
+static bool contains_alloca(node_t *pn)
+{
+  switch (pn->nt) {
+    case NT_TYPE: {
+      /* nothing of interest in here */
+    } break;
+    case NT_INTRCALL: 
+      if (pn->intr == INTR_ALLOCA) return true;
+      /* else fall thru */
+    default: {
+      size_t i;
+      for (i = 0; i < ndlen(pn); ++i) 
+        if (contains_alloca(ndref(pn, i))) return true;
+    } break;
+  }
+  return false;
 }
 
 /* convert function to wasm conventions, simplify */
@@ -1545,7 +1551,7 @@ static void fundef_wasmify(node_t *pdn)
   ndbuf_t asb; buf_t lib; size_t i; bool explicit_tail_ret = false;
   ndbinit(&asb); bufinit(&lib, sizeof(int)*2); /* <tt, lbsym> */
   
-  /* init frame structure, in case there are auto locals*/
+  /* init frame structure, in case there are auto locals */
   ndset(&frame, NT_TYPE, pdn->pwsid, pdn->startpos);
   frame.ts = TS_STRUCT;
   
@@ -1674,6 +1680,19 @@ static void fundef_wasmify(node_t *pdn)
     pvi = bufnewbk(&vib); pvi->sc = SC_REGISTER;
     pvi->name = pvi->reg = pin->name;
     i += 4; /* skip inserted nodes */ 
+  } else if (contains_alloca(pbn)) {
+    node_t *pin, *psn; vi_t *pvi;
+    pin = ndinsnew(pbn, i);
+    ndset(pin, NT_ASSIGN, pbn->pwsid, pbn->startpos);
+    pin->op = TT_ASN;
+    psn = ndinsbk(pin, NT_IDENTIFIER); psn->name = intern("bp$");
+    psn = ndinsbk(pin, NT_IDENTIFIER); psn->name = g_sp_id;
+    pin = ndinsnew(pbn, i);
+    ndset(pin, NT_VARDECL, pbn->pwsid, pbn->startpos);
+    pin->name = intern("bp$"); wrap_type_pointer(ndsettype(ndnewbk(pin), TS_VOID));
+    pvi = bufnewbk(&vib); pvi->sc = SC_REGISTER;
+    pvi->name = pvi->reg = pin->name;
+    i += 2; /* skip inserted nodes */ 
   }
   
   /* sort vib by name for faster lookup in wasmify_expr */
@@ -3667,7 +3686,7 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
     post_symbol(g_crt_mod, &nd, false, false);
     ndfini(&nd);
   }
-  
+
   mod = process_module(ifname, pwm); assert(mod);
   pwm->name = mod;
 

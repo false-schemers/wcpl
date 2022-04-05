@@ -55,6 +55,7 @@ extern int fgetc(FILE *stream);
 extern char *fgets(char *s, int n, FILE *stream);
 extern int fputc(int c, FILE *stream);
 extern int fputs(const char *s, FILE *stream);
+extern int puts(const char *s);
 extern int ungetc(int c, FILE *stream);
 /* char *gets(char *s) -- obsolete */
 extern size_t fread(void *ptr, size_t size, size_t nobj, FILE *stream);
