@@ -633,6 +633,7 @@ bool static_eval(node_t *pn, seval_t *pr)
     case NT_INTRCALL: {
       if (pn->intr == INTR_SIZEOF || pn->intr == INTR_ALIGNOF) {
         size_t size, align; assert(ndlen(pn) == 1);
+        if (ndref(pn, 0)->nt != NT_TYPE) return false; /* not static */
         measure_type(ndref(pn, 0), pn, &size, &align, 0);
         pr->ts = TS_INT; 
         if (pn->intr == INTR_SIZEOF) pr->val.i = (int)size;
@@ -640,6 +641,7 @@ bool static_eval(node_t *pn, seval_t *pr)
         return true;
       } else if (pn->intr == INTR_OFFSETOF) {
         size_t offset; assert(ndlen(pn) == 2 && ndref(pn, 1)->nt == NT_IDENTIFIER);
+        if (ndref(pn, 0)->nt != NT_TYPE) return false; /* not static */
         offset = measure_offset(ndref(pn, 0), pn, ndref(pn, 1)->name, NULL);
         pr->ts = TS_INT; 
         pr->val.i = (int)offset;
@@ -798,7 +800,7 @@ static bool arithmetic_constant_expr(node_t *pn)
     case NT_INTRCALL:
       switch (pn->intr) {
         case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF:
-          return true;
+          return ndref(pn, 0)->nt == NT_TYPE;
         case INTR_ASU32: case INTR_ASFLT: 
         case INTR_ASU64: case INTR_ASDBL:
           assert(ndlen(pn) == 1); 
@@ -1032,16 +1034,18 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
         seval_t r; assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
         assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
         if (!static_eval(ndref(pin, 1), &r) || !(ts_numerical(r.ts) 
-            || (r.ts == TS_PTR && r.val.i == 0))) /* NYI: non-0 offset (fixme) */
+            || (r.ts == TS_PTR && r.val.i == 0))) { /* NYI: non-0 offset (fixme) */
           neprintf(pin, "non-constant initializer");
-        pg = watiebref(&g_curpwm->exports, pgidx); /* re-fetch after static_eval */
-        if (r.ts != TS_PTR || r.id == 0) {
-          asm_numerical_const(r.ts == TS_PTR ? TS_UINT : r.ts, &r.val, &pg->ic); /* wasm32 */
         } else {
-          const node_t *pimn = lookup_global(r.id); inscode_t *pic = &pg->ic;
-          if (!pimn) neprintf(pdn, "unknown identifier in address initializer");
-          assert(pimn->nt == NT_IMPORT && pimn->name != 0);
-          pic->in = IN_REF_DATA; pic->id = r.id; pic->arg2.mod = pimn->name;
+          pg = watiebref(&g_curpwm->exports, pgidx); /* re-fetch after static_eval */
+          if (r.ts != TS_PTR || r.id == 0) {
+            asm_numerical_const(r.ts == TS_PTR ? TS_UINT : r.ts, &r.val, &pg->ic); /* wasm32 */
+          } else {
+            const node_t *pimn = lookup_global(r.id); inscode_t *pic = &pg->ic;
+            if (!pimn) neprintf(pdn, "unknown identifier in address initializer");
+            assert(pimn->nt == NT_IMPORT && pimn->name != 0);
+            pic->in = IN_REF_DATA; pic->id = r.id; pic->arg2.mod = pimn->name;
+          }
         }
       }  
       pg->mut = MT_VAR;
@@ -3068,6 +3072,24 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             neprintf(pn, "asdouble() intrinsic expects one argument");
           }
         } break;
+        case INTR_SIZEOF: case INTR_ALIGNOF: {
+          node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
+          node_t *ptni = acode_type(pan);
+          size_t size, align; numval_t v;
+          measure_type(ptni, pn, &size, &align, 0);
+          v.i = (int)(pn->intr == INTR_SIZEOF ? size : align);
+          pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_INT);
+          asm_numerical_const(TS_INT, &v, icbnewbk(&pcn->data));
+        } break;
+        case INTR_OFFSETOF: {
+          node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
+          node_t *ptni = acode_type(pan);
+          size_t offset; numval_t v;
+          offset = measure_offset(ptni, pn, ndref(pn, 1)->name, NULL);
+          v.i = (int)offset;
+          pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_INT);
+          asm_numerical_const(TS_INT, &v, icbnewbk(&pcn->data));
+        } break;
         case INTR_VAETC: 
         case INTR_VAARG: assert(false); /* wasmified */
         case INTR_SASSERT: {
@@ -3424,6 +3446,32 @@ static void fundef_peephole(node_t *pcn, int optlvl)
     }
   } while (nmods > 0 && --optlvl > 0);
 }
+
+/* compile single expression on top level */
+static node_t *expr_compile_top(node_t *pn)
+{
+  buf_t rib = mkbuf(sizeof(ri_t));
+  node_t *pcn = expr_compile(pn, &rib, NULL);
+  if (getverbosity() > 0) {
+    fprintf(stderr, "expr_compile ==>\n");
+    dump_node(pcn, stderr);
+  }
+  pcn = fundef_flatten(pcn);
+  if (getverbosity() > 0) {
+    fprintf(stderr, "fundef_flatten ==>\n");
+    dump_node(pcn, stderr);
+  }
+  if (g_optlvl > 0) {
+    fundef_peephole(pcn, (int)g_optlvl);
+    if (getverbosity() > 0) {
+      fprintf(stderr, "fundef_peephole[-O%d] ==>\n", (int)g_optlvl);
+      dump_node(pcn, stderr);
+    }
+  }
+  buffini(&rib);
+  return pcn;
+}
+
 
 /* convert function param/result type node to a valtype */
 static void tn2vt(node_t *ptn, vtbuf_t *pvtb)

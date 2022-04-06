@@ -2421,9 +2421,13 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
         case INTR_SIZEOF: case INTR_ALIGNOF: { /* (type) */
           node_t *ptn = ndnewbk(pn);
           expect(pw, TT_LPAR, "(");
-          parse_base_type(pw, ptn);
-          if (parse_declarator(pw, ptn)) 
-            reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+          if (type_specifier_ahead(pw)) {
+            parse_base_type(pw, ptn);
+            if (parse_declarator(pw, ptn)) 
+              reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+          } else {
+            parse_expr(pw, ptn);
+          }
           expect(pw, TT_RPAR, ")"); 
         } break;
         case INTR_VAETC: { /* () */
@@ -2447,9 +2451,13 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
         case INTR_OFFSETOF: { /* (type, id) */
           node_t *ptn = ndnewbk(pn);
           expect(pw, TT_LPAR, "(");
-          parse_base_type(pw, ptn);
-          if (parse_declarator(pw, ptn)) 
-            reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+          if (type_specifier_ahead(pw)) {
+            parse_base_type(pw, ptn);
+            if (parse_declarator(pw, ptn)) 
+              reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+          } else {
+            parse_assignment_expr(pw, ptn);
+          }
           expect(pw, TT_COMMA, ",");
           ptn = ndnewbk(pn);
           ndset(ptn, NT_IDENTIFIER, pw->id, peekpos(pw));
