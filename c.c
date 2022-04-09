@@ -590,6 +590,7 @@ void measure_type(const node_t *ptn, node_t *prn, size_t *psize, size_t *palign,
       if (ndlen(ptn) == 2) {
         const node_t *petn = ndcref(ptn, 0), *pcn = ndcref(ptn, 1); 
         int count = 0;
+        /* fixme: eval may need to see local vars, so prib is needed */
         if (!arithmetic_eval_to_int((node_t*)pcn, NULL, &count) || count <= 0)
           n2eprintf(pcn, prn, "can't allocate/measure data for arrays of nonconstant/nonpositive size");
         measure_type(petn, prn, psize, palign, lvl+1);
@@ -855,7 +856,7 @@ bool arithmetic_eval(node_t *pn, buf_t *prib, node_t *prn)
   return ok;
 }
 
-static void check_static_assert(node_t *pn)
+static void check_static_assert(node_t *pn, buf_t *prib)
 {
   if (pn->intr == INTR_SASSERT) {
     node_t *pen, *psn; int res;
@@ -863,7 +864,7 @@ static void check_static_assert(node_t *pn)
     pen = ndref(pn, 0), psn = ndlen(pn) == 2 ? ndref(pn, 1) : NULL;
     if (psn && (psn->nt != NT_LITERAL || psn->ts != TS_STRING))
       neprintf(pn, "unexpected 2nd arg of static_assert (string literal expected)");
-    if (!arithmetic_eval_to_int(pen, NULL, &res))
+    if (!arithmetic_eval_to_int(pen, prib, &res))
       n2eprintf(pen, pn, "unexpected lhs of static_assert comparison (static test expected)");
     if (res == 0) {
       if (!psn) neprintf(pn, "static_assert failed");
@@ -872,52 +873,6 @@ static void check_static_assert(node_t *pn)
   }
 }
 
-/* check if node can be evaluated statically as an arithmetic expression
- * NB: positive answer does not guarantee successful or error-free evaluation
- * (but eval errors will also happen at run time if original expr is compiled);
- * negative answer saves time on attempting actual evaluation */
-static bool arithmetic_constant_expr(node_t *pn)
-{
-  switch (pn->nt) {
-    case NT_LITERAL: 
-      return ts_numerical(pn->ts);
-    case NT_INTRCALL:
-      switch (pn->intr) {
-        case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF:
-          return true;
-        case INTR_ASU32: case INTR_ASFLT: 
-        case INTR_ASU64: case INTR_ASDBL:
-          assert(ndlen(pn) == 1); 
-          return arithmetic_constant_expr(ndref(pn, 0));
-      }
-      return false;
-    case NT_PREFIX:
-      assert(ndlen(pn) == 1); 
-      switch (pn->op) {
-        case TT_PLUS:  case TT_MINUS: case TT_TILDE: case TT_NOT:
-          return arithmetic_constant_expr(ndref(pn, 0));
-      }
-      return false;
-    case NT_INFIX: 
-      assert(ndlen(pn) == 2); 
-      switch (pn->op) {
-        case TT_PLUS:  case TT_MINUS: case TT_STAR:  case TT_AND:
-        case TT_OR:    case TT_XOR:   case TT_SLASH: case TT_REM:
-        case TT_SHL:   case TT_SHR:   case TT_EQ:    case TT_NE:
-        case TT_LT:    case TT_GT:    case TT_LE:    case TT_GE:
-          return arithmetic_constant_expr(ndref(pn, 0)) && arithmetic_constant_expr(ndref(pn, 1));
-      } 
-      return false;
-    case NT_COND:
-      assert(ndlen(pn) == 3); 
-      return arithmetic_constant_expr(ndref(pn, 0)) && 
-             arithmetic_constant_expr(ndref(pn, 1)) && arithmetic_constant_expr(ndref(pn, 2));
-    case NT_CAST: 
-      assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
-      return ts_numerical(ndref(pn, 0)->ts) && arithmetic_constant_expr(ndref(pn, 1));
-  }
-  return false;
-}
 
 /* post variable declaration for later use */
 static void post_vardecl(sym_t mod, node_t *pn, bool final, bool hide)
@@ -1183,6 +1138,7 @@ static void fundef_check_type(node_t *ptn)
   }
 }
 
+
 /* hoist_locals environment data type */ 
 typedef struct henv {
   buf_t idmap; /* pairs of symbols <old, new> */
@@ -1324,6 +1280,119 @@ static void fundef_hoist_locals(node_t *pdn)
   }
   ndbfini(&locals); buffini(&he.idmap);
 }
+
+/* check if node can be evaluated statically as an arithmetic expression
+ * NB: positive answer does not guarantee successful or error-free evaluation
+ * (but eval errors will also happen at run time if original expr is compiled);
+ * negative answer saves time on attempting actual evaluation */
+static bool arithmetic_constant_expr(node_t *pn)
+{
+  switch (pn->nt) {
+    case NT_LITERAL: 
+      return ts_numerical(pn->ts);
+    case NT_INTRCALL:
+      switch (pn->intr) {
+        case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF:
+          return true;
+        case INTR_ASU32: case INTR_ASFLT: 
+        case INTR_ASU64: case INTR_ASDBL:
+          assert(ndlen(pn) == 1); 
+          return arithmetic_constant_expr(ndref(pn, 0));
+      }
+      return false;
+    case NT_PREFIX:
+      assert(ndlen(pn) == 1); 
+      switch (pn->op) {
+        case TT_PLUS:  case TT_MINUS: case TT_TILDE: case TT_NOT:
+          return arithmetic_constant_expr(ndref(pn, 0));
+      }
+      return false;
+    case NT_INFIX: 
+      assert(ndlen(pn) == 2); 
+      switch (pn->op) {
+        case TT_PLUS:  case TT_MINUS: case TT_STAR:  case TT_AND:
+        case TT_OR:    case TT_XOR:   case TT_SLASH: case TT_REM:
+        case TT_SHL:   case TT_SHR:   case TT_EQ:    case TT_NE:
+        case TT_LT:    case TT_GT:    case TT_LE:    case TT_GE:
+          return arithmetic_constant_expr(ndref(pn, 0)) && arithmetic_constant_expr(ndref(pn, 1));
+      } 
+      return false;
+    case NT_COND:
+      assert(ndlen(pn) == 3); 
+      return arithmetic_constant_expr(ndref(pn, 0)) && 
+             arithmetic_constant_expr(ndref(pn, 1)) && arithmetic_constant_expr(ndref(pn, 2));
+    case NT_CAST: 
+      assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
+      return ts_numerical(ndref(pn, 0)->ts) && arithmetic_constant_expr(ndref(pn, 1));
+  }
+  return false;
+}
+
+/* replace arithmetic constant expressions in pn with literals */
+static void expr_fold_constants(node_t *pn, buf_t *prib)
+{
+  switch (pn->nt) {
+    case NT_NULL:
+    case NT_LITERAL: 
+    case NT_IDENTIFIER:
+      /* can't be folded */
+      break;
+    case NT_TYPE:
+      /* no expressions inside */
+      break;
+    case NT_VARDECL:
+    case NT_FUNDEF:
+    case NT_TYPEDEF:
+    case NT_MACRODEF:
+    case NT_INCLUDE:
+    case NT_IMPORT:
+      /* can't be part of an expression */
+      assert(false);
+      break;
+    default: {
+      node_t *pcn = NULL;
+      if (arithmetic_constant_expr(pn)) {
+        node_t nd = mknd();
+        if (arithmetic_eval(pn, prib, &nd)) ndswap(&nd, pn);
+        ndfini(&nd);
+      } else {
+        size_t i;
+        for (i = 0; i < ndlen(pn); ++i) {
+          expr_fold_constants(ndref(pn, i), prib);
+        }   
+      }
+    } break;
+  }
+}
+
+/* fold arithmetic constant expressions inside function with literals */
+static void fundef_fold_constants(node_t *pdn)
+{
+  size_t i; buf_t rib = mkbuf(sizeof(ri_t));
+  node_t *ptn = ndref(pdn, 0), *pbn = ndref(pdn, 1);
+  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION && ndlen(ptn) > 0);
+  /* go over parameter definitions */
+  for (i = 1 /* skip result type */; i < ndlen(ptn); ++i) {
+    node_t *pdni = ndref(ptn, i), *ptni = pdni; sym_t name = 0;
+    if (pdni->nt == NT_VARDECL) name = ptni->name, ptni = ndref(pdni, 0); 
+    if (name) { ri_t *pri = bufnewbk(&rib); pri->name = name; pri->ptn = ptni; }
+  }
+  assert(pbn->nt == NT_BLOCK);
+  /* go over hoisted local var definitions */
+  for (i = 0; i < ndlen(pbn); ++i) {
+    node_t *pdni = ndref(pbn, i), *ptni; sym_t name;
+    if (pdni->nt != NT_VARDECL) break; /* statements may follow */
+    name = pdni->name, ptni = ndref(pdni, 0); 
+    if (name) { ri_t *pri = bufnewbk(&rib); pri->name = name; pri->ptn = ptni; }
+  }    
+  bufqsort(&rib, &sym_cmp);
+  /* fold expressions inside body statements */
+  for (/* use current i */; i < ndlen(pbn); ++i) {
+    expr_fold_constants(ndref(pbn, i), &rib);
+  }
+  buffini(&rib);
+}
+
 
 /* local variable info for wasmify */
 typedef struct vi {
@@ -3006,6 +3075,7 @@ static node_t *compile_bulkasn(node_t *prn, node_t *pdan, node_t *psan)
 static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
 {
   node_t *pcn = NULL; numval_t v;
+  /* fold constants that might have been introduced by wasmify */
   if (arithmetic_constant_expr(pn)) {
     node_t nd = mknd();
     if (ret && getwlevel() < 1) nwprintf(pn, "warning: constant value is not used"); 
@@ -3135,18 +3205,18 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
           }
         } break;
         case INTR_SIZEOF: case INTR_ALIGNOF: {
-          node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
-          node_t *ptni = acode_type(pan);
           size_t size, align; numval_t v;
+          node_t *ptni = ndref(pn, 0);
+          if (ptni->nt != NT_TYPE) ptni = acode_type(expr_compile(ptni, prib, NULL));
           measure_type(ptni, pn, &size, &align, 0);
           v.i = (int)(pn->intr == INTR_SIZEOF ? size : align);
           pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_INT);
           asm_numerical_const(TS_INT, &v, icbnewbk(&pcn->data));
         } break;
         case INTR_OFFSETOF: {
-          node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
-          node_t *ptni = acode_type(pan);
           size_t offset; numval_t v;
+          node_t *ptni = ndref(pn, 0);
+          if (ptni->nt != NT_TYPE) ptni = acode_type(expr_compile(ptni, prib, NULL));
           offset = measure_offset(ptni, pn, ndref(pn, 1)->name, NULL);
           v.i = (int)offset;
           pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_INT);
@@ -3155,7 +3225,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
         case INTR_VAETC: 
         case INTR_VAARG: assert(false); /* wasmified */
         case INTR_SASSERT: {
-          check_static_assert(pn);
+          check_static_assert(pn, prib);
           pcn = npnewcode(pn);
           ndsettype(ndnewbk(pcn), TS_VOID);
         } break;
@@ -3622,6 +3692,12 @@ static void process_fundef(sym_t mmod, node_t *pn, wat_module_t *pm)
     fprintf(stderr, "fundef_hoist_locals ==>\n");
     dump_node(pn, stderr);
   }  
+  /* fold constant expressions */
+  fundef_fold_constants(pn);
+  if (getverbosity() > 0) {
+    fprintf(stderr, "fundef_fold_constants ==>\n");
+    dump_node(pn, stderr);
+  }  
   /* convert entry to wasm conventions, normalize a bit */
   fundef_wasmify(pn);
   if (getverbosity() > 0) {
@@ -3664,7 +3740,7 @@ static void process_top_intrcall(node_t *pn)
   if (getverbosity() > 0) {
     dump_node(pn, stderr);
   }
-  if (pn->intr == INTR_SASSERT) check_static_assert(pn);
+  if (pn->intr == INTR_SASSERT) check_static_assert(pn, NULL);
   else neprintf(pn, "unexpected top-level form");
 }
 
