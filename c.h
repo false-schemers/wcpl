@@ -20,10 +20,10 @@ extern size_t  g_argvbsz;  /* argv buf size in bytes */
 /* convert function type to a function signature */
 extern funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs);
 /* calc size/align for ptn; prn is NULL or reference node for errors, use 0 for lvl */
-extern void measure_type(node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl);
+extern void measure_type(const node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl);
 /* calc offset for ptn.fld; prn is NULL or reference node for errors */
-extern size_t measure_offset(node_t *ptn, node_t *prn, sym_t fld, node_t **ppftn);
+extern size_t measure_offset(const node_t *ptn, node_t *prn, sym_t fld, node_t **ppftn);
 /* evaluate pen arithmetic expression statically, putting result into prn */
-extern bool arithmetic_eval(node_t *pen, node_t *prn);
+extern bool arithmetic_eval(node_t *pen, buf_t *prib, node_t *prn);
 /* evaluate integer expression pen statically, putting result into pi */
-extern bool arithmetic_eval_to_int(node_t *pen, int *pri);
+extern bool arithmetic_eval_to_int(node_t *pen, buf_t *prib, int *pri);

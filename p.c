@@ -2592,7 +2592,7 @@ static long long parse_asm_signed(pws_t *pw)
   node_t xnd = mknd(), lnd = mknd(); bool ok = false;
   int startpos = peekpos(pw);
   parse_primary_expr(pw, &xnd);
-  if (arithmetic_eval(&xnd, &lnd) && lnd.nt == NT_LITERAL) {
+  if (arithmetic_eval(&xnd, NULL, &lnd) && lnd.nt == NT_LITERAL) {
     switch (lnd.ts) {
       case TS_INT: case TS_LONG: case TS_LLONG: {
         long long ll = lnd.val.i;
@@ -2611,7 +2611,7 @@ static unsigned long long parse_asm_unsigned(pws_t *pw)
   node_t xnd = mknd(), lnd = mknd(); bool ok = false;
   int startpos = peekpos(pw);
   parse_primary_expr(pw, &xnd);
-  if (arithmetic_eval(&xnd, &lnd) && lnd.nt == NT_LITERAL) {
+  if (arithmetic_eval(&xnd, NULL, &lnd) && lnd.nt == NT_LITERAL) {
     switch (lnd.ts) {
       case TS_UINT: case TS_ULONG: case TS_ULLONG: {
         unsigned long long ull = lnd.val.u;
@@ -2630,7 +2630,7 @@ static double parse_asm_double(pws_t *pw)
   node_t xnd = mknd(), lnd = mknd(); bool ok = false;
   int startpos = peekpos(pw);
   parse_primary_expr(pw, &xnd);
-  if (arithmetic_eval(&xnd, &lnd) && lnd.nt == NT_LITERAL) {
+  if (arithmetic_eval(&xnd, NULL, &lnd) && lnd.nt == NT_LITERAL) {
     switch (lnd.ts) {
       case TS_FLOAT: case TS_DOUBLE: {
         double d = lnd.ts == TS_FLOAT ? lnd.val.f : lnd.val.d;
@@ -2919,7 +2919,7 @@ static void parse_enum_body(pws_t *pw, node_t *pn)
       if (peekt(pw) == TT_ASN) {
         dropt(pw);
         parse_conditional_expr(pw, pnv);
-        if (!arithmetic_eval_to_int(pnv, &curval))
+        if (!arithmetic_eval_to_int(pnv, NULL, &curval))
           neprintf(pnv, "invalid enum initializer (int constant expected)");
       }
       ndset(pnv, NT_LITERAL, pw->id, pni->startpos);

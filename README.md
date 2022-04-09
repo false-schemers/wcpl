@@ -7,7 +7,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 
 - `#pragma once` in headers
 - `static_assert(expr);`, `static_assert(expr, "message");` on top level in headers and module files
-- `sizeof(type)`, `alignof(type)`, and `offsetof(type, field)` are supported
+- `sizeof`, `alignof`, and `offsetof` are supported fot types and limited expressions
 - static evaluation of expressions (numerics only in general, numerics+static pointers in top-level initializers)
 - `asuint32`, `asfloat`, `asuint64`, `asdouble` reinterpret-cast-style intrinsics
 - top-level macros: `#define FOO 1234`, `#define FOO (expr)`, `#define FOO do {...} while (0)` as well as 
@@ -30,7 +30,6 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 # C features not yet supported or supported partially
 
 - adjacent mixed-char-size string literals concatenation (works for same-char-size)
-- `sizeof(expr)`, `alignof(expr)`, and `offsetof(expr, field)`
 - implicit conversions of arrays to element pointers; explicit `&arr[0]` required for now
 - implicit promotions of char and short types as vararg ... arguments (for now it's reported as an error)
 - implicit conversion of `0` to `NULL` (also currently reported as an error)
