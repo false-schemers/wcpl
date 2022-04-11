@@ -36,7 +36,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - implicit conversion of pointer to boolean (now requires explicit `!= NULL`)
 - implicit conversion of function pointer to function (reported as an error)
 - taking address of a global scalar var (for now, `&` works for global arrays/structs/unions only)
-- `{}` initializers for locals in function scope
+- non-constant `{}` initializers for locals in function scope
 - `static` variables in function scope
 - structures/unions/arrays as parameters
 - static inline functions in header files

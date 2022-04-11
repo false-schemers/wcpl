@@ -136,7 +136,7 @@ typedef struct node {
   intr_t intr;    /* INTRCALL */
   tt_t op;        /* POSTFIX/PREFIX/INFIX; op is tt of an operator */
   ts_t ts;        /* TYPE/LITERAL */
-  sc_t sc;        /* VARDECL/FUNDEF/IMPORT */
+  sc_t sc;        /* VARDECL/FUNDEF/DISPLAY/IMPORT */
   ndbuf_t body;   /* SUBSCRIPT/CALL/CAST/UNARY/BINARY/... */
 } node_t;
 

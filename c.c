@@ -1328,6 +1328,49 @@ static bool arithmetic_constant_expr(node_t *pn)
   return false;
 }
 
+/* check if display can be calculated statically */
+static bool static_display(node_t *pn, buf_t *prib)
+{
+  switch (pn->nt) {
+    case NT_LITERAL: {
+      /* both numeric and string literals are ok */
+      return true;
+    } break;
+    case NT_DISPLAY: {
+      size_t n = ndlen(pn), i;
+      assert(n > 0 && ndref(pn, 0)->nt == NT_TYPE);
+      for (i = 1; i < n; ++i) {
+        if (!static_display(ndref(pn, i), prib)) return false;
+      }
+      return true;
+    } break;
+    case NT_PREFIX: {
+      assert(ndlen(pn) == 1);
+      if (pn->op == TT_AND && ndref(pn, 0)->nt == NT_IDENTIFIER) {
+        pn = ndref(pn, 0);
+        if (bufbsearch(prib, &pn->name, &sym_cmp) == NULL) { /* global var */
+          sym_t mod; const node_t *ptn = lookup_var_type(pn->name, prib, &mod);
+          return ptn && ts_bulk(ptn->ts); /* ok if bulk */
+        }
+      }
+      return false;
+    } break;
+    case NT_CAST: {
+      ts_t tc;
+      assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
+      if (ts_numerical(tc = ndref(pn, 0)->ts))
+        return arithmetic_constant_expr(ndref(pn, 1));
+      if (tc == TS_PTR && ndlen(ndref(pn, 0)) == 1 && ndref(ndref(pn, 0), 0)->ts == TS_VOID)
+        return arithmetic_constant_expr(ndref(pn, 1));
+      return false;
+    } break;
+    default: {
+      return arithmetic_constant_expr(pn);
+    } break;
+  }
+  return false;
+}
+
 /* replace arithmetic constant expressions in pn with literals */
 static void expr_fold_constants(node_t *pn, buf_t *prib)
 {
@@ -1349,6 +1392,9 @@ static void expr_fold_constants(node_t *pn, buf_t *prib)
       /* can't be part of an expression */
       assert(false);
       break;
+    case NT_DISPLAY:
+      if (static_display(pn, prib)) pn->sc = SC_STATIC;
+      /* fall thru (i.e. fold arith constants inside) */
     default: {
       node_t *pcn = NULL;
       if (arithmetic_constant_expr(pn)) {
@@ -3396,6 +3442,23 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
     } break;
     case NT_BREAK:
     case NT_CONTINUE: assert(false); break; /* dewasmified */
+    case NT_DISPLAY: {
+      /* static displays are processed here */
+      assert(ndlen(pn) > 0);
+      if (pn->sc == SC_STATIC && ts_bulk(ndref(pn, 0)->ts)) {
+        size_t size, align;
+        size_t pdidx = watieblen(&g_curpwm->exports);
+        watie_t *pd = watiebnewbk(&g_curpwm->exports, IEK_DATA);
+        node_t *ptn = ndref(pn, 0); assert(ptn->nt == NT_TYPE); 
+        pd->mod = g_curmod; pd->id = internf("ds%d$", (int)pdidx);
+        measure_type(ptn, pn, &size, &align, 0);
+        bufresize(&pd->data, size); /* fills with zeroes */
+        pd->align = (int)align; pd->mut = MT_CONST;
+        pd = initialize_bulk_data(pdidx, pd, 0, ptn, pn);
+        pcn = npnewcode(pn); ndcpy(ndnewbk(pcn), ptn);
+        acode_pushin_id_mod_iarg(pcn, IN_REF_DATA, pd->id, g_curmod, 0);
+      } 
+    } break;
     case NT_NULL: { /* empty statement */
       pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_VOID);
     } break;
@@ -3754,8 +3817,8 @@ static void process_top_node(sym_t mmod, node_t *pn, wat_module_t *pm)
     if (getverbosity() > 0) {
       size_t size = 0, align = 0;
       dump_node(pn, stderr); assert(ndlen(pn) == 1);
-      measure_type(ndref(pn, 0), pn, &size, &align, 0);
-      fprintf(stderr, "size: %d, align: %d\n", (int)size, (int)align);
+      /* measure_type(ndref(pn, 0), pn, &size, &align, 0);
+      fprintf(stderr, "size: %d, align: %d\n", (int)size, (int)align); */
     }
     return;
   }

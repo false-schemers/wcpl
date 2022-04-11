@@ -4022,7 +4022,8 @@ static void dump(node_t *pn, FILE* fp, int indent)
       else fprintf(fp, "(vardecl %s %s", symname(pn->name), s);
     } break;
     case NT_DISPLAY: {
-      fprintf(fp, "(display");
+      if (pn->sc == SC_STATIC) fprintf(fp, "(display static");
+      else fprintf(fp, "(display");
     } break;
     case NT_FUNDEF: {
       const char *s = sc_name(pn->sc);
