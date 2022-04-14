@@ -3619,15 +3619,15 @@ static void fundef_peephole(node_t *pcn, int optlvl)
         if (pthisi->in == IN_I32_MUL) {
           if (pprevi->in == IN_I32_CONST && ppprei->in == IN_I32_CONST) {
             unsigned long long n1 = ppprei->arg.u, n2 = pprevi->arg.u;
-            ppprei->arg.u = (n1 * n2) & 0xFFFFFFFFU;
+            ppprei->arg.i = (long long)((((n1 * n2) & 0xFFFFFFFFU) << 32) >> 32);
             icbrem(picb, i-1);
             icbrem(picb, i-1);
             ++nmods; nexti = i-1; 
           }
         } else if (IN_I32_LOAD <= pthisi->in && pthisi->in <= IN_I64_LOAD32_U) {
           if (pprevi->in == IN_I32_ADD && ppprei->in == IN_I32_CONST) {
-            unsigned long long n = pthisi->arg.u;
-            long long off = ppprei->arg.i;
+            unsigned long long n = pthisi->arg.u & 0xFFFFFFFFU;
+            long long off = (ppprei->arg.i << 32) >> 32; /* may be negative */
             if (off >= 0 && (n + (unsigned long long)off) < 0xFFFFFFFFU) { 
               pthisi->arg.u += (unsigned long long)off;
               icbrem(picb, i-2);
@@ -3635,7 +3635,7 @@ static void fundef_peephole(node_t *pcn, int optlvl)
               ++nmods; nexti = i-2;
             }  
           }
-        }
+        } 
       }
       i = nexti;
     }

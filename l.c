@@ -266,6 +266,11 @@ unsigned long strtocc32(const char *s, char** ep)
   return (unsigned long)(-1);
 }
 
+unsigned long strtou8cc32(const char *s, char **ep)
+{
+  return is8chead(*s) ? strtou8c(s, ep) : strtocc32(s, ep);
+}
+
 
 bool fget8bom(FILE *fp)
 {

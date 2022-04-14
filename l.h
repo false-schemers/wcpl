@@ -55,6 +55,7 @@ extern unsigned char *utf8(unsigned long c, unsigned char *s);
 extern unsigned long unutf8(unsigned char **ps);
 extern unsigned long strtou8c(const char *s, char **ep);
 extern unsigned long strtocc32(const char *s, char **ep);
+extern unsigned long strtou8cc32(const char *s, char **ep);
 extern bool fget8bom(FILE *fp);
 #define is8cbyte(c) (((c) & 0x80) != 0)
 #define is8chead(c) (((c) & 0xC0) == 0xC0)

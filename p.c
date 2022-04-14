@@ -2323,7 +2323,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
     case TT_CHAR: {
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      if (errno = 0, ul = strtocc32(ns, NULL), !errno && ul <= 0x10FFFFUL) {
+      if (errno = 0, ul = strtou8cc32(ns, NULL), !errno && ul <= 0x10FFFFUL) {
         pn->val.i = ul; /* no sext: too small */
       } else reprintf(pw, startpos, "char literal overflow");
       pn->ts = TS_INT;
@@ -2332,7 +2332,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
     case TT_LCHAR: {
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      if (errno = 0, ul = strtocc32(ns, NULL), !errno && ul <= 0x10FFFFUL) {
+      if (errno = 0, ul = strtou8cc32(ns, NULL), !errno && ul <= 0x10FFFFUL) {
         pn->val.i = ul; /* no sext: too small */
       } else reprintf(pw, startpos, "long char literal overflow");
       pn->ts = TS_LONG;
@@ -2341,18 +2341,19 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
     case TT_STRING: {
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      while (*ns && (errno = 0, ul = strtocc32(ns, &ns), !errno && ul <= 0x10FFFFUL)) {
+      while (*ns && (errno = 0, ul = strtou8cc32(ns, &ns), !errno && ul <= 0x10FFFFUL)) {
         chbputlc(ul, &pn->data); /* in utf-8 */
       }
       chbputc(0, &pn->data); /* terminating zero char, C-style */
-      if (*ns) reprintf(pw, startpos+(int)(ns-pw->tokstr), "string literal char overflow");
+      if (*ns) 
+        reprintf(pw, startpos+(int)(ns-pw->tokstr), "string literal char overflow");
       pn->ts = TS_STRING;
       dropt(pw);
     } break;
     case TT_LSTRING: {
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      while (*ns && (errno = 0, ul = strtocc32(ns, &ns), !errno && ul <= 0x10FFFFUL)) {
+      while (*ns && (errno = 0, ul = strtou8cc32(ns, &ns), !errno && ul <= 0x10FFFFUL)) {
         chbput4le((unsigned)ul, &pn->data); /* 4 bytes, in LE order */
       }
       chbput4le(0, &pn->data); /* terminating zero wchar, C-style */
