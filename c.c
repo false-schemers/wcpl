@@ -113,6 +113,7 @@ static valtype_t ts2vt(ts_t ts)
       return VT_F32;
     case TS_DOUBLE:
       return VT_F64; 
+    default:; 
   }
   return VT_UNKN;
 }
@@ -136,6 +137,7 @@ static bool ts_unsigned(ts_t ts)
     case TS_UCHAR: case TS_USHORT: case TS_UINT:
     case TS_ULONG: case TS_ULLONG: 
       return true;
+    default:; 
   }
   return false;
 }
@@ -151,6 +153,7 @@ static valtype_t ts_to_blocktype(ts_t ts)
     case TS_LLONG: case TS_ULLONG:  return VT_I64;
     case TS_FLOAT:                  return VT_F32;
     case TS_DOUBLE:                 return VT_F64;
+    default:; 
   }
   return VT_UNKN;
 }
@@ -651,6 +654,7 @@ size_t measure_offset(const node_t *ptn, node_t *prn, sym_t fld, node_t **ppftn)
       }
       n2eprintf(ptn, prn, "can't find field .%s in struct", symname(fld));
     } break;
+    default:; 
   }
   n2eprintf(ptn, prn, "can't find field .%s in type", symname(fld));
   return 0; /* won't happen */
@@ -828,6 +832,7 @@ bool static_eval(node_t *pn, buf_t *prib, seval_t *pr)
       } 
       return ok;
     } break;
+    default:; 
   }
   return false;
 }
@@ -1324,6 +1329,7 @@ static bool arithmetic_constant_expr(node_t *pn)
     case NT_CAST: 
       assert(ndlen(pn) == 2); assert(ndref(pn, 0)->nt == NT_TYPE);
       return ts_numerical(ndref(pn, 0)->ts) && arithmetic_constant_expr(ndref(pn, 1));
+    default:; 
   }
   return false;
 }
