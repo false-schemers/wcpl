@@ -1303,6 +1303,7 @@ static bool arithmetic_constant_expr(node_t *pn)
         case INTR_ASU64: case INTR_ASDBL:
           assert(ndlen(pn) == 1); 
           return arithmetic_constant_expr(ndref(pn, 0));
+        default:;
       }
       return false;
     case NT_PREFIX:
@@ -1310,6 +1311,7 @@ static bool arithmetic_constant_expr(node_t *pn)
       switch (pn->op) {
         case TT_PLUS:  case TT_MINUS: case TT_TILDE: case TT_NOT:
           return arithmetic_constant_expr(ndref(pn, 0));
+        default:;
       }
       return false;
     case NT_INFIX: 
@@ -1320,6 +1322,7 @@ static bool arithmetic_constant_expr(node_t *pn)
         case TT_SHL:   case TT_SHR:   case TT_EQ:    case TT_NE:
         case TT_LT:    case TT_GT:    case TT_LE:    case TT_GE:
           return arithmetic_constant_expr(ndref(pn, 0)) && arithmetic_constant_expr(ndref(pn, 1));
+        default:;
       } 
       return false;
     case NT_COND:
@@ -1537,6 +1540,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           size_t i;
           for (i = 0; i < ndlen(pn); ++i) expr_wasmify(ndref(pn, i), pvib, plib);
         } break;
+        default:;
       }
     } break;
     case NT_POSTFIX: {
@@ -1991,6 +1995,7 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_F64_CONVERT_I32_U; break;
         case TS_LLONG:                           in = IN_F64_CONVERT_I64_S; break;
         case TS_ULLONG:                          in = IN_F64_CONVERT_I64_U; break;
+        default:;
       } break;
     case TS_FLOAT:
       switch (tsfrom) {
@@ -2003,6 +2008,7 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_F32_CONVERT_I32_U; break;
         case TS_LLONG:                           in = IN_F32_CONVERT_I64_S; break;
         case TS_ULLONG:                          in = IN_F32_CONVERT_I64_U; break;
+        default:;
       } break;
     case TS_CHAR: case TS_SHORT: { /* replace upper bits w/sign bit */
         inscode_t *pic; unsigned sh = (tsto == TS_CHAR) ? 24 : 16;
@@ -2032,6 +2038,7 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_UINT: case TS_ULONG:/* wasm32 */ /* nop */                  break;
         case TS_LLONG:                           in = IN_I32_WRAP_I64;      break;
         case TS_ULLONG:                          in = IN_I32_WRAP_I64;      break;
+        default:;
       } break;
     case TS_UINT: case TS_ULONG: /* ULONG: wasm32 assumed */
       switch (tsfrom) {
@@ -2045,6 +2052,7 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_UINT: case TS_ULONG:/* wasm32 */ /* nop */                  break;
         case TS_LLONG:                           in = IN_I32_WRAP_I64;      break;
         case TS_ULLONG:                          in = IN_I32_WRAP_I64;      break;
+        default:;
       } break;
     case TS_LLONG:
       switch (tsfrom) {
@@ -2057,6 +2065,7 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_I64_EXTEND_I32_U;  break;
         case TS_LLONG:                           /* nop */                  break;
         case TS_ULLONG:                          /* nop */                  break;
+        default:;
       } break;
     case TS_ULLONG:
       switch (tsfrom) {
@@ -2069,7 +2078,9 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_I64_EXTEND_I32_U;  break;
         case TS_LLONG:                           /* nop */                  break;
         case TS_ULLONG:                          /* nop */                  break;
+        default:;
       } break;
+    default:;
   }
   if (in0) icbnewbk(pdata)->in = in0;
   if (in) icbnewbk(pdata)->in = in;
@@ -2107,11 +2118,13 @@ static inscode_t *asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
       } break;
     case TS_FLOAT:
       switch (tsfrom) {
-        case TS_FLOAT:  in = IN_F32_LOAD; align = 2; break;      
+        case TS_FLOAT:  in = IN_F32_LOAD; align = 2; break;
+        default:;
       } break;
     case TS_DOUBLE:
       switch (tsfrom) {
-        case TS_DOUBLE: in = IN_F64_LOAD; align = 3; break;      
+        case TS_DOUBLE: in = IN_F64_LOAD; align = 3; break;
+        default:;
       } break;
     default: assert(false);
   }
@@ -2224,6 +2237,7 @@ static bool asm_binary(ts_t ts, tt_t op, icbuf_t *pdata)
         case TT_GT:    in = IN_I32_GT_S; break;
         case TT_LE:    in = IN_I32_LE_S; break;
         case TT_GE:    in = IN_I32_GE_S; break;
+        default:;
       } break;
     case TS_UINT: case TS_ULONG: /* wasm32 model (will be different under wasm64) */
       switch (op) {
@@ -2243,6 +2257,7 @@ static bool asm_binary(ts_t ts, tt_t op, icbuf_t *pdata)
         case TT_GT:    in = IN_I32_GT_U; break;
         case TT_LE:    in = IN_I32_LE_U; break;
         case TT_GE:    in = IN_I32_GE_U; break;
+        default:;
       } break;
     case TS_LLONG: 
       switch (op) {
@@ -2262,6 +2277,7 @@ static bool asm_binary(ts_t ts, tt_t op, icbuf_t *pdata)
         case TT_GT:    in = IN_I64_GT_S; break;
         case TT_LE:    in = IN_I64_LE_S; break;
         case TT_GE:    in = IN_I64_GE_S; break;
+        default:;
       } break;
     case TS_ULLONG: 
       switch (op) {
@@ -2281,6 +2297,7 @@ static bool asm_binary(ts_t ts, tt_t op, icbuf_t *pdata)
         case TT_GT:    in = IN_I64_GT_U; break;
         case TT_LE:    in = IN_I64_LE_U; break;
         case TT_GE:    in = IN_I64_GE_U; break;
+        default:;
       } break;
     case TS_FLOAT: 
       switch (op) {
@@ -2294,6 +2311,7 @@ static bool asm_binary(ts_t ts, tt_t op, icbuf_t *pdata)
         case TT_GT:    in = IN_F32_GT; break;
         case TT_LE:    in = IN_F32_LE; break;
         case TT_GE:    in = IN_F32_GE; break;
+        default:;
       } break;
     case TS_DOUBLE: 
       switch (op) {
@@ -2307,6 +2325,7 @@ static bool asm_binary(ts_t ts, tt_t op, icbuf_t *pdata)
         case TT_GT:    in = IN_F64_GT; break;
         case TT_LE:    in = IN_F64_LE; break;
         case TT_GE:    in = IN_F64_GE; break;
+        default:;
       } break;
     default: assert(false);
   }
