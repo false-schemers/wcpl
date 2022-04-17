@@ -18,7 +18,7 @@ by Arthur O'Dwyer*. Porting it to WCPL involved the following changes:
 ## Pi
 
 Fabrice Bellard's little program for calculation of decimal digits of Pi
-that runs in O(n^2) time for digit #n, but uses very little memory.
+that runs in O(n^2) time, but uses very little memory.
 Ported by inserting explicit casts from `long long`s to `int`s.
 
 ## Calendar

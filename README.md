@@ -81,10 +81,10 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - `<wasi/api.h>` (header only, implemented by host)
 - `<math.h>` (C90 + some C99 extras)
 - `<time.h>` (C90 + some POSIX-like extras)
+- `<locale.h>` (stub to allow setting utf8 locale)
  
 # Libaries that won't be supported
 
-- `<locale.h>`
 - `<setjmp.h>`
 - `<signal.h>`
 
