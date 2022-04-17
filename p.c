@@ -2204,6 +2204,7 @@ static bool type_specifier_ahead(pws_t *pw)
     case TT_STRUCT_KW: case TT_UNION_KW:    case TT_UNSIGNED_KW:
     case TT_VOID_KW:   case TT_VOLATILE_KW: case TT_TYPE_NAME:
       return true;
+    default:;
   }
   return false;
 }
@@ -2214,6 +2215,7 @@ static bool storage_class_specifier_ahead(pws_t *pw)
     case TT_EXTERN_KW: case TT_STATIC_KW:   
     case TT_AUTO_KW:   case TT_REGISTER_KW:
       return true;
+    default:;
   }
   return false;
 }
@@ -2521,6 +2523,7 @@ static bool postfix_operator_ahead(pws_t *pw)
     case TT_LBRK:      case TT_LPAR:        case TT_DOT:
     case TT_ARROW:     case TT_PLUS_PLUS:   case TT_MINUS_MINUS:
       return true;
+    default:;
   }
   return false;
 }
@@ -2600,6 +2603,7 @@ static long long parse_asm_signed(pws_t *pw)
         ndfini(&xnd), ndfini(&lnd);
         return ll;
       }
+      default:;
     }
   }
   reprintf(pw, startpos, "signed argument expected");  
@@ -2619,6 +2623,7 @@ static unsigned long long parse_asm_unsigned(pws_t *pw)
         ndfini(&xnd), ndfini(&lnd);
         return ull;
       }
+      default:;
     }
   }
   reprintf(pw, startpos, "unsigned argument expected");  
@@ -2638,6 +2643,7 @@ static double parse_asm_double(pws_t *pw)
         ndfini(&xnd), ndfini(&lnd);
         return d;
       }
+      default:;
     }
   }
   reprintf(pw, startpos, "floating-point argument expected");  
@@ -2806,6 +2812,7 @@ static tt_t getop(pws_t *pw, int deft)
     case TT_OR:                                      dt = '|'; break;
     case TT_AND_AND:                                 dt = 'c'; break;      
     case TT_OR_OR:                                   dt = 'd'; break;      
+    default:;
   }
   return deft == dt ? (dropt(pw), pw->ctk) : TT_EOF;
 } 
@@ -2874,6 +2881,7 @@ static void parse_assignment_expr(pws_t *pw, node_t *pn)
       wrap_assignment(pn, op, &nd);
       ndfini(&nd);
     }
+    default:;
   }
 }
 
@@ -3860,6 +3868,7 @@ const char *op_name(tt_t op)
     case TT_TILDE: s = "~"; break;
     case TT_BREAK_KW: s = "break"; break;  
     case TT_CONTINUE_KW: s = "continue"; break;  
+    default:;
   }
   return s;
 }

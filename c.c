@@ -2193,21 +2193,25 @@ static bool asm_unary(ts_t ts, tt_t op, icbuf_t *pdata)
       switch (op) {
         case TT_PLUS: return true;
         case TT_NOT: icbnewbk(pdata)->in = IN_I32_EQZ; return true;
+        default:;
       } break;
     case TS_LLONG: case TS_ULLONG: 
       switch (op) {
         case TT_PLUS: return true;
         case TT_NOT: icbnewbk(pdata)->in = IN_I64_EQZ; return true;
+        default:;
       } break;
     case TS_FLOAT:
       switch (op) {
         case TT_PLUS: return true;
         case TT_MINUS: icbnewbk(pdata)->in = IN_F32_NEG; return true;
+        default:;
       } break;
     case TS_DOUBLE: 
       switch (op) {
         case TT_PLUS: return true;
         case TT_MINUS: icbnewbk(pdata)->in = IN_F64_NEG; return true;
+        default:;
       } break;
     default: assert(false);
   }
@@ -2398,6 +2402,7 @@ static ts_t acode_const(node_t *pan, numval_t **ppnv)
       case IN_I64_CONST: if (ppnv) *ppnv = &pic->arg; return TS_LLONG;
       case IN_F32_CONST: if (ppnv) *ppnv = &pic->arg; return TS_FLOAT;
       case IN_F64_CONST: if (ppnv) *ppnv = &pic->arg; return TS_DOUBLE;
+      default:;
     }
   }  
   return TS_VOID; /* 0 */
@@ -3487,6 +3492,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
     case NT_NULL: { /* empty statement */
       pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_VOID);
     } break;
+    default:;
   }
 
   if (!pcn) 

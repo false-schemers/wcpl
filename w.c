@@ -1031,6 +1031,7 @@ const char *valtype_name(valtype_t vt)
     case VT_V128: s = "v128"; break;
     case RT_FUNCREF: s = "funcref"; break;
     case RT_EXTERNREF: s = "externref"; break;
+    default:;
   }
   return s;
 }
@@ -1124,6 +1125,7 @@ insig_t instr_sig(instr_t in)
       return INSIG_RD; 
     case IN_DATA_PUT_REF: /* not in WASM! */
       return INSIG_PR; 
+    default:;
   }
   return INSIG_NONE;
 }
@@ -1381,6 +1383,7 @@ static void wat_imports(watiebuf_t *pib)
           chbputf(g_watbuf, " (mut %s))", valtype_name(pi->vt));
         }
       } break;
+      default:;
     }
     chbputc(')', g_watbuf); 
     wat_line(chbdata(g_watbuf));
@@ -2392,7 +2395,8 @@ static wt_t peekt(sws_t *pw)
           pw->ctk = WT_EOF;
           if (lexbc(pw, &pw->token)) pw->ctk = WT_BC;
           else seprintf(pw, "invalid block comment");
-        }; 
+        };
+        default:; 
       }
     } while (WT_WHITESPACE <= pw->ctk && pw->ctk <= WT_BC); 
     pw->gottk = true; 
@@ -3152,6 +3156,7 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
             if (process_subsystem_depglobal(&mi, pmi, pm)) /* ok */ ;
             else if (!bufsearch(pdg, &mi, &modid_cmp)) *(modid_t*)bufnewbk(pdg) = mi;              
           } break;
+          default:;
         }
       }
       newpf = watiebnewbk(&pm->exports, IEK_FUNC); newpf->mod = pf->mod; newpf->id = pf->id; 
@@ -3331,6 +3336,7 @@ size_t watify_wat_module(wat_module_t* pm)
           case VT_F32: pe->ic.in = IN_F32_CONST; break;
           case VT_I64: pe->ic.in = IN_I64_CONST; break;
           case VT_I32: pe->ic.in = IN_I32_CONST; break;
+          default:;
         }
       } else if (pe->ic.in == IN_REF_DATA) {
         modid_t mi; dpme_t *pdpme; 
