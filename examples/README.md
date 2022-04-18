@@ -26,6 +26,14 @@ Ported by inserting explicit casts from `long long`s to `int`s.
 Simple calendar-printing program of unknown pedigree. Ported by moving
 static variable out of function scope.
 
+## Sudoku
+
+Sudoku solver, a popular benchmark. Needs to be called with the
+accompanying `sudoku.txt` file as standard input. Ported by removing
+`inline` keyword, changing `!= 0` pointer comparison to `!= NULL` and 
+replacing array arguments such as `int8_t sr[729]` to pointers.
+
+
 ## Binarytrees, Fannkuchredux, Nbody, Spectralnorm
 
 Benchmark programs from the Benchmarks Game site**. Ported by adding
