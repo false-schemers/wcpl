@@ -31,7 +31,7 @@ static variable out of function scope.
 Sudoku solver, a popular benchmark. Needs to be called with the
 accompanying `sudoku.txt` file as standard input. Ported by removing
 `inline` keyword, changing `!= 0` pointer comparison to `!= NULL` and 
-replacing array arguments such as `int8_t sr[729]` to pointers.
+replacing array arguments such as `int8_t sr[729]` with pointers.
 
 
 ## Binarytrees, Fannkuchredux, Nbody, Spectralnorm

@@ -493,10 +493,34 @@ static const node_t *type_eval(node_t *pn, buf_t *prib)
         const node_t *ptn = type_eval(ndref(pn, 0), prib);
         if (ptn && (ptn->ts == TS_STRUCT || ptn->ts == TS_UNION)) {
           size_t i;
+          if (ptn->name && !ndlen(ptn)) {
+            node_t *pftn = (node_t *)lookup_eus_type(ptn->ts, ptn->name);
+            if (!pftn) n2eprintf(ptn, pn, "can't allocate/measure incomplete union type");
+            else ptn = pftn;
+          }
           for (i = 0; i < ndlen(ptn); ++i) {
             const node_t *pni = ndcref(ptn, i);
             if (pni->nt == NT_VARDECL && pni->name == pn->name) {
               return ndcref(pni, 0);
+            }
+          }
+        }
+      } else if (pn->op == TT_ARROW && pn->name && ndlen(pn) == 1) {
+        const node_t *ptn = type_eval(ndref(pn, 0), prib);
+        if (ptn && ptn->ts == TS_PTR && ndlen(ptn) == 1) {
+          ptn = ndcref(ptn, 0); 
+          if (ptn->ts == TS_STRUCT || ptn->ts == TS_UNION) {
+            size_t i;
+            if (ptn->name && !ndlen(ptn)) {
+              node_t *pftn = (node_t *)lookup_eus_type(ptn->ts, ptn->name);
+              if (!pftn) n2eprintf(ptn, pn, "can't allocate/measure incomplete union type");
+              else ptn = pftn;
+            }
+            for (i = 0; i < ndlen(ptn); ++i) {
+              const node_t *pni = ndcref(ptn, i);
+              if (pni->nt == NT_VARDECL && pni->name == pn->name) {
+                return ndcref(pni, 0);
+              }
             }
           }
         }
@@ -505,7 +529,7 @@ static const node_t *type_eval(node_t *pn, buf_t *prib)
     case NT_PREFIX: {
       if (pn->op == TT_STAR && ndlen(pn) == 1) {
         const node_t *ptn = type_eval(ndref(pn, 0), prib);
-        if (ptn && ptn->ts == TS_PTR) {
+        if (ptn && ptn->ts == TS_PTR && ndlen(ptn) == 1) {
           if (ndlen(ptn) == 1) return ndcref(ptn, 0); 
         }
       }
@@ -1534,9 +1558,14 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           ndswap(pin, ptn); pn->nt = NT_CAST;
           wrap_unary_operator(pn, pn->startpos, TT_STAR);
         } break;
+        case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF: {
+          node_t *pan; assert(ndlen(pn) >= 1);
+          pan = ndref(pn, 0);
+          if (pan->nt != NT_TYPE) expr_wasmify(pan, pvib, plib);
+        } break;
         case INTR_ALLOCA: 
-        case INTR_ASU32: case INTR_ASFLT:
-        case INTR_ASU64: case INTR_ASDBL: {
+        case INTR_ASU32:  case INTR_ASFLT:
+        case INTR_ASU64:  case INTR_ASDBL: {
           size_t i;
           for (i = 0; i < ndlen(pn); ++i) expr_wasmify(ndref(pn, i), pvib, plib);
         } break;
@@ -2880,7 +2909,7 @@ static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op,
       pvn = compile_binary(prn, pln, op, pvn); /* new val on stack */
     }
     if (!assign_compatible(acode_type(pan), pctn ? pctn : acode_type(pvn)))
-      neprintf(prn, "can't modify lval: unexpected type");
+      neprintf(prn, "can't modify lval: unexpected type on the right (need cast?)");
     if (pctn && !cast_compatible(pctn, acode_type(pvn)))
       neprintf(prn, "can't modify lval: impossible narrowing cast");
     if (pctn && !same_type(pctn, acode_type(pvn)))
@@ -3420,7 +3449,8 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
     } break;
     /* statements */
     case NT_BLOCK: {
-      size_t i; bool end = false; assert(ret);
+      size_t i; bool end = false; 
+      if (ret == NULL) neprintf(pn, "{} block used as an expression");
       pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_VOID);
       if (pn->name && pn->op == TT_BREAK_KW) {
         acode_pushin_id_uarg(pcn, IN_BLOCK, pn->name, BT_VOID);

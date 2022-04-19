@@ -31,10 +31,12 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 
 - adjacent mixed-char-size string literals concatenation (works for same-char-size)
 - implicit conversions of arrays to element pointers; explicit `&arr[0]` required for now
-- implicit promotions of char and short types as vararg ... arguments (for now it's reported as an error)
+- implicit promotions of char and short types as vararg `...` arguments (for now it's reported as an error)
 - implicit conversion of `0` to `NULL` (also currently reported as an error)
-- implicit conversion of pointer to boolean (now requires explicit `!= NULL`)
+- implicit conversion of pointer to boolean in `||`, `&&` and `?:` expressions (now requires explicit `!= NULL`)
 - implicit conversion of function pointer to function (reported as an error)
+- implicit conversion of longer to shorter integral types (use explicit casts)
+- implicit conversion of same-length unsigned to signed integer parameters (use explicit casts)
 - taking address of a global scalar var (for now, `&` works for global arrays/structs/unions only)
 - non-constant `{}` initializers for locals in function scope
 - `static` variables in function scope
@@ -135,7 +137,7 @@ such as `wasmtime`* allow running WAT files directly (and provide better disgnos
 this way, e.g. symbolic stack traces); for others, WAT files should be first converted 
 to WASM format with `wat2wasm`** or similar tools.
 
-Please read the documentation on your WASM runtime for details on directory
+Please read the documentation on your WASM runtime for details on directory/environment
 mapping and passing command line arguments.
 
 \* available at https://github.com/bytecodealliance/wasmtime/releases
