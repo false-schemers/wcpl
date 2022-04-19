@@ -6,7 +6,7 @@ Few tests of WCPL compiler/library.
 ## stdio-tests
 
 Tests of `printf` and `scanf` implementation from the `stdio` module.
-Please note that in order to keep library code reasonable small, floating-point
+Please note that in order to keep library code reasonably small, floating-point
 decimal conversions provide only 9 correct digits of precision, and the
 tests reflect that.
 
