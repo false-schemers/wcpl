@@ -44,24 +44,12 @@
     i32.add
     local.set $p
     i32.load8_s offset=0 align=1
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.tee $ch
     i32.store8 offset=0 align=1
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.eq
     if
@@ -91,10 +79,6 @@
     local.get $sp
     i32.load8_s offset=0 align=1
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.eq
     if
@@ -543,10 +527,6 @@
     local.get $s
     i32.load8_s offset=0 align=1
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.ne
     if
@@ -638,19 +618,11 @@
     i32.add
     local.set $p
     i32.load8_s offset=0 align=1
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.tee $ch
     i32.store8 offset=0 align=1
     end $3$
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -841,18 +813,10 @@
     i32.add
     local.set $p
     i32.load8_s offset=0 align=1
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.tee $ch
     i32.store8 offset=0 align=1
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.eqz
     if
@@ -949,18 +913,10 @@
     i32.add
     local.set $p
     i32.load8_s offset=0 align=1
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.tee $ch
     i32.store8 offset=0 align=1
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.eqz
     br_if $1$
@@ -1128,10 +1084,6 @@
     local.get $s
     i32.load8_s offset=0 align=1
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.eq
     if

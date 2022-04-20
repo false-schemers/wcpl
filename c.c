@@ -2039,16 +2039,15 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_ULLONG:                          in = IN_F32_CONVERT_I64_U; break;
         default:;
       } break;
-    case TS_CHAR: case TS_SHORT: { /* replace upper bits w/sign bit */
-        inscode_t *pic; unsigned sh = (tsto == TS_CHAR) ? 24 : 16;
+    case TS_CHAR: case TS_SHORT: { 
+        /* these are still ints, we need to replace upper bits w/sign bit */
+        in = (tsto == TS_CHAR) ? IN_I32_EXTEND8_S : IN_I32_EXTEND16_S;
         asm_numerical_cast(TS_INT, tsfrom, pdata); 
-        pic = icbnewbk(pdata); pic->in = IN_I32_CONST; pic->arg.u = sh;
-        icbnewbk(pdata)->in = IN_I32_SHL;
-        pic = icbnewbk(pdata); pic->in = IN_I32_CONST; pic->arg.u = sh;
-        icbnewbk(pdata)->in = IN_I32_SHR_S;
+        icbnewbk(pdata)->in = in;
         return;
       } break;  
-    case TS_UCHAR: case TS_USHORT: { /* mask upper bits */
+    case TS_UCHAR: case TS_USHORT: {
+        /* these are still ints, we need to mask upper bits */
         inscode_t *pic; unsigned m = (tsto == TS_UCHAR) ? 0xFF : 0xFFFF;
         asm_numerical_cast(TS_UINT, tsfrom, pdata);
         pic = icbnewbk(pdata); pic->in = IN_I32_CONST; pic->arg.u = m;
@@ -3669,6 +3668,16 @@ static void fundef_peephole(node_t *pcn, int optlvl)
             icbrem(picb, i-1);
             icbrem(picb, i-1);
             ++nmods; nexti = i-1;
+          }
+        } else if (pthisi->in == IN_I32_EXTEND8_S) {
+          if (pprevi->in == IN_I32_EXTEND8_S || pprevi->in == IN_I64_LOAD8_S) {
+            icbrem(picb, i);
+            ++nmods; nexti = i;
+          }
+        } else if (pthisi->in == IN_I32_EXTEND16_S) {
+          if (pprevi->in == IN_I32_EXTEND16_S || pprevi->in == IN_I32_LOAD16_S) {
+            icbrem(picb, i);
+            ++nmods; nexti = i;
           }
         }
       }

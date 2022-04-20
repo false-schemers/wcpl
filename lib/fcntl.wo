@@ -379,16 +379,8 @@
     local.get $i
     i32.add
     i32.load8_s offset=0 align=1
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.tee $last
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     global.get $fcntl:preopen_sep
     i32.eq
@@ -396,10 +388,6 @@
     i32.const 1
     else
     local.get $last
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.eq

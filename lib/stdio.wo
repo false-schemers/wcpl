@@ -1227,20 +1227,12 @@
     i32.store offset=0 align=4
     local.tee $i8$
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.store8 offset=0 align=1
     local.get $i8$
     i32.load8_u offset=0 align=1
     else
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.get $fp
     call $stdio:_flushbuf
@@ -2798,19 +2790,11 @@
   (func $stdio:_is_oct_digit
     (param $ch i32) (result i32) 
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 48
     i32.ge_s
     if (result i32)
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 55
     i32.le_s
@@ -2822,19 +2806,11 @@
   (func $stdio:_is_dec_digit
     (param $ch i32) (result i32) 
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 48
     i32.ge_s
     if (result i32)
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 57
     i32.le_s
@@ -2846,19 +2822,11 @@
   (func $stdio:_is_hex_digit
     (param $ch i32) (result i32) 
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 48
     i32.ge_s
     if (result i32)
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 57
     i32.le_s
@@ -2869,19 +2837,11 @@
     i32.const 1
     else
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 97
     i32.ge_s
     if (result i32)
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 102
     i32.le_s
@@ -2893,19 +2853,11 @@
     i32.const 1
     else
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 65
     i32.ge_s
     if (result i32)
     local.get $ch
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 70
     i32.le_s
@@ -3042,10 +2994,6 @@
     i32.ne
     if (result i32)
     local.get $get
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.eqz
     else
@@ -3083,10 +3031,6 @@
     local.tee $i1$
     local.get $i
     i32.wrap_i64
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.store8 offset=0 align=1
     br $1$
@@ -3095,10 +3039,6 @@
     local.tee $i2$
     local.get $i
     i32.wrap_i64
-    i32.const 16
-    i32.shl
-    i32.const 16
-    i32.shr_s
     i32.extend16_s
     i32.store16 offset=0 align=2
     br $1$
@@ -3212,10 +3152,6 @@
     local.get $c
     i32.const 45
     i32.eq
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.set $gotsign
     local.get $fp$
@@ -3664,10 +3600,6 @@
     i32.const 0
     global.set $errno:errno
     local.get $gotsign
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -3807,10 +3739,6 @@
     local.get $n
     i32.const -1
     local.get $full
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -3894,10 +3822,6 @@
     local.get $c
     i32.const 45
     i32.eq
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.set $neg
     local.get $fp$
@@ -3955,10 +3879,6 @@
     f64.const -inf
     f64.const +inf
     local.get $neg
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -4121,10 +4041,6 @@
     local.set $dc
     else
     local.get $hex
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -4244,10 +4160,6 @@
     i32.ne
     if (result i32)
     local.get $hex
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     else
     i32.const 0
@@ -4318,10 +4230,6 @@
     call_indirect (param i32 i32 i32 i32) (result i32)
     local.set $c
     local.get $hex
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -5927,10 +5835,6 @@
     i32.add
     local.tee $i1$
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.store8 offset=0 align=1
     end
@@ -5946,10 +5850,6 @@
     local.get $data
     local.set $fp
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -5979,20 +5879,12 @@
     i32.store offset=0 align=4
     local.tee $i3$
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.store8 offset=0 align=1
     local.get $i3$
     i32.load8_u offset=0 align=1
     else
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.get $fp
     call $stdio:_flushbuf
@@ -6122,10 +6014,6 @@
     end
     if (result i32)
     local.get $negative
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -6355,10 +6243,6 @@
     i32.lt_u
     if
     local.get $negative
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -6453,10 +6337,6 @@
     local.get $value
     local.get $base
     i32.rem_u
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.set $digit
     local.get $fp$
@@ -6468,20 +6348,12 @@
     i32.add
     local.tee $i1$
     local.get $digit
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 10
     i32.lt_s
     if (result i32)
     i32.const 48
     local.get $digit
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.add
     else
@@ -6492,10 +6364,6 @@
     i32.and
     select
     local.get $digit
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.add
     i32.const 10
@@ -6526,10 +6394,6 @@
     local.get $fp$
     local.get $len
     local.get $negative
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.get $base
     local.get $prec
@@ -6580,10 +6444,6 @@
     local.get $base
     i64.rem_u
     i32.wrap_i64
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.set $digit
     local.get $fp$
@@ -6595,20 +6455,12 @@
     i32.add
     local.tee $i1$
     local.get $digit
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 10
     i32.lt_s
     if (result i32)
     i32.const 48
     local.get $digit
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.add
     else
@@ -6619,10 +6471,6 @@
     i32.and
     select
     local.get $digit
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.add
     i32.const 10
@@ -6656,10 +6504,6 @@
     local.get $fp$
     local.get $len
     local.get $negative
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.get $base
     i32.wrap_i64
@@ -6954,10 +6798,6 @@
     i32.const 10
     i32.rem_u
     i32.add
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.store8 offset=0 align=1
     local.get $frac
@@ -7036,10 +6876,6 @@
     i32.const 10
     i32.rem_s
     i32.add
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.store8 offset=0 align=1
     local.get $whole
@@ -7067,10 +6903,6 @@
     local.get $width
     if (result i32)
     local.get $negative
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -7123,10 +6955,6 @@
     i32.lt_u
     if
     local.get $negative
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -7234,16 +7062,8 @@
     i32.const 0
     f64.convert_i32_s
     f64.lt
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.tee $negative
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -7490,10 +7310,6 @@
     local.get $idx
     local.get $maxlen
     local.get $negative
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -7630,16 +7446,8 @@
     local.get $value
     f64.const 0x0.0000000000000p+0 (; 0 ;)
     f64.lt
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.tee $negative
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -7722,10 +7530,6 @@
     local.get $val
     i32.const 10
     i32.rem_s
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.set $digit
     local.get $fp$
@@ -7740,10 +7544,6 @@
     local.tee $i2$
     i32.const 48
     local.get $digit
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.add
     i32.store8 offset=0 align=1
@@ -8114,10 +7914,6 @@
     i32.lt_u
     if
     local.get $negative
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -8917,10 +8713,6 @@
     i32.add
     local.set $va
     i32.load offset=0 align=4
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     else
     local.get $flags
@@ -8933,10 +8725,6 @@
     i32.add
     local.set $va
     i32.load offset=0 align=4
-    i32.const 16
-    i32.shl
-    i32.const 16
-    i32.shr_s
     i32.extend16_s
     else
     local.get $va
@@ -9258,10 +9046,6 @@
     i32.add
     local.set $va
     i32.load offset=0 align=4
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.get $data
     local.get $idx
@@ -9453,16 +9237,8 @@
     i32.or
     local.set $flags
     i32.const 0
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.tee $is_ll
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne

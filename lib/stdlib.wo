@@ -501,10 +501,6 @@
     return
     end
     local.get $negexp
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -553,10 +549,6 @@
     f64.const -inf
     f64.const +inf
     local.get $neg
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -598,10 +590,6 @@
     end $7$
     end $8$
     local.get $negexp
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -626,10 +614,6 @@
     i32.store offset=0 align=4
     end
     local.get $neg
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -918,10 +902,6 @@
     return
     end
     local.get $negexp
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -970,10 +950,6 @@
     f64.const -inf
     f64.const +inf
     local.get $neg
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -982,10 +958,6 @@
     end
     local.get $fraction
     local.get $negexp
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -1008,10 +980,6 @@
     i32.store offset=0 align=4
     end
     local.get $neg
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -1098,10 +1066,6 @@
     local.get $n
     i32.const -1
     local.get $full
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 0
     i32.ne
@@ -1395,16 +1359,8 @@
     if
     local.get $nptr
     i32.load8_s offset=0 align=1
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     local.tee $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 45
     i32.eq
@@ -1412,20 +1368,12 @@
     i32.const 1
     else
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 43
     i32.eq
     end
     if
     local.get $c
-    i32.const 24
-    i32.shl
-    i32.const 24
-    i32.shr_s
     i32.extend8_s
     i32.const 45
     i32.eq
