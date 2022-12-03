@@ -526,7 +526,7 @@ buf_t* buficpy(buf_t* mem, const buf_t* pb) /* over non-inited */
   mem->fill = pb->fill;
   mem->buf = NULL;
   if (pb->end > 0) {
-    mem->buf = excalloc(pb->end, pb->esz) ;
+    mem->buf = excalloc(pb->end, pb->esz);
     memcpy(mem->buf, pb->buf, pb->esz*pb->fill);
   }
   return mem;
@@ -590,7 +590,7 @@ void bufclear(buf_t* pb)
 void bufgrow(buf_t* pb, size_t n)
 {
   assert(pb);
-  { 
+  if (n > 0) { 
     size_t oldsz = pb->end;
     size_t newsz = oldsz*2;
     if (oldsz + n > newsz) newsz += n;
@@ -709,6 +709,7 @@ void *bufalloc(buf_t* pb, size_t n)
   size_t esz; char* pbk;
   assert(pb);
   if (pb->fill + n > pb->end) bufgrow(pb, pb->fill + n - pb->end);
+  else if (!pb->buf && n == 0) bufgrow(pb, 1); /* ensure buf != NULL */ 
   esz = pb->esz;
   assert(pb->buf != NULL);
   pbk = (char*)pb->buf + pb->fill*esz;
@@ -732,6 +733,14 @@ void bufrev(buf_t* pb)
     memswap(pdata+i*esz, pdata+j*esz, esz);
     ++i, --j;
   }
+}
+
+void bufcpy(buf_t* pb, const buf_t* pab)
+{
+  size_t an = buflen(pab);
+  assert(pb->esz == pab->esz);
+  bufclear(pb);
+  memcpy(bufalloc(pb, an), pab->buf, an*pab->esz);
 }
 
 void bufcat(buf_t* pb, const buf_t* pab)

@@ -4203,7 +4203,7 @@ int main(int argc, char **argv)
       case 'L':  eoarg = eoptarg; dsbpushbk(&libv, &eoarg); break;
       case 's':  s_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'a':  a_arg = strtoul(eoptarg, NULL, 0); break; 
-      case 'h':  eusage("WCPL 0.01 built on " __DATE__);
+      case 'h':  eusage("WCPL 0.02 built on " __DATE__);
     }
   }
 
@@ -4241,7 +4241,7 @@ int main(int argc, char **argv)
       ifile_arg = argv[eoptind++];
       if (strsuf(ifile_arg, ".o") != NULL || strsuf(ifile_arg, ".wo") != NULL || strsuf(ifile_arg, ".wat") != NULL) {
         logef("# loading object module from %s\n", ifile_arg);
-        read_wat_module(ifile_arg, pwm);
+        read_wat_object_module(ifile_arg, pwm);
         logef("# object module '%s' loaded\n", symname(pwm->name));
       } else {
         logef("# compiling source file %s\n", ifile_arg);

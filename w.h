@@ -318,13 +318,14 @@ typedef struct funcsig {
 
 extern funcsig_t* fsinit(funcsig_t* pf);
 extern void fsfini(funcsig_t* pf);
+extern void fscpy(funcsig_t* pdf, const funcsig_t* psf);
 typedef buf_t fsbuf_t; 
 #define fsbinit(mem) (bufinit(mem, sizeof(funcsig_t)))
 extern void fsbfini(fsbuf_t* pb);
 #define fsblen(pb) (buflen(pb))
 #define fsbref(pb, i) ((funcsig_t*)bufref(pb, i))
 #define fsbnewbk(pb) (fsinit(bufnewbk(pb)))
-extern unsigned fsintern(fsbuf_t* pb, funcsig_t *pfs); /* may clear pfs */
+extern unsigned fsintern(fsbuf_t* pb, const funcsig_t *pfs);
 extern unsigned funcsig(fsbuf_t* pb, size_t argc, size_t retc, ...);
 
 /* numerical value */
@@ -360,8 +361,10 @@ typedef buf_t icbuf_t;
 
 typedef struct entry {
   entkind_t ek;     /* as used in import/export sections */
-  sym_t mod;        /* != 0 for imported, 0 for internal */
-  sym_t name;       /* != 0 for imported, may be 0 for internal */
+  sym_t mod;        /* != 0 for imported and internal */
+  sym_t name;       /* != 0 for imported and internal */
+  bool imported;    /* 1 if imported external */
+  bool exported;    /* 1 if exported internal */
   unsigned fsi;     /* FUNC: funcsig index */
   bool isstart;     /* FUNC: this is the start function */ 
   valtype_t vt;     /* GLOBAL/TABLE: value type (scalar) */
@@ -493,7 +496,7 @@ typedef enum main {
   MAIN_ABSENT = 0, MAIN_VOID, MAIN_ARGC_ARGV
 } main_t;
 
-/* wat (text) module for object files */
+/* wat module for object files */
 typedef struct wat_module {
   sym_t name; /* used for sorting */
   watiebuf_t imports;
@@ -512,10 +515,12 @@ extern void wat_module_buf_fini(wat_module_buf_t* pb);
 #define wat_module_buf_ref(pb, i) ((wat_module_t*)bufref(pb, i))
 #define wat_module_buf_newbk(pb) (wat_module_init(bufnewbk(pb)))
 
-/* read/write 'object' wat text module */
-extern void read_wat_module(const char *fname, wat_module_t* pm);
+/* read/write wcpl wat text modules */
+extern void read_wat_object_module(const char *fname, wat_module_t* pm);
+extern void read_wat_executable_module(const char *fname, wat_module_t* pm);
 extern void load_library_wat_module(sym_t mod, wat_module_t* pm);
 extern void write_wat_module(wat_module_t* pm, FILE *pf);
 
 /* linker */
 extern void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm); 
+

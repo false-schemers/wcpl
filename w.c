@@ -29,6 +29,7 @@ static unsigned g_sectcnt = 0; /* section element count */
 static FILE *g_watout = NULL; /* current text output stream */
 static chbuf_t *g_watbuf = NULL; /* work buffer for wat dump */
 static int g_watindent = 0; /* cur line indent for wat dump */
+static bool g_watexec = false; /* wat executable is being parsed */
 
 
 /* binary encoding */
@@ -138,7 +139,7 @@ static void wasm_signed(long long val)
   do {
     unsigned b = (unsigned)(val & 0x7f);
     val >>= 7;
-    more = b & 0x40 ? val != -1 : val != 0;
+    more = !((val == 0 && (b & 0x40) == 0) || (val == -1 && (b & 0x40) != 0));
     wasm_byte(b | (more ? 0x80 : 0));
   } while (more);
 }
@@ -148,8 +149,8 @@ static void wasm_unsigned(unsigned long long val)
   do {
     unsigned b = (unsigned)(val & 0x7f);
     val >>= 7;
-	  if (val != 0) b |= 0x80;
-	  wasm_byte(b);
+    if (val != 0) b |= 0x80;
+    wasm_byte(b);
   } while (val != 0);
 }
 
@@ -204,6 +205,12 @@ void fsfini(funcsig_t* pf)
   buffini(&pf->restypes);
 }
 
+void fscpy(funcsig_t* pdf, const funcsig_t* psf)
+{
+  bufcpy(&pdf->partypes, &psf->partypes);
+  bufcpy(&pdf->restypes, &psf->restypes);
+}
+
 void fsbfini(fsbuf_t* pb)
 {
   funcsig_t *pft; size_t i;
@@ -225,11 +232,11 @@ static bool sameft(funcsig_t* pf1, funcsig_t* pf2)
   return true;
 }
 
-unsigned fsintern(fsbuf_t* pb, funcsig_t *pfs)
+unsigned fsintern(fsbuf_t* pb, const funcsig_t *pfs)
 {
   size_t i;
-  for (i = 0; i < fsblen(pb); ++i) if (sameft(fsbref(pb, i), pfs)) break;
-  if (i == fsblen(pb)) memswap(pfs, fsbnewbk(pb), sizeof(funcsig_t));
+  for (i = 0; i < fsblen(pb); ++i) if (sameft(fsbref(pb, i), (funcsig_t*)pfs)) break;
+  if (i == fsblen(pb)) fscpy(fsbnewbk(pb), pfs);
   return (unsigned)i;
 }
 
@@ -334,15 +341,23 @@ static void wasm_expr(icbuf_t *pcb)
     wasm_in(pic->in);
     switch (instr_sig(pic->in)) {
       case INSIG_NONE:
+        if (pic->in == IN_MEMORY_SIZE || pic->in == IN_MEMORY_GROW) {
+          wasm_unsigned(0); /* reserved arg */
+        }
         break;
       case INSIG_BT:  case INSIG_L:   
       case INSIG_XL:  case INSIG_XG:
       case INSIG_XT:  case INSIG_T:
-      case INSIG_I32: case INSIG_I64:
       case INSIG_RF:
         wasm_unsigned(pic->arg.u); 
         break;
-      case INSIG_X_Y: case INSIG_MEMARG:
+      case INSIG_I32: case INSIG_I64:
+        wasm_signed(pic->arg.u); 
+        break;
+      case INSIG_MEMARG:
+        wasm_unsigned(pic->arg2.u); wasm_unsigned(pic->arg.u);
+        break;
+      case INSIG_X_Y: case INSIG_CI:
         wasm_unsigned(pic->arg.u); wasm_unsigned(pic->arg2.u); 
         break;
       case INSIG_F32:
@@ -351,8 +366,16 @@ static void wasm_expr(icbuf_t *pcb)
       case INSIG_F64:
         wasm_double(pic->arg.d); 
         break;
-      case INSIG_LS_L:
-        assert(false); /* fixme */
+      case INSIG_LS_L: { 
+        /* takes multiple opcodes */
+        size_t d = i + (unsigned)pic->arg.u + 1;
+        wasm_unsigned(pic->arg.u);
+        for (; i < d; ++i) {
+          assert(i+1 < icblen(pcb));
+          pic = icbref(pcb, i+1); assert(pic->in == IN_BR);
+          wasm_unsigned(pic->arg.u);
+        }
+      } break;
       default:
         assert(false);     
     }
@@ -390,7 +413,7 @@ static void wasm_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_
   if (pfdb) for (i = 0; i < entblen(pfdb); ++i) {
     entry_t *pe = entbref(pfdb, i);
     assert(pe->ek == EK_FUNC);
-    if (!pe->mod) continue; /* skip non-imported */
+    if (!pe->imported) continue; /* skip non-imported */
     assert(pe->name);
     wasm_name(symname(pe->mod));
     wasm_name(symname(pe->name));
@@ -402,7 +425,7 @@ static void wasm_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_
   if (ptdb) for (i = 0; i < entblen(ptdb); ++i) {
     entry_t *pe = entbref(ptdb, i);
     assert(pe->ek == EK_TABLE);
-    if (!pe->mod) continue; /* skip non-imported */
+    if (!pe->imported) continue; /* skip non-imported */
     assert(pe->name);
     wasm_name(symname(pe->mod));
     wasm_name(symname(pe->name));
@@ -417,7 +440,7 @@ static void wasm_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_
   if (pmdb) for (i = 0; i < entblen(pmdb); ++i) {
     entry_t *pe = entbref(pmdb, i);
     assert(pe->ek == EK_MEM);
-    if (!pe->mod) continue; /* skip non-imported */
+    if (!pe->imported) continue; /* skip non-imported */
     assert(pe->name);
     wasm_name(symname(pe->mod));
     wasm_name(symname(pe->name));
@@ -431,7 +454,7 @@ static void wasm_imports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_
   if (pgdb) for (i = 0; i < entblen(pgdb); ++i) {
     entry_t *pe = entbref(pgdb, i);
     assert(pe->ek == EK_GLOBAL);
-    if (!pe->mod) continue; /* skip non-imported */
+    if (!pe->imported) continue; /* skip non-imported */
     assert(pe->name);
     wasm_name(symname(pe->mod));
     wasm_name(symname(pe->name));
@@ -451,7 +474,7 @@ static void wasm_funcs(entbuf_t *pfdb)
   for (i = 0; i < entblen(pfdb); ++i) {
     entry_t *pe = entbref(pfdb, i);
     assert(pe->ek == EK_FUNC);
-    if (pe->mod) continue; /* skip imported functions */
+    if (pe->imported) continue;
     wasm_unsigned(pe->fsi);
     wasm_section_bumpc();
   }
@@ -466,7 +489,7 @@ static void wasm_tables(entbuf_t *ptdb)
   for (i = 0; i < entblen(ptdb); ++i) {
     entry_t *pe = entbref(ptdb, i);
     assert(pe->ek == EK_TABLE);
-    if (pe->mod) continue; /* skip imported tables */
+    if (pe->imported) continue;
     wasm_byte(pe->vt);
     wasm_byte(pe->lt);
     wasm_unsigned(pe->n);
@@ -484,7 +507,7 @@ static void wasm_mems(entbuf_t *pmdb)
   for (i = 0; i < entblen(pmdb); ++i) {
     entry_t *pe = entbref(pmdb, i);
     assert(pe->ek == EK_MEM);
-    if (pe->mod) continue; /* skip imported mems */
+    if (pe->imported) continue;
     wasm_byte(pe->lt);
     wasm_unsigned(pe->n);
     if (pe->lt == LT_MINMAX) wasm_unsigned(pe->m);
@@ -501,7 +524,7 @@ static void wasm_globals(entbuf_t *pgdb)
   for (i = 0; i < entblen(pgdb); ++i) {
     entry_t *pe = entbref(pgdb, i);
     assert(pe->ek == EK_GLOBAL);
-    if (pe->mod) continue; /* skip imported globals */
+    if (pe->imported) continue;
     wasm_byte(pe->vt);
     wasm_byte(pe->mut);
     wasm_expr(&pe->code);
@@ -515,20 +538,10 @@ static void wasm_exports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_
   size_t i;
   if (!pfdb && !ptdb && !pmdb && !pgdb) return;
   wasm_section_start(SI_EXPORT);
-  if (pfdb) for (i = 0; i < entblen(pfdb); ++i) {
-    entry_t *pe = entbref(pfdb, i);
-    assert(pe->ek == EK_FUNC);
-    if (!pe->mod && pe->name) {
-      wasm_name(symname(pe->name));
-      wasm_byte(EK_FUNC);
-      wasm_unsigned(i);
-      wasm_section_bumpc();
-    }
-  }  
   if (ptdb) for (i = 0; i < entblen(ptdb); ++i) {
     entry_t *pe = entbref(ptdb, i);
     assert(pe->ek == EK_TABLE);
-    if (!pe->mod && pe->name) {
+    if (pe->exported && pe->name) {
       wasm_name(symname(pe->name));
       wasm_byte(EK_TABLE);
       wasm_unsigned(i);
@@ -538,7 +551,7 @@ static void wasm_exports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_
   if (pmdb) for (i = 0; i < entblen(pmdb); ++i) {
     entry_t *pe = entbref(pmdb, i);
     assert(pe->ek == EK_MEM);
-    if (!pe->mod && pe->name) {
+    if (pe->exported && pe->name) {
       wasm_name(symname(pe->name));
       wasm_byte(EK_MEM);
       wasm_unsigned(i);
@@ -548,13 +561,23 @@ static void wasm_exports(entbuf_t *pfdb, entbuf_t *ptdb, entbuf_t *pmdb, entbuf_
   if (pgdb) for (i = 0; i < entblen(pgdb); ++i) {
     entry_t *pe = entbref(pgdb, i);
     assert(pe->ek == EK_GLOBAL);
-    if (!pe->mod && pe->name) {
+    if (pe->exported && pe->name) {
       wasm_name(symname(pe->name));
       wasm_byte(EK_GLOBAL);
       wasm_unsigned(i);
       wasm_section_bumpc();
     }
   }
+  if (pfdb) for (i = 0; i < entblen(pfdb); ++i) {
+    entry_t *pe = entbref(pfdb, i);
+    assert(pe->ek == EK_FUNC);
+    if (pe->exported && pe->name) {
+      wasm_name(symname(pe->name));
+      wasm_byte(EK_FUNC);
+      wasm_unsigned(i);
+      wasm_section_bumpc();
+    }
+  }  
   wasm_section_end();
 }
 
@@ -585,7 +608,6 @@ static void wasm_elems(esegbuf_t *pesb)
     switch (ps->esm) {
        case ES_ACTIVE_EIV: /* e fiv */
          wasm_expr(&ps->code);
-         wasm_unsigned(idxblen(&ps->fidxs));
          wasm_unsigned(idxblen(&ps->fidxs));
          for (k = 0; k < idxblen(&ps->fidxs); ++k)
            wasm_unsigned(*idxbref(&ps->fidxs, k));
@@ -636,19 +658,35 @@ static void wasm_datacount(dsegbuf_t *pdsb)
 
 static void wasm_codes(entbuf_t *pfdb)
 {
-  size_t i, k;
+  size_t i;
   if (!pfdb) return;
   wasm_section_start(SI_CODE);
   for (i = 0; i < entblen(pfdb); ++i) {
     entry_t *pe = entbref(pfdb, i);
     assert(pe->ek == EK_FUNC);
-    if (pe->mod) continue; /* skip imported functions */
+    if (pe->imported) continue;
+    fprintf(stderr, "dumping code for %s (length %d)\n", symname(pe->name), (int)icblen(&pe->code));
     wasm_code_start();
-    wasm_unsigned(buflen(&pe->loctypes));
-    for (k = 0; k < buflen(&pe->loctypes); ++k) {
-      /* no type compression: types may repeat */
-      wasm_unsigned(1);
-      wasm_byte(*vtbref(&pe->loctypes, k));
+    if (buflen(&pe->loctypes) > 0) {
+      buf_t tcb = mkbuf(sizeof(unsigned)); size_t k, f;
+      for (k = f = 0; k < buflen(&pe->loctypes); ++k) {
+        unsigned t = (unsigned)*vtbref(&pe->loctypes, k);
+        if (f > 0 && *(unsigned*)bufref(&tcb, 2*f-1) == t) {
+          *(unsigned*)bufref(&tcb, 2*f-2) += 1;
+        } else {
+          *(unsigned*)bufnewbk(&tcb) = 1;
+          *(unsigned*)bufnewbk(&tcb) = t;
+          ++f;
+        }  
+      }
+      wasm_unsigned(f);
+      for (k = 0; k < f; ++k) {
+        wasm_unsigned(*(unsigned*)bufref(&tcb, 2*k));
+        wasm_byte(*(unsigned*)bufref(&tcb, 2*k+1));
+      }  
+      buffini(&tcb);
+    } else {
+      wasm_unsigned(0);
     }
     wasm_expr(&pe->code);
     wasm_code_end();
@@ -719,7 +757,7 @@ void write_wasm_module(wasm_module_t* pm, FILE *pf)
   wasm_exports(&pm->funcdefs, &pm->tabdefs, &pm->memdefs, &pm->globdefs);
   wasm_start(&pm->funcdefs);
   wasm_elems(&pm->elemdefs);
-  wasm_datacount(&pm->datadefs);
+  //wasm_datacount(&pm->datadefs);
   wasm_codes(&pm->funcdefs);
   wasm_datas(&pm->datadefs);
   g_wasmout = NULL;
@@ -2531,8 +2569,10 @@ static char *scan_string(sws_t *pw, const char *s, chbuf_t *pcb)
 
 static void parse_mod_id(sws_t *pw, sym_t *pmid, sym_t *pid)
 {
-  char *s, *sep; 
-  if (peekt(pw) != WT_ID || (sep = strchr((s = pw->tokstr), ':')) == NULL) { 
+  char *s, *sep;
+  if (g_watexec && peekt(pw) != WT_ID) {
+    *pmid = *pid = 0;
+  } else if (peekt(pw) != WT_ID || (sep = strchr((s = pw->tokstr), ':')) == NULL) { 
     seprintf(pw, "expected $mod:id, got %s", pw->tokstr);
   } else {
     chbuf_t cb = mkchb();
@@ -2796,6 +2836,17 @@ static void parse_import_name(sws_t *pw, watie_t *pi)
   }
 }
 
+static void parse_limits(sws_t *pw, watie_t *pi)
+{
+  pi->n = parse_uint(pw);
+  if (peekt(pw) == WT_INT) {
+    pi->m = parse_uint(pw);
+    pi->lt = LT_MINMAX;
+  } else {
+    pi->lt = LT_MIN;
+  }
+}
+
 static void parse_import_des(sws_t *pw, watie_t *pi)
 {
   chbuf_t cb = mkchb();
@@ -2904,18 +2955,27 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     } else if (peekt(pw) == WT_KEYWORD && strprf(pw->tokstr, "size=") != NULL) {
       size_t size = (size_t)parse_size(pw);
       chbclear(&pd->data); bufresize(&pd->data, size); /* zeroes */
+    } else if (g_watexec) {
+      expect(pw, "(");
+      parse_ins(pw, &pd->ic, &pd->code);
+      expect(pw, ")");
     } else seprintf(pw, "missing size= or data string");
     if (ahead(pw, "(")) { /* WCPL non-lead data segment */
       dropt(pw);
       while (!ahead(pw, ")")) {
         inscode_t *pic = icbnewbk(&pd->code);
         parse_ins(pw, pic, &pd->code);
-        if (pic->in != IN_REF_DATA && pic->in != IN_DATA_PUT_REF)
+        if (!g_watexec && (pic->in != IN_REF_DATA && pic->in != IN_DATA_PUT_REF))
           seprintf(pw, "unexpected instruction in WCPL data segment");
       }
-      if (pd->align < 4) /* wasm32 : alignment of a pointer */
+      if (!g_watexec && pd->align < 4) /* wasm32 : alignment of a pointer */
         seprintf(pw, "unexpected alignment of non-leaf data segment");
       expect(pw, ")");
+    }
+    if (g_watexec && peekt(pw) == WT_STRING) {
+      /* string follows instruction */
+      scan_string(pw, pw->tokstr, &pd->data);
+      dropt(pw);
     } 
   } else if (ahead(pw, "memory")) {
     watie_t *pe = watiebnewbk(&pm->exports, IEK_MEM);
@@ -2977,8 +3037,8 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
         seprintf(pw, "invalid main() function return value");
       if (vtblen(&pe->fs.partypes) == 0) 
         pm->main = MAIN_VOID;
-      else if (vtblen(&pe->fs.partypes) == 2 && *vtbref(&pe->fs.restypes, 0) == VT_I32
-               && *vtbref(&pe->fs.restypes, 1) == VT_I32)
+      else if (vtblen(&pe->fs.partypes) == 2 && *vtbref(&pe->fs.partypes, 0) == VT_I32
+               && *vtbref(&pe->fs.partypes, 1) == VT_I32)
         pm->main = MAIN_ARGC_ARGV;
       else
         seprintf(pw, "invalid main() function argument types");
@@ -2986,6 +3046,24 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     while (!ahead(pw, ")")) {
       inscode_t *pic = icbnewbk(&pe->code);
       parse_ins(pw, pic, &pe->code);
+    }
+  } else if (g_watexec && ahead(pw, "table")) {
+    watie_t *pe = watiebnewbk(&pm->exports, IEK_TABLE);
+    dropt(pw);
+    parse_mod_id(pw, &pe->mod, &pe->id);
+    parse_limits(pw, pe);
+    expect(pw, "funcref");
+    pe->vt = RT_FUNCREF;
+    expect(pw, ")");
+    expect(pw, "(");
+    expect(pw, "elem");
+    expect(pw, "(");
+    expect(pw, "i32.const");
+    expect(pw, "1");
+    expect(pw, ")");
+    while (!ahead(pw, ")")) {
+      dpme_t *pd = bufnewbk(&pe->table);
+      parse_mod_id(pw, &pd->mod, &pd->id);
     }
   } else {
     seprintf(pw, "unexpected module field type %s", pw->tokstr);
@@ -3004,16 +3082,34 @@ static void parse_module(sws_t *pw, wat_module_t* pm)
   expect(pw, ")");
 }
 
-void read_wat_module(const char *fname, wat_module_t* pm)
+void read_wat_object_module(const char *fname, wat_module_t* pm)
 {
   sws_t *pw = newsws(fname);
   if (pw) {
     wat_module_clear(pm);
     pm->main = MAIN_ABSENT;
+    g_watexec = false;
     parse_module(pw, pm);
     freesws(pw);
   } else {
     exprintf("cannot read object file: %s", fname);
+  }
+}
+
+void read_wat_executable_module(const char *fname, wat_module_t* pm)
+{
+  sws_t *pw = newsws(fname);
+  if (pw) {
+    wat_module_clear(pm);
+    pm->main = MAIN_ABSENT;
+    expect(pw, "(");
+    expect(pw, "module");
+    g_watexec = true;
+    while (!ahead(pw, ")")) parse_modulefield(pw, pm);
+    expect(pw, ")");
+    freesws(pw);
+  } else {
+    exprintf("cannot read executabe wat file: %s", fname);
   }
 }
 
