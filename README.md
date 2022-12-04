@@ -121,21 +121,22 @@ custom sections or relocation tables are needed.
 ## Compilation and linking
 
 ```
-wcpl -o out.wat infile1.c infile2.c infile3.wo ...
+wcpl -o out.wasm infile1.c infile2.c infile3.wo ...
 ```
 
 Any mix of source and object files can be given; one of the input files should
 contain implementation of the `main()` procedure. Library dependences are automatically
-loaded and used. Linker's output is regular WAT format with no extensions; 
-WASM format will be an option in the future.
+loaded and used. If -o file name argument ends in `.wasm`, linker's output will be
+a WASM binary; otherwise the output is in a regular WAT format with no extensions.
 
 
 ## Running executables
 
-Currently, WCPL produces output executables in WAT format. Some WASM runtimes
-such as `wasmtime`* allow running WAT files directly (and provide better disgnostics
-this way, e.g. symbolic stack traces); for others, WAT files should be first converted 
-to WASM format with `wat2wasm`** or similar tools.
+WCPL can produce executables in both WASM and WAT format. Some WASM runtimes
+such as `wasmtime`* allow running WAT files directly and provide better disgnostics
+this way, e.g. symbolic stack traces; for others, WASM format should be used. Please
+note that WAT files may be easily converted to WASM format with `wat2wasm`** or similar
+tools.
 
 Please read the documentation on your WASM runtime for details on directory/environment
 mapping and passing command line arguments.
