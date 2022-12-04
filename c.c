@@ -2436,6 +2436,12 @@ static ts_t acode_const(node_t *pan, numval_t **ppnv)
   return TS_VOID; /* 0 */
 }
 
+/* check if this node is an empty code */
+static bool acode_empty(node_t *pan)
+{
+  return pan->nt == NT_ACODE && icblen(&pan->data) == 0;
+}
+
 /* check if this node is a func ref code */
 static bool acode_func_ref(node_t *pan)
 {
@@ -3046,8 +3052,11 @@ static node_t *compile_if(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan3)
   acode_pushin_uarg(pcn, IN_IF, BT_VOID);
   acode_swapin(pcn, compile_stm(pan2));
   if (pan3) {
-    acode_pushin(pcn, IN_ELSE);
-    acode_swapin(pcn, compile_stm(pan3));
+    node_t *pen = compile_stm(pan3);
+    if (!acode_empty(pen)) { 
+      acode_pushin(pcn, IN_ELSE);
+      acode_swapin(pcn, pen);
+    }
   }
   acode_pushin(pcn, IN_END);
   return pcn;
@@ -4185,7 +4194,7 @@ int main(int argc, char **argv)
      "  -q        Suppress logging ('quiet')\n"
      "  -c        Compile single input file\n"
      "  -O lvl    Optimization level; defaults to 3\n"
-     "  -o ofile  Output file\n"
+     "  -o ofile  Output file (use .wasm suffix for binary executable)\n"
      "  -I path   Add include path (must end with path separator)\n"
      "  -L path   Add library path (must end with path separator)\n"
      "  -s stksz  Stack size in bytes; defaults to 65536\n"
@@ -4203,7 +4212,7 @@ int main(int argc, char **argv)
       case 'L':  eoarg = eoptarg; dsbpushbk(&libv, &eoarg); break;
       case 's':  s_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'a':  a_arg = strtoul(eoptarg, NULL, 0); break; 
-      case 'h':  eusage("WCPL 0.02 built on " __DATE__);
+      case 'h':  eusage("WCPL 0.03 built on " __DATE__);
     }
   }
 
@@ -4254,11 +4263,19 @@ int main(int argc, char **argv)
 
     if (ofile_arg) {
       FILE *pf;
-      if (strsuf(ofile_arg, ".wasm")) 
-        eusage("output in .wasm format not supported yet -- use .wat");
-      pf = fopen(ofile_arg, "w");
-      if (!pf) exprintf("cannot open output file %s:", ofile_arg);
-      write_wat_module(&wm, pf);
+      if (strsuf(ofile_arg, ".wasm")) {
+        wasm_module_t wbm;
+        pf = fopen(ofile_arg, "wb");
+        if (!pf) exprintf("cannot open output file %s:", ofile_arg);
+        wasm_module_init(&wbm);
+        wat_to_wasm(&wm, &wbm);
+        write_wasm_module(&wbm, pf);
+        wasm_module_fini(&wbm);
+      } else {
+        pf = fopen(ofile_arg, "w");
+        if (!pf) exprintf("cannot open output file %s:", ofile_arg);
+        write_wat_module(&wm, pf);
+      }
       fclose(pf);
       logef("# executable module written to %s\n", ofile_arg);
     } else {

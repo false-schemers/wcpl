@@ -182,7 +182,7 @@ static void wasm_in(instr_t in)
 {
   if (((int)in & 0xff) == (int)in) { /* 1-byte */
     wasm_byte((unsigned)in & 0xff);
-  } else if (((int)in & 0xff) == (int)in) { /* 2-byte */
+  } else if (((int)in & 0xffff) == (int)in) { /* 2-byte */
     wasm_byte(((unsigned)in >> 8) & 0xff);
     wasm_byte(((unsigned)in) & 0xff);
   } else assert(false);
@@ -341,18 +341,32 @@ static void wasm_expr(icbuf_t *pcb)
     wasm_in(pic->in);
     switch (instr_sig(pic->in)) {
       case INSIG_NONE:
-        if (pic->in == IN_MEMORY_SIZE || pic->in == IN_MEMORY_GROW) {
-          wasm_unsigned(0); /* reserved arg */
+        switch (pic->in) {
+          case IN_MEMORY_SIZE: case IN_MEMORY_GROW: case IN_MEMORY_FILL:
+            wasm_unsigned(0); /* one reserved arg */
+            break;
+          case IN_MEMORY_COPY:
+            wasm_unsigned(0); wasm_unsigned(0); /* two reserved args */
+            break;
+          default:;
         }
         break;
       case INSIG_BT:  case INSIG_L:   
       case INSIG_XL:  case INSIG_XG:
-      case INSIG_XT:  case INSIG_T:
-      case INSIG_RF:
+      case INSIG_T:   case INSIG_RF:
         wasm_unsigned(pic->arg.u); 
         break;
+      case INSIG_XT:
+        wasm_unsigned(pic->arg.u); 
+        switch (pic->in) {
+          case IN_MEMORY_INIT:
+            wasm_unsigned(0); /* one reserved arg */
+            break;
+          default:;
+        }
+        break;
       case INSIG_I32: case INSIG_I64:
-        wasm_signed(pic->arg.u); 
+        wasm_signed(pic->arg.i); 
         break;
       case INSIG_MEMARG:
         wasm_unsigned(pic->arg2.u); wasm_unsigned(pic->arg.u);
@@ -665,7 +679,6 @@ static void wasm_codes(entbuf_t *pfdb)
     entry_t *pe = entbref(pfdb, i);
     assert(pe->ek == EK_FUNC);
     if (pe->imported) continue;
-    fprintf(stderr, "dumping code for %s (length %d)\n", symname(pe->name), (int)icblen(&pe->code));
     wasm_code_start();
     if (buflen(&pe->loctypes) > 0) {
       buf_t tcb = mkbuf(sizeof(unsigned)); size_t k, f;
@@ -3065,6 +3078,8 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
       dpme_t *pd = bufnewbk(&pe->table);
       parse_mod_id(pw, &pd->mod, &pd->id);
     }
+    assert(pe->n == pe->m && pe->lt == LT_MINMAX);
+    assert(pe->n == buflen(&pe->table) + 1);
   } else {
     seprintf(pw, "unexpected module field type %s", pw->tokstr);
   }
@@ -3459,6 +3474,8 @@ size_t watify_wat_module(wat_module_t* pm)
   if (true) {
     watie_t *pt = watiebnewbk(&pm->exports, IEK_TABLE);
     memswap(&pt->table, &table, sizeof(buf_t));
+    pt->n = pt->m = (unsigned)buflen(&pt->table) + 1;
+    pt->lt = LT_MINMAX;
   }
   
   chbfini(&dseg);
@@ -3506,7 +3523,6 @@ static void finalize_wat_module(wat_module_t* pm, size_t dsegend)
     }
   }  
 }
-
 
 void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
 {
@@ -3641,3 +3657,217 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
   buffini(&extmodnames);
   buffini(&depglobals);
 }
+
+
+/* wat-to-wasm converter */
+
+static unsigned lookup_func_idx(wasm_module_t *pbm, sym_t mod, sym_t id)
+{
+  size_t i;
+  for (i = 0; i < entblen(&pbm->funcdefs); ++i) {
+    entry_t *pe = entbref(&pbm->funcdefs, i);
+    if (pe->mod == mod && pe->name == id) return (unsigned)i;
+  }
+  exprintf("cannot locate function $%s:%s", symname(mod), symname(id));
+  return 0;
+}
+
+static unsigned lookup_glob_idx(wasm_module_t *pbm, sym_t mod, sym_t id)
+{
+  size_t i;
+  for (i = 0; i < entblen(&pbm->globdefs); ++i) {
+    entry_t *pe = entbref(&pbm->globdefs, i);
+    if (pe->mod == mod && pe->name == id) return (unsigned)i;
+  }
+  exprintf("cannot locate global $%s:%s", symname(mod), symname(id));
+  return 0;
+}
+
+static unsigned lookup_var_idx(icbuf_t *picb, sym_t id)
+{
+  size_t i;
+  for (i = 0; i < icblen(picb); ++i) {
+    inscode_t *pic = icbref(picb, i);
+    if (pic->in != IN_REGDECL) break;
+    if (pic->id == id) return (unsigned)i;
+  }
+  exprintf("cannot locate local $%s", symname(id));
+  return 0;
+}
+
+static unsigned lookup_label(buf_t *plbb, sym_t id)
+{
+  size_t n = buflen(plbb), i;
+  for (i = 0; i < n; ++i) {
+    sym_t *pid = bufref(plbb, n-i-1);
+    if (*pid == id) return (unsigned)i;
+  }
+  exprintf("cannot locate label $%s", symname(id));
+  return 0;
+}
+
+static void wat_to_wasm_code(wasm_module_t *pbm, size_t parc, vtbuf_t *pltb, icbuf_t *pdcb, icbuf_t *pscb)
+{
+  size_t i;
+  buf_t lbb = mkbuf(sizeof(sym_t));
+  for (i = 0; i < icblen(pscb); ++i) {
+    inscode_t *psc = icbref(pscb, i), *pdc;
+    if (psc->in == IN_REGDECL) {
+      if (i >= parc) *vtbnewbk(pltb) = (valtype_t)psc->arg.u;
+      continue;
+    }
+    /* copy real instruction and patch it */
+    pdc = icbnewbk(pdcb); *pdc = *psc; pdc->id = 0;
+    switch (instr_sig(psc->in)) {
+      case INSIG_NONE: /* end, ... */ {
+        if (psc->in == IN_END) {
+          sym_t *pl = bufpopbk(&lbb);
+          if (psc->id) assert(*pl == psc->id);
+        }
+      } break;
+      case INSIG_BT: /* block, loop, if */ {
+        sym_t *pl = bufnewbk(&lbb);
+        *pl = psc->id; 
+      } break;
+      case INSIG_XL: /* local get,set,tee */ {
+        if (psc->id) pdc->arg.u = lookup_var_idx(pscb, psc->id);
+      } break;
+      case INSIG_XT: /* table get, set, mem/data ref/grow ... */ {
+        /* nothing to patch here */
+      } break; 
+      case INSIG_XG: { /* call, global get,set */
+        if (psc->in != IN_CALL && psc->in != IN_RETURN_CALL) {
+          if (psc->arg2.mod && psc->id) pdc->arg.u = 
+            lookup_glob_idx(pbm, psc->arg2.mod, psc->id); 
+          break;
+        }
+      } /* fall thru */ 
+      case INSIG_RF: /* ref_func */ {
+        if (psc->arg2.mod && psc->id) pdc->arg.u = 
+          lookup_func_idx(pbm, psc->arg2.mod, psc->id); 
+      } break;
+      case INSIG_L: /* br, br_if */ {
+        pdc->arg.u = lookup_label(&lbb, psc->id);
+      } break;
+      case INSIG_T: /* select */ {
+        /* nothing to patch here */
+      } break;
+      case INSIG_I32: /* const */ {
+        /* extend sign to upper 32 bits */
+        pdc->arg.i = (psc->arg.i << 32) >> 32;
+      } break;
+      case INSIG_I64: case INSIG_F32: case INSIG_F64: /* const */ {
+        /* nothing to patch here */
+      } break;
+      case INSIG_CI: /* call_indirect */ {
+        /* recalc function signature index */
+        size_t n = (size_t)psc->arg.u;
+        assert(n < fsblen(&g_funcsigs));
+        pdc->arg.u = fsintern(&pbm->funcsigs, fsbref(&g_funcsigs, n));
+      } break;
+      case INSIG_X_Y: /* table init/copy */ {
+      } break;
+      case INSIG_MEMARG: /* load*, store* */ {
+        /* nothing to patch here */
+      } break;
+      case INSIG_LS_L: /* br_table */ {
+        /* next pic->arg.u branches are patched in a normal way */
+      } break;
+      default:
+        assert(false);     
+    }
+  }
+  icbnewbk(pdcb)->in = IN_END;
+  buffini(&lbb);
+}
+
+static void wat_to_wasm_ie(bool import, watiebuf_t *pieb, wasm_module_t *pbm)
+{
+  size_t i;
+  for (i = 0; i < watieblen(pieb); ++i) {
+    watie_t *pie = watiebref(pieb, i);
+    switch (pie->iek) {
+      case IEK_FUNC: {
+        entry_t *pe = entbnewbk(&pbm->funcdefs, EK_FUNC);
+        pe->mod = pie->mod; pe->name = pie->id; 
+        if (import) pe->imported = true;
+        else pe->exported = pie->exported;
+        pe->fsi = fsintern(&pbm->funcsigs, &pie->fs);
+      } break;
+      case IEK_TABLE: {
+        entry_t *pe = entbnewbk(&pbm->tabdefs, EK_TABLE);
+        pe->mod = pie->mod; pe->name = pie->id; 
+        if (import) pe->imported = true;
+        else pe->exported = pie->exported;
+        pe->vt = RT_FUNCREF; // can it be RT_EXTERNREF? should we use pi->vt?
+        pe->lt = pie->lt; pe->n = pie->n; pe->m = pie->m;
+      } break;
+      case IEK_MEM: {
+        entry_t *pe = entbnewbk(&pbm->memdefs, EK_MEM);
+        pe->mod = pie->mod; pe->name = pie->id; 
+        if (import) pe->imported = true;
+        else pe->exported = pie->exported;
+        pe->lt = pie->lt; pe->n = pie->n; pe->m = pie->m;
+      } break;
+      case IEK_GLOBAL: {
+        entry_t *pe = entbnewbk(&pbm->globdefs, EK_GLOBAL);
+        inscode_t *pdc;
+        pe->mod = pie->mod; pe->name = pie->id; 
+        if (import) pe->imported = true;
+        else pe->exported = pie->exported;
+        pe->vt = pie->vt; pe->mut = pie->mut;
+        assert(IN_I32_CONST <= pie->ic.in && pie->ic.in <= IN_F64_CONST);
+        pdc = icbnewbk(&pe->code); *pdc = pie->ic; pdc->id = 0;
+        icbnewbk(&pe->code)->in = IN_END; 
+      } break;
+      default:;
+    }
+  }
+}
+
+void wat_to_wasm(wat_module_t *ptm, wasm_module_t *pbm)
+{
+  size_t i, fi;
+  /* go over imports/exports to fill {func,tab,mem,glob}defs  */
+  wat_to_wasm_ie(true, &ptm->imports, pbm);
+  wat_to_wasm_ie(false, &ptm->exports, pbm);
+  /* adjust initial function index for imports */
+  for (i = fi = 0; i < watieblen(&ptm->imports); ++i) {
+    if (watiebref(&ptm->imports, i)->iek == IEK_FUNC) ++fi;
+  }
+  /* go over exports to fill elemdefs, datadefs, and funcdefs' code */
+  for (i = 0; i < watieblen(&ptm->exports); ++i) {
+    watie_t *pe = watiebref(&ptm->exports, i);
+    switch (pe->iek) {
+      case IEK_FUNC: {
+        entry_t *pfe = entbref(&pbm->funcdefs, fi);
+        size_t parc = vtblen(&pe->fs.partypes);
+        assert(pe->mod == pfe->mod && pe->id == pfe->name);
+        /* fprintf(stderr, "converting code for %s:%s (fi = %d, length = %d, parc = %d)\n", 
+          symname(pfe->mod), symname(pfe->name), (int)fi, (int)icblen(&pe->code), (int)parc); */
+        wat_to_wasm_code(pbm, parc, &pfe->loctypes, &pfe->code, &pe->code);
+        ++fi;
+      } break;
+      case IEK_TABLE: {
+        eseg_t *ps = esegbnewbk(&pbm->elemdefs, ES_ACTIVE_EIV);
+        size_t j; inscode_t *pi = icbnewbk(&ps->code);
+        pi->in = IN_I32_CONST, pi->arg.u = 1;
+        icbnewbk(&ps->code)->in = IN_END;
+        for (j = 0; j < buflen(&pe->table); ++j) {
+          dpme_t *de = bufref(&pe->table, j);
+          *idxbnewbk(&ps->fidxs) = lookup_func_idx(pbm, de->mod, de->id);
+        }
+      } break;
+      case IEK_DATA: {
+        dseg_t *ps = dsegbnewbk(&pbm->datadefs, DS_ACTIVE); 
+        inscode_t *pdc;
+        assert(!pe->align); assert(pe->ic.in == IN_I32_CONST);
+        pdc = icbnewbk(&ps->code); *pdc = pe->ic; pdc->id = 0;
+        icbnewbk(&ps->code)->in = IN_END; 
+        chbcpy(&ps->data, &pe->data);
+      } break;
+      default:;
+    }
+  }
+}
+

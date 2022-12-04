@@ -524,3 +524,5 @@ extern void write_wat_module(wat_module_t* pm, FILE *pf);
 /* linker */
 extern void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm); 
 
+/* wat-to-wasm converter */
+extern void wat_to_wasm(wat_module_t *ptm, wasm_module_t *pbm);
