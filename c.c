@@ -98,6 +98,7 @@ void fini_compiler(void)
 static valtype_t ts2vt(ts_t ts)
 {
   switch (ts) {
+    case TS_BOOL:
     case TS_CHAR:  case TS_UCHAR:
     case TS_SHORT: case TS_USHORT:
     case TS_INT:   case TS_UINT:
@@ -123,7 +124,7 @@ static valtype_t ts2vt(ts_t ts)
 
 static bool ts_numerical(ts_t ts) 
 {
-  return TS_CHAR <= ts && ts <= TS_DOUBLE;
+  return TS_BOOL <= ts && ts <= TS_DOUBLE;
 }
 
 static bool ts_bulk(ts_t ts) 
@@ -134,8 +135,9 @@ static bool ts_bulk(ts_t ts)
 static bool ts_unsigned(ts_t ts) 
 {
   switch (ts) {
-    case TS_UCHAR: case TS_USHORT: case TS_UINT:
-    case TS_ULONG: case TS_ULLONG: 
+    case TS_BOOL:   case TS_UCHAR: 
+    case TS_USHORT: case TS_UINT:
+    case TS_ULONG:  case TS_ULLONG: 
       return true;
     default:; 
   }
@@ -162,6 +164,7 @@ static valtype_t ts_to_blocktype(ts_t ts)
 static ts_t ts_integral_promote(ts_t ts)
 {
   switch (ts) {
+    case TS_BOOL:
     case TS_CHAR:  case TS_UCHAR: 
     case TS_SHORT: case TS_USHORT:
     case TS_INT:   case TS_ENUM:   
@@ -419,6 +422,9 @@ static ts_t numval_binop(tt_t op, ts_t tx, const numval_t *pvx, ts_t ty, const n
 static void asm_numerical_const(ts_t ts, numval_t *pval, inscode_t *pic)
 {
   switch (ts) {
+    case TS_BOOL:
+      pic->in = IN_I32_CONST; pic->arg.u = !!pval->u;
+      break;
     case TS_CHAR:  case TS_UCHAR:
     case TS_SHORT: case TS_USHORT:
     case TS_INT:   case TS_UINT:
@@ -553,6 +559,7 @@ void measure_type(const node_t *ptn, node_t *prn, size_t *psize, size_t *palign,
     case TS_ETC: 
       n2eprintf(ptn, prn, "can't allocate data for ... yet");
       break;
+    case TS_BOOL:
     case TS_CHAR: case TS_UCHAR: 
       *psize = *palign = 1; 
       break;
@@ -925,6 +932,7 @@ static node_t *vardef_check_type(node_t *ptn)
   assert(ptn->nt == NT_TYPE);
   switch (ptn->ts) {
     case TS_ENUM: /* ok, treated as int */
+    case TS_BOOL: /* ok but widened to int */
     case TS_CHAR: case TS_UCHAR:   /* ok but widened to int */
     case TS_SHORT: case TS_USHORT: /* ok but widened to int */
     case TS_INT: case TS_UINT: 
@@ -1006,6 +1014,7 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
     pd = watiebref(&g_curpwm->exports, pdidx); /* re-fetch after static_eval */
     switch (r.ts) {
       case TS_CHAR:   binchar((int)r.val.i, &cb); break;
+      case TS_BOOL:   /* as uchar, takes 1 byte of storage */
       case TS_UCHAR:  binuchar((unsigned)r.val.u, &cb); break;
       case TS_SHORT:  binshort((int)r.val.i, &cb); break;
       case TS_USHORT: binushort((unsigned)r.val.u, &cb); break;
@@ -1137,6 +1146,7 @@ static void fundef_check_type(node_t *ptn)
         if (i == 0) break; /* return type can be void */
         neprintf(ptni, "unexpected void function argument type");
       case TS_ENUM: /* ok, treated as int */
+      case TS_BOOL: /* ok but widened to int */
       case TS_CHAR: case TS_UCHAR:   /* ok but widened to int */
       case TS_SHORT: case TS_USHORT: /* ok but widened to int */
       case TS_INT: case TS_UINT: 
@@ -1816,7 +1826,8 @@ static void fundef_wasmify(node_t *pdn)
       case TS_VOID: /* ok if alone */ 
         assert(i == 0); /* we have checked earlier: this is return type */
         break;
-      case TS_CHAR:  case TS_UCHAR:  case TS_SHORT: case TS_USHORT: case TS_ENUM: 
+      case TS_BOOL:  case TS_ENUM:
+      case TS_CHAR:  case TS_UCHAR:  case TS_SHORT: case TS_USHORT: 
         cast = ptni->ts; ptni->ts = TS_INT;
       case TS_INT:   case TS_UINT:   case TS_LONG:  case TS_ULONG:  
       case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: case TS_PTR: {
@@ -1859,7 +1870,8 @@ static void fundef_wasmify(node_t *pdn)
     if (pdni->nt != NT_VARDECL) break; /* statements may follow */
     name = pdni->name, ptni = ndref(pdni, 0); 
     switch (ptni->ts) {
-      case TS_CHAR:  case TS_UCHAR:  case TS_SHORT: case TS_USHORT: case TS_ENUM: 
+      case TS_BOOL: case TS_ENUM:
+      case TS_CHAR:  case TS_UCHAR:  case TS_SHORT: case TS_USHORT: 
         cast = ptni->ts;
       case TS_INT:   case TS_UINT:   case TS_LONG:  case TS_ULONG:  
       case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: case TS_PTR: {
@@ -2019,6 +2031,7 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_CHAR:   in0 = IN_I32_EXTEND8_S,  in = IN_F64_CONVERT_I32_S; break; 
         case TS_SHORT:  in0 = IN_I32_EXTEND16_S, in = IN_F64_CONVERT_I32_S; break; 
         case TS_INT: case TS_LONG:/* wasm32 */   in = IN_F64_CONVERT_I32_S; break;
+        case TS_BOOL: /* assume that value is 0 or 1, so treat as unsigned int */
         case TS_UCHAR:                           in = IN_F64_CONVERT_I32_U; break;
         case TS_USHORT:                          in = IN_F64_CONVERT_I32_U; break;
         case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_F64_CONVERT_I32_U; break;
@@ -2032,11 +2045,30 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_CHAR:   in0 = IN_I32_EXTEND8_S,  in = IN_F32_CONVERT_I32_S; break; 
         case TS_SHORT:  in0 = IN_I32_EXTEND16_S, in = IN_F32_CONVERT_I32_S; break; 
         case TS_INT: case TS_LONG:/* wasm32 */   in = IN_F32_CONVERT_I32_S; break;
+        case TS_BOOL: /* assume that value is 0 or 1, so treat as unsigned int */
         case TS_UCHAR:                           in = IN_F32_CONVERT_I32_U; break;
         case TS_USHORT:                          in = IN_F32_CONVERT_I32_U; break;
         case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_F32_CONVERT_I32_U; break;
         case TS_LLONG:                           in = IN_F32_CONVERT_I64_S; break;
         case TS_ULLONG:                          in = IN_F32_CONVERT_I64_U; break;
+        default:;
+      } break;
+    case TS_BOOL:
+      switch (tsfrom) {
+        case TS_DOUBLE: { 
+          inscode_t *pic = icbnewbk(pdata); pic->in = IN_F64_CONST; pic->arg.d = 0.0;
+          icbnewbk(pdata)->in = IN_F64_NE; /* i.e. x != 0.0 */
+          return;
+        } break;
+        case TS_CHAR:  case TS_SHORT:  case TS_INT:  case TS_LONG:/* wasm32 */ 
+        case TS_UCHAR: case TS_USHORT: case TS_UINT: case TS_ULONG:/* wasm32 */ {
+          /* these are all ints, we need to compare to zero and negate */
+          in0 = IN_I32_EQZ; in = IN_I32_EQZ; /* i.e. !!x */
+        } break;
+        case TS_LLONG: case TS_ULLONG: {
+          /* these are all ints, we need to compare to zero and negate */
+          in0 = IN_I64_EQZ; in = IN_I32_EQZ; /* i.e. !!x, second ! acts on int */
+        } break;
         default:;
       } break;
     case TS_CHAR: case TS_SHORT: { 
@@ -2060,9 +2092,8 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_FLOAT:                           in = IN_I32_TRUNC_F32_S;   break;
         case TS_CHAR:                            in = IN_I32_EXTEND8_S;     break; 
         case TS_SHORT:                           in = IN_I32_EXTEND16_S;    break; 
-        case TS_INT: case TS_LONG:/* wasm32 */   /* nop */                  break;
-        case TS_UCHAR:                           /* nop */                  break;
-        case TS_USHORT:                          /* nop */                  break;
+        case TS_INT:  case TS_LONG:/* wasm32 */
+        case TS_BOOL: case TS_UCHAR: case TS_USHORT:
         case TS_UINT: case TS_ULONG:/* wasm32 */ /* nop */                  break;
         case TS_LLONG:                           in = IN_I32_WRAP_I64;      break;
         case TS_ULLONG:                          in = IN_I32_WRAP_I64;      break;
@@ -2074,9 +2105,8 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_FLOAT:                           in = IN_I32_TRUNC_F32_U;   break;
         case TS_CHAR:                            in = IN_I32_EXTEND8_S;     break; 
         case TS_SHORT:                           in = IN_I32_EXTEND16_S;    break; 
-        case TS_INT: case TS_LONG:/* wasm32 */   /* nop */                  break;
-        case TS_UCHAR:                           /* nop */                  break;
-        case TS_USHORT:                          /* nop */                  break;
+        case TS_INT:  case TS_LONG:/* wasm32 */                             break;
+        case TS_BOOL: case TS_UCHAR: case TS_USHORT:
         case TS_UINT: case TS_ULONG:/* wasm32 */ /* nop */                  break;
         case TS_LLONG:                           in = IN_I32_WRAP_I64;      break;
         case TS_ULLONG:                          in = IN_I32_WRAP_I64;      break;
@@ -2088,8 +2118,8 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_FLOAT:                           in = IN_I64_TRUNC_F32_S;   break;
         case TS_CHAR:  in0 = IN_I32_EXTEND8_S;   in = IN_I64_EXTEND_I32_S;  break; 
         case TS_SHORT: in0 = IN_I32_EXTEND16_S;  in = IN_I64_EXTEND_I32_S;  break; 
-        case TS_INT: case TS_LONG:/* wasm32 */   in = IN_I64_EXTEND_I32_S;  break;
-        case TS_UCHAR: case TS_USHORT:
+        case TS_INT:  case TS_LONG:/* wasm32 */  in = IN_I64_EXTEND_I32_S;  break;
+        case TS_BOOL: case TS_UCHAR: case TS_USHORT:
         case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_I64_EXTEND_I32_U;  break;
         case TS_LLONG:                           /* nop */                  break;
         case TS_ULLONG:                          /* nop */                  break;
@@ -2101,8 +2131,8 @@ static void asm_numerical_cast(ts_t tsto, ts_t tsfrom, icbuf_t *pdata)
         case TS_FLOAT:                           in = IN_I64_TRUNC_F32_U;   break;
         case TS_CHAR:  in0 = IN_I32_EXTEND8_S;   in = IN_I64_EXTEND_I32_S;  break; 
         case TS_SHORT: in0 = IN_I32_EXTEND16_S;  in = IN_I64_EXTEND_I32_S;  break; 
-        case TS_INT: case TS_LONG:/* wasm32 */   in = IN_I64_EXTEND_I32_S;  break;
-        case TS_UCHAR: case TS_USHORT:
+        case TS_INT:  case TS_LONG:/* wasm32 */  in = IN_I64_EXTEND_I32_S;  break;
+        case TS_BOOL: case TS_UCHAR: case TS_USHORT:
         case TS_UINT: case TS_ULONG:/* wasm32 */ in = IN_I64_EXTEND_I32_U;  break;
         case TS_LLONG:                           /* nop */                  break;
         case TS_ULLONG:                          /* nop */                  break;
@@ -2123,6 +2153,7 @@ static inscode_t *asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
     case TS_INT: case TS_UINT: case TS_ENUM:
       switch (tsfrom) {
         case TS_CHAR:   in = IN_I32_LOAD8_S;  align = 0; break;
+        case TS_BOOL:   /* stored as single byte; assume 0/1 */
         case TS_UCHAR:  in = IN_I32_LOAD8_U;  align = 0; break;
         case TS_SHORT:  in = IN_I32_LOAD16_S; align = 1; break;
         case TS_USHORT: in = IN_I32_LOAD16_U; align = 1; break;
@@ -2134,6 +2165,7 @@ static inscode_t *asm_load(ts_t tsto, ts_t tsfrom, unsigned off, icbuf_t *pdata)
     case TS_LLONG: case TS_ULLONG:
       switch (tsfrom) {
         case TS_CHAR:   in = IN_I64_LOAD8_S;  align = 0; break;
+        case TS_BOOL:   /* stored as single byte; assume 0/1 */
         case TS_UCHAR:  in = IN_I64_LOAD8_U;  align = 0; break;
         case TS_SHORT:  in = IN_I64_LOAD16_S; align = 1; break;
         case TS_USHORT: in = IN_I64_LOAD16_U; align = 1; break;
@@ -2757,7 +2789,8 @@ static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan
     acode_pushin(pcn, IN_SELECT);
   } else { 
     /* fixme: 'if'-'else' block is needed */
-    unsigned bt = ts_to_blocktype(pctn->ts); 
+    unsigned bt = ts_to_blocktype(pctn->ts);
+    if (!bt) neprintf(prn, "impossible type of logical operator result"); 
     assert(bt == BT_VOID || (bt >= VT_F64 && bt <= VT_I32));
     acode_swapin(pcn, pan1);
     acode_pushin_uarg(pcn, IN_IF, bt);
@@ -4175,7 +4208,7 @@ int main(int argc, char **argv)
   const char *ofile_arg = NULL;
   bool c_opt = false;
   long lvl_arg = 3;
-  unsigned long s_arg = 65536; /* 64K default */
+  unsigned long s_arg = 131072; /* 128K default */
   unsigned long a_arg = 4096; /* 4K default */
   const char *path;
   dsbuf_t incv, libv; 
@@ -4197,7 +4230,7 @@ int main(int argc, char **argv)
      "  -o ofile  Output file (use .wasm suffix for binary executable)\n"
      "  -I path   Add include path (must end with path separator)\n"
      "  -L path   Add library path (must end with path separator)\n"
-     "  -s stksz  Stack size in bytes; defaults to 65536\n"
+     "  -s stksz  Stack size in bytes; defaults to 131072 (128K)\n"
      "  -a argsz  Argument area size in bytes (use 0 for malloc); defaults to 4096\n"
      "  -h        This help");
   while ((opt = egetopt(argc, argv, "wvqcO:o:L:I:s:a:h")) != EOF) {
@@ -4212,7 +4245,7 @@ int main(int argc, char **argv)
       case 'L':  eoarg = eoptarg; dsbpushbk(&libv, &eoarg); break;
       case 's':  s_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'a':  a_arg = strtoul(eoptarg, NULL, 0); break; 
-      case 'h':  eusage("WCPL 0.03 built on " __DATE__);
+      case 'h':  eusage("WCPL 0.04 built on " __DATE__);
     }
   }
 

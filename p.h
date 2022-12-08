@@ -71,7 +71,7 @@ typedef enum sc {
 
 /* base type specifier */
 typedef enum ts {
-  /* pseudo-types: */        TS_VOID,     TS_ETC, 
+  TS_VOID,     TS_ETC,                    TS_BOOL, 
   TS_CHAR,     TS_UCHAR,     TS_SHORT,    TS_USHORT,
   TS_INT,      TS_UINT,      TS_LONG,     TS_ULONG,
   TS_LLONG,    TS_ULLONG,    TS_FLOAT,    TS_DOUBLE,

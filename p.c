@@ -361,16 +361,14 @@ void init_symbols(void)
   intern_symbol("volatile", TT_VOLATILE_KW, -1);
   intern_symbol("while", TT_WHILE_KW, -1);
   intern_symbol("bool", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_CHAR;
-  //intern_symbol("true", TT_ENUM_NAME, 1);
-  //intern_symbol("false", TT_ENUM_NAME, 0);
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_BOOL;
   intern_symbol("true", TT_MACRO_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
-  pn->ts = TS_CHAR; pn->val.i = 1; 
+  pn->ts = TS_BOOL; pn->val.i = 1; /* NB: int in C99 */
   wrap_node(pn, NT_MACRODEF); pn->name = intern("true");
   intern_symbol("false", TT_MACRO_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
-  pn->ts = TS_CHAR; pn->val.i = 0; 
+  pn->ts = TS_BOOL; pn->val.i = 0; /* NB: int in C99 */
   wrap_node(pn, NT_MACRODEF); pn->name = intern("false");
   intern_symbol("wchar_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_INT;
@@ -3767,6 +3765,7 @@ const char *ts_name(ts_t ts)
   switch (ts) {
     case TS_VOID: s = "void"; break;
     case TS_ETC: s = "etc"; break;  
+    case TS_BOOL: s = "bool"; break; 
     case TS_CHAR: s = "char"; break; 
     case TS_UCHAR: s = "uchar"; break; 
     case TS_SHORT: s = "short"; break; 
@@ -3906,7 +3905,7 @@ static void dump(node_t *pn, FILE* fp, int indent)
           chbputll(pn->val.i, &cb);
           fputs(chbdata(&cb), fp);
           break;          
-        case TS_UCHAR: case TS_USHORT: case TS_UINT: case TS_ULONG: case TS_ULLONG:
+        case TS_BOOL: case TS_UCHAR: case TS_USHORT: case TS_UINT: case TS_ULONG: case TS_ULLONG:
           chbputllu(pn->val.u, &cb);
           fputs(chbdata(&cb), fp);
           break;
