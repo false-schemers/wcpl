@@ -209,6 +209,7 @@ static bool ts_arith_assign_compatible(ts_t ts1, ts_t ts2)
   return ts_arith_common(ts1, ts2) == ts1;
 }
 
+
 static unsigned long long integral_mask(ts_t ts, unsigned long long u)
 {
   switch (ts) {
@@ -264,6 +265,11 @@ static void numval_convert(ts_t tsto, ts_t tsfrom, numval_t *pnv)
     if (tsfrom == TS_DOUBLE) pnv->f = (float)pnv->d;
     else if (ts_unsigned(tsfrom)) pnv->f = (float)pnv->u;
     else pnv->f = (float)pnv->i;
+  } else if (tsto == TS_BOOL) {
+    if (tsfrom == TS_DOUBLE) pnv->u = (pnv->d != 0);
+    else if (tsfrom == TS_FLOAT) pnv->u = (pnv->f != 0);
+    else if (ts_unsigned(tsfrom)) pnv->u = (pnv->u != 0);
+    else pnv->u = (pnv->i != 0);
   } else if (ts_unsigned(tsto)) {
     if (tsfrom == TS_DOUBLE) pnv->u = (unsigned long long)pnv->d;
     else if (tsfrom == TS_FLOAT) pnv->u = (unsigned long long)pnv->f;
@@ -273,6 +279,34 @@ static void numval_convert(ts_t tsto, ts_t tsfrom, numval_t *pnv)
     else if (tsfrom == TS_FLOAT) pnv->i = (long long)pnv->f;
     else pnv->i = integral_sext(tsto, pnv->i); /* u reinterpreted as i */
   }
+}
+
+static bool numval_eq(ts_t ts, numval_t *pnv1, numval_t *pnv2)
+{
+  switch (ts) {
+    case TS_DOUBLE:
+      return pnv1->d == pnv2->d;
+    case TS_FLOAT:
+      return pnv1->f == pnv2->f;
+    case TS_BOOL:   case TS_UCHAR: 
+    case TS_USHORT: case TS_UINT:
+    case TS_ULONG:  case TS_ULLONG: 
+      return pnv1->u == pnv2->u;
+  }    
+  return pnv1->i == pnv2->i;
+} 
+
+/* ts/pnv can be used up to init ts1 while preserving value */
+static bool ts_arith_init_compatible(ts_t ts1, ts_t ts, numval_t *pnv)
+{
+  assert(ts_numerical(ts1) && ts_numerical(ts));
+  if (ts1 != ts) { 
+    numval_t nv = *pnv;
+    numval_convert(ts1, ts, &nv);
+    numval_convert(ts, ts1, &nv);  
+    return numval_eq(ts, &nv, pnv); /* round-trip preserves value */
+  }  
+  return true;
 }
 
 /* unary operation with a number */
@@ -1008,9 +1042,10 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
     seval_t r; buf_t cb = mkchb();
     if (!static_eval(pdn, NULL, &r) || !ts_numerical(r.ts)) 
       neprintf(pdn, "non-numerical-constant initializer");
-    if (ts_arith_assign_compatible(ptn->ts, r.ts)) { /* r.ts can be promoted up */
+    if (ts_arith_assign_compatible(ptn->ts, r.ts) || /* r.ts can be promoted up (no value check) */
+        ts_arith_init_compatible(ptn->ts, r.ts, &r.val)) { /* r.ts can be converted saving value */
       if (ptn->ts != r.ts) { numval_convert(ptn->ts, r.ts, &r.val); r.ts = ptn->ts; }
-    } else neprintf(pdn, "constant initializer cannot be promoted to expected type");
+    } else neprintf(pdn, "constant initializer cannot be implicitly converted to expected type");
     pd = watiebref(&g_curpwm->exports, pdidx); /* re-fetch after static_eval */
     switch (r.ts) {
       case TS_CHAR:   binchar((int)r.val.i, &cb); break;
@@ -3028,6 +3063,7 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
   if (etc && i <= buflen(pab)) {
     /* collect remaining arguments into a stack array of va_arg_t */
     sym_t pname = rpalloc(VT_I32); /* arg frame ptr (wasm32) */
+    node_t tn = mknd(); /* for temporary type conversions */
     /* frame is an array of uint64s (va_arg_t), aligned to 16 */
     size_t asz = 8, nargs = buflen(pab)-i, framesz = (size_t)((nargs*asz + 15) & ~0xFLL), basei;
     inscode_t *pic = icbnewfr(&pcn->data); pic->in = IN_REGDECL;
@@ -3041,6 +3077,17 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     for (basei = i; i < buflen(pab); ++i) {
       node_t **ppani = bufref(pab, i), *pani = *ppani;
       node_t *ptni = acode_type(pani); size_t size, align;
+      /* first, make C-like promotions for ... arguments */
+      if (ts_numerical(ptni->ts) && ptni->ts < TS_INT) {
+        ndcpy(&tn, ptni); tn.ts = TS_INT; ptni = &tn;
+        pani = compile_cast(prn, ptni, pani);
+      } else if (ptni->ts == TS_FLOAT) {
+        ndcpy(&tn, ptni); tn.ts = TS_DOUBLE; ptni = &tn;
+        pani = compile_cast(prn, ptni, pani);
+      } else if (ptni->ts == TS_ARRAY) {
+        ndcpy(&tn, ptni); tn.ts = TS_PTR; ptni = &tn;
+      }
+      /* now see what we have got after that */
       measure_type(ptni, prn, &size, &align, 0);
       if (ts_bulk(ptni->ts) || size > asz || align > asz)
         n2eprintf(pani, prn, "can't pass argument[%d]: unsupported type for ... call", i);
@@ -3058,6 +3105,7 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     asm_pushbk(&pcn->data, &cic);
     acode_pushin_id(pcn, IN_LOCAL_GET, pname);
     acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_crt_mod); 
+    ndfini(&tn);
   } else {
     /* put the call instruction */
     if (cic.in == IN_CALL_INDIRECT) acode_swapin(pcn, pfn); /* func on stack */ 
