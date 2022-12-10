@@ -127,6 +127,11 @@ static bool ts_numerical(ts_t ts)
   return TS_BOOL <= ts && ts <= TS_DOUBLE;
 }
 
+static bool ts_numerical_or_enum(ts_t ts) 
+{
+  return TS_BOOL <= ts && ts <= TS_DOUBLE || ts == TS_ENUM;
+}
+
 static bool ts_bulk(ts_t ts) 
 {
   return ts == TS_ARRAY || ts == TS_STRUCT || ts == TS_UNION;
@@ -179,16 +184,10 @@ static ts_t ts_integral_promote(ts_t ts)
   return ts; /* shouldn't happen */
 }
 
-/* check if ts value can work as test in boolean context */
-static bool ts_booltest(ts_t ts) 
-{
-  return ts == TS_PTR || ts_numerical(ts);
-}
-
 /* common arith type for ts1 and ts2 (can be promoted one) */
 static ts_t ts_arith_common(ts_t ts1, ts_t ts2)
 {
-  assert(ts_numerical(ts1) && ts_numerical(ts2));
+  assert(ts_numerical_or_enum(ts1) && ts_numerical_or_enum(ts2));
   if (ts1 == TS_DOUBLE || ts2 == TS_DOUBLE) return TS_DOUBLE;
   if (ts1 == TS_FLOAT  || ts2 == TS_FLOAT)  return TS_FLOAT;
   ts1 = ts_integral_promote(ts1), ts2 = ts_integral_promote(ts2);
@@ -204,7 +203,7 @@ static ts_t ts_arith_common(ts_t ts1, ts_t ts2)
 /* ts2 can be promoted up to ts1 with implicit cast */
 static bool ts_arith_assign_compatible(ts_t ts1, ts_t ts2)
 {
-  assert(ts_numerical(ts1) && ts_numerical(ts2));
+  assert(ts_numerical_or_enum(ts1) && ts_numerical_or_enum(ts2));
   if (ts1 == ts2) return true;
   return ts_arith_common(ts1, ts2) == ts1;
 }
@@ -217,7 +216,7 @@ static unsigned long long integral_mask(ts_t ts, unsigned long long u)
       return u & 0x00000000000000FFull; 
     case TS_SHORT: case TS_USHORT:  
       return u & 0x000000000000FFFFull; 
-    case TS_INT: case TS_UINT:                   
+    case TS_INT: case TS_UINT: case TS_ENUM:                  
       return u & 0x00000000FFFFFFFFull; 
     /* fixme: should depend on wasm32/wasm64 model */
     case TS_LONG: case TS_ULONG:                  
@@ -238,7 +237,7 @@ static long long integral_sext(ts_t ts, long long i)
     case TS_SHORT: case TS_USHORT:
       return (long long)((((unsigned long long)i & 0x000000000000FFFFull) 
                         ^ 0x0000000000008000ull) - 0x0000000000008000ull); 
-    case TS_INT: case TS_UINT:                   
+    case TS_INT: case TS_UINT: case TS_ENUM:                  
       return (long long)((((unsigned long long)i & 0x00000000FFFFFFFFull) 
                         ^ 0x0000000080000000ull) - 0x0000000080000000ull); 
     /* fixme: should depend on wasm32/wasm64 model */
@@ -255,7 +254,7 @@ static long long integral_sext(ts_t ts, long long i)
 static void numval_convert(ts_t tsto, ts_t tsfrom, numval_t *pnv)
 {
   assert(pnv);
-  assert(ts_numerical(tsto) && ts_numerical(tsfrom));
+  assert(ts_numerical_or_enum(tsto) && ts_numerical_or_enum(tsfrom));
   if (tsto == tsfrom) return; /* no change */
   else if (tsto == TS_DOUBLE) {
     if (tsfrom == TS_FLOAT) pnv->d = (double)pnv->f;
@@ -296,10 +295,10 @@ static bool numval_eq(ts_t ts, numval_t *pnv1, numval_t *pnv2)
   return pnv1->i == pnv2->i;
 } 
 
-/* ts/pnv can be used up to init ts1 while preserving value */
+/* ts/pnv can be used to init ts1 while preserving value */
 static bool ts_arith_init_compatible(ts_t ts1, ts_t ts, numval_t *pnv)
 {
-  assert(ts_numerical(ts1) && ts_numerical(ts));
+  assert(ts_numerical_or_enum(ts1) && ts_numerical_or_enum(ts));
   if (ts1 != ts) { 
     numval_t nv = *pnv;
     numval_convert(ts1, ts, &nv);
@@ -307,6 +306,14 @@ static bool ts_arith_init_compatible(ts_t ts1, ts_t ts, numval_t *pnv)
     return numval_eq(ts, &nv, pnv); /* round-trip preserves value */
   }  
   return true;
+}
+
+/* ts/pnv can be used up to init pointer type */
+static bool ts_init_ptr_compatible(ts_t ts, numval_t *pnv)
+{
+  if (ts == TS_PTR) return true;
+  if (ts == TS_INT && pnv->i == 0) return true; /* wasm32 */
+  return false;
 }
 
 /* unary operation with a number */
@@ -461,8 +468,8 @@ static void asm_numerical_const(ts_t ts, numval_t *pval, inscode_t *pic)
       break;
     case TS_CHAR:  case TS_UCHAR:
     case TS_SHORT: case TS_USHORT:
-    case TS_INT:   case TS_UINT:
-    case TS_LONG:  case TS_ULONG: /* wasm32 model (will be different under wasm64) */
+    case TS_INT:   case TS_UINT:   case TS_ENUM:
+    case TS_LONG:  case TS_ULONG: /* wasm32 */
       pic->in = IN_I32_CONST; pic->arg.u = pval->u;
       break;
     case TS_LLONG: case TS_ULLONG: 
@@ -509,7 +516,7 @@ static const node_t *type_eval(node_t *pn, buf_t *prib)
 {
   switch (pn->nt) {
     case NT_LITERAL: {
-      if (ts_numerical(pn->ts) || pn->ts == TS_ENUM) {
+      if (ts_numerical_or_enum(pn->ts)) {
         return ndsettype(npalloc(), pn->ts);
       } else if (pn->ts == TS_STRING || pn->ts == TS_LSTRING) {
         ts_t ets = (pn->ts == TS_STRING) ? TS_CHAR : TS_INT;
@@ -758,6 +765,7 @@ bool static_eval(node_t *pn, buf_t *prib, seval_t *pr)
       if (ts_numerical(pn->ts)) {
         pr->ts = pn->ts;
         pr->val = pn->val;
+        pr->id = 0;
         return true;
       } else if (pn->ts == TS_STRING || pn->ts == TS_LSTRING) {
         sym_t id = pn->name;
@@ -1067,7 +1075,7 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
     chbfini(&cb);
   } else if (ptn->ts == TS_PTR) {
     seval_t r;
-    if (!static_eval(pdn, NULL, &r) || r.ts != TS_PTR) {
+    if (!static_eval(pdn, NULL, &r) || !ts_init_ptr_compatible(r.ts, &r.val)) {
       neprintf(pdn, "constant address initializer expected");
     }
     pd = watiebref(&g_curpwm->exports, pdidx); /* re-fetch after static_eval */
@@ -1145,12 +1153,22 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
       if (pin) {
         seval_t r; assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
         assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
-        if (!static_eval(ndref(pin, 1), NULL, &r) || !(ts_numerical(r.ts) 
-            || (r.ts == TS_PTR && r.val.i == 0))) { /* NYI: non-0 offset (fixme) */
+        if (!static_eval(ndref(pin, 1), NULL, &r)) {
           neprintf(pin, "non-constant initializer");
+        } else if (!(ts_numerical(r.ts) || (r.ts == TS_PTR && r.val.i == 0))) {
+          neprintf(pin, "unsupported type of global initializer"); /* NYI: non-0 offset (fixme) */
         } else {
           pg = watiebref(&g_curpwm->exports, pgidx); /* re-fetch after static_eval */
           if (r.ts != TS_PTR || r.id == 0) {
+            if (!ts_numerical_or_enum(r.ts) || !ts_numerical_or_enum(ptn->ts)) {
+              if (ptn->ts != TS_PTR) 
+                neprintf(pdn, "unexpected initializer for a non-pointer type");
+              if (!ts_init_ptr_compatible(r.ts, &r.val))
+                neprintf(pdn, "unexpected initializer for a pointer type");
+            } else if (ts_arith_assign_compatible(ptn->ts, r.ts) || /* r.ts can be promoted up (no value check) */
+              ts_arith_init_compatible(ptn->ts, r.ts, &r.val)) { /* r.ts can be converted saving value */
+              if (ptn->ts != r.ts) { numval_convert(ptn->ts, r.ts, &r.val); r.ts = ptn->ts; }
+            } else neprintf(pdn, "constant initializer cannot be implicitly converted to expected type");
             asm_numerical_const(r.ts == TS_PTR ? TS_UINT : r.ts, &r.val, &pg->ic); /* wasm32 */
           } else {
             const node_t *pimn = lookup_global(r.id); inscode_t *pic = &pg->ic;
