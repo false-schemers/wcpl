@@ -1008,7 +1008,12 @@ static node_t *vardef_check_type(node_t *ptn)
 /* initialize preallocated bulk data with display initializer */
 static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *ptn, node_t *pdn)
 {
-  if (ts_bulk(ptn->ts) && pdn->nt == NT_DISPLAY) {
+  if (ts_bulk(ptn->ts) && pdn->nt == NT_CAST) {
+    /* supported if cast has the same type */
+    assert(ndlen(pdn) == 2 && ndref(pdn, 0)->nt == NT_TYPE);
+    if (same_type(ptn, ndref(pdn, 0))) return initialize_bulk_data(pdidx, pd, off, ptn, ndref(pdn, 1));
+    else neprintf(pdn, "initializer cast is not compatible with lval type");
+  } if (ts_bulk(ptn->ts) && pdn->nt == NT_DISPLAY) {
     /* element-by-element initialization */
     if (ndref(pdn, 0)->ts != TS_VOID && !same_type(ptn, vardef_check_type(ndref(pdn, 0))))
       neprintf(pdn, "initializer has incompatible type");
@@ -1046,7 +1051,21 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
       if (j != ndlen(pdn)) 
         neprintf(pdn, "initializer is too long");
     }
-  } else if (ts_numerical(ptn->ts)) {
+  } else if (ptn->ts == TS_ARRAY && pdn->nt == NT_LITERAL) {
+    node_t *petn, *pecn; size_t asize, size, align, acnt, icnt;
+    assert(ndlen(ptn) == 2);
+    measure_type(ptn, ptn, &asize, &align, 0);
+    petn = ndref(ptn, 0), pecn = ndref(ptn, 1);
+    measure_type(petn, ptn, &size, &align, 0);
+    if (size == 1 && pdn->ts == TS_STRING) icnt = buflen(&pdn->data); 
+    else if (size == 4 && pdn->ts == TS_LSTRING) icnt = buflen(&pdn->data) / 4;
+    else neprintf(pdn, "unexpected array type for literal string initializer");
+    assert(icnt >= 1); /* literal's data always ends in zero character */
+    acnt = asize/size;
+    if (icnt-1 == acnt) --icnt; /* legal init: no final \0 */
+    else if (icnt > acnt) neprintf(pdn, "too many characters for array");
+    memcpy(chbdata(&pd->data) + off, chbdata(&pdn->data), icnt*size);
+  } else if (ts_numerical_or_enum(ptn->ts)) {
     seval_t r; buf_t cb = mkchb();
     if (!static_eval(pdn, NULL, &r) || !ts_numerical(r.ts)) 
       neprintf(pdn, "non-numerical-constant initializer");
@@ -1062,6 +1081,7 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
       case TS_SHORT:  binshort((int)r.val.i, &cb); break;
       case TS_USHORT: binushort((unsigned)r.val.u, &cb); break;
       case TS_LONG:   /* wasm32 */
+      case TS_ENUM:   /* same as int */
       case TS_INT:    binint((int)r.val.i, &cb); break;
       case TS_ULONG:  /* wasm32 */
       case TS_UINT:   binuint((unsigned)r.val.u, &cb); break;
@@ -1105,6 +1125,9 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
         neprintf(pdn, "address initializer should be a reference to a nonscalar type");
       }
     }
+  } else {
+    assert(false);
+    neprintf(pdn, "valid initializer expected");
   }
   return pd;
 }
@@ -1458,6 +1481,8 @@ static bool static_display(node_t *pn, buf_t *prib)
         return arithmetic_constant_expr(ndref(pn, 1));
       if (tc == TS_PTR && ndlen(ndref(pn, 0)) == 1 && ndref(ndref(pn, 0), 0)->ts == TS_VOID)
         return arithmetic_constant_expr(ndref(pn, 1));
+      if (tc == TS_ARRAY)
+        return static_display(ndref(pn, 1), prib);
       return false;
     } break;
     default: {
@@ -3268,17 +3293,19 @@ static node_t *compile_bulkasn(node_t *prn, node_t *pdan, node_t *psan)
 {
   node_t *ptdan = acode_type(pdan), *ptsan = acode_type(psan), *ptn;
   node_t *pcn; size_t size, align;
-  if (!ts_bulk(ptdan->ts) || !ts_bulk(ptsan->ts)) return NULL;
-  if (!same_type(ptdan, ptsan)) neprintf(prn, "source and destination have different types"); 
-  ptn = ptdan; /* bulk type -- otherwise memcopy isn't needed */ 
-  pcn = npnewcode(prn);
-  ndsettype(ndnewbk(pcn), TS_VOID); /* todo: chained bulk assignment nyi */
-  measure_type(ptn, prn, &size, &align, 0);
-  acode_swapin(pcn, pdan);
-  acode_swapin(pcn, psan);
-  acode_pushin_uarg(pcn, IN_I32_CONST, size);
-  acode_pushin(pcn, IN_MEMORY_COPY);
-  return pcn;
+  if (ts_bulk(ptdan->ts) && ts_bulk(ptsan->ts)) {
+    if (!same_type(ptdan, ptsan)) neprintf(prn, "source and destination have different types"); 
+    ptn = ptdan; /* bulk type -- otherwise memcopy isn't needed */ 
+    pcn = npnewcode(prn);
+    ndsettype(ndnewbk(pcn), TS_VOID); /* todo: chained bulk assignment nyi */
+    measure_type(ptn, prn, &size, &align, 0);
+    acode_swapin(pcn, pdan);
+    acode_swapin(pcn, psan);
+    acode_pushin_uarg(pcn, IN_I32_CONST, size);
+    acode_pushin(pcn, IN_MEMORY_COPY);
+    return pcn;
+  }
+  return NULL;
 }
 
 /* compile expr/statement (that is, convert it to asm tree); prib is var/reg info,
@@ -3445,7 +3472,22 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
       }
     } break;
     case NT_CAST: {
-      pcn = compile_cast(pn, ndref(pn, 0), expr_compile(ndref(pn, 1), prib, NULL));
+      if (ndref(pn, 0)->ts == TS_ARRAY && ndref(pn, 1)->nt == NT_LITERAL) {
+        /* treat as if it were a static display */
+        size_t size, align;
+        size_t pdidx = watieblen(&g_curpwm->exports);
+        watie_t *pd = watiebnewbk(&g_curpwm->exports, IEK_DATA);
+        node_t *ptn = ndref(pn, 0); assert(ptn->nt == NT_TYPE); 
+        pd->mod = g_curmod; pd->id = internf("ds%d$", (int)pdidx);
+        measure_type(ptn, pn, &size, &align, 0);
+        bufresize(&pd->data, size); /* fills with zeroes */
+        pd->align = (int)align; pd->mut = MT_CONST;
+        pd = initialize_bulk_data(pdidx, pd, 0, ptn, ndref(pn, 1));
+        pcn = npnewcode(pn); ndcpy(ndnewbk(pcn), ptn);
+        acode_pushin_id_mod_iarg(pcn, IN_REF_DATA, pd->id, g_curmod, 0);
+      } else {
+        pcn = compile_cast(pn, ndref(pn, 0), expr_compile(ndref(pn, 1), prib, NULL));
+      }
     } break;
     case NT_POSTFIX: {
       switch (pn->op) {

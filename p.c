@@ -2112,7 +2112,7 @@ node_t *wrap_cast(node_t *pcn, node_t *pn)
   ndswap(pn, ndnewbk(&nd));
   ndswap(pcn, &nd);
   ndfini(&nd);
-  return pn;
+  return pcn;
 }
 
 /* wrap expr node into NT_INFIX with second expr */
@@ -2758,6 +2758,60 @@ static void parse_asm_code(pws_t *pw, node_t *pn, node_t *ptn)
   expect(pw, TT_RPAR, ")");
 }
 
+static void patch_type_array_sizes(const node_t *psn, node_t *ptn)
+{
+  assert(ptn->nt == NT_TYPE);
+  if (ptn->ts == TS_ARRAY) {
+    if (psn->nt == NT_DISPLAY && ndcref(psn, 0)->ts == TS_ARRAY) {
+      const node_t *pasn = ndcref(ndcref(psn, 0), 1);
+      node_t *petn = ndref(ptn, 0), *pvsn = ndref(ptn, 1);
+      if (pvsn->nt == NT_NULL && pasn->nt != NT_NULL) ndcpy(pvsn, pasn);
+      /* try to use first nested display to patch nested size */
+      if (petn->ts == TS_ARRAY && ndlen(psn) > 1)
+        patch_type_array_sizes(ndcref(psn, 1), petn);
+    } else if (psn->nt == NT_LITERAL && (psn->ts == TS_STRING || psn->ts == TS_LSTRING)) {
+      node_t *pvsn = ndref(ptn, 1); 
+      if (pvsn->nt == NT_NULL) {
+        size_t icnt = buflen(&psn->data); 
+        if (psn->ts == TS_LSTRING) icnt /= 4;
+        pvsn->nt = NT_LITERAL;
+        pvsn->ts = TS_INT;
+        pvsn->val.i = (long)icnt; /* with 0 terminator char */
+      }
+    }
+  }
+}
+
+void patch_display_array_sizes(node_t *psn, const node_t *ptn)
+{
+  if (psn->nt == NT_DISPLAY) {
+    assert(ndlen(psn) > 0 && ndref(psn, 0)->nt == NT_TYPE);
+    if (ptn->ts == TS_ARRAY) {
+      node_t tn, *pasn, *petn;
+      ndicpy(&tn, ptn);
+      assert(ndlen(&tn) == 2);
+      pasn = ndcref(&tn, 1); 
+      if (pasn->nt == NT_NULL) {
+        pasn->nt = NT_LITERAL;
+        pasn->ts = TS_INT;
+        pasn->val.i = (long)ndlen(psn)-1; /* sans type */
+      }
+      petn = ndcref(&tn, 0);
+      if (petn->ts == TS_ARRAY) {
+        size_t i, n = ndlen(psn);
+        for (i = 1; i < n; ++i) {
+          node_t *psni = ndref(psn, i);
+          patch_display_array_sizes(psni, petn); 
+          if (i == 1) patch_type_array_sizes(psni, petn);
+        }
+      }
+      /* replace placeholder type */
+      ndswap(ndref(psn, 0), &tn);
+      ndfini(&tn);
+    }
+  }
+}
+
 static void parse_cast_expr(pws_t *pw, node_t *pn)
 {
   int startpos = peekpos(pw);
@@ -2769,18 +2823,7 @@ static void parse_cast_expr(pws_t *pw, node_t *pn)
         parse_initializer(pw, &nd);
         assert(nd.nt == NT_DISPLAY);
         /* patch display's array size if needed */
-        if (pn->ts == TS_ARRAY) {
-          node_t *pasn;
-          assert(ndlen(pn) == 2);
-          pasn = ndref(pn, 1); 
-          if (pasn->nt == NT_NULL) {
-            pasn->nt = NT_LITERAL;
-            pasn->ts = TS_INT;
-            pasn->val.i = (long)ndlen(&nd);
-          }
-        }
-        /* replace placeholder type */
-        ndswap(pn, ndref(&nd, 0)); 
+        patch_display_array_sizes(&nd, pn);
         ndswap(pn, &nd);
       } break;
       case TT_ASM_KW: {
@@ -3231,30 +3274,14 @@ static void parse_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t
   psn = ndnewbk(pn);
   parse_initializer(pw, psn);
   /* patch display's array size if needed */
-  if (psn->nt == NT_DISPLAY) {
-    assert(ndlen(psn) > 0 && ndref(psn, 0)->nt == NT_TYPE);
-    if (tn.ts == TS_ARRAY) {
-      node_t *pasn;
-      assert(ndlen(&tn) == 2);
-      pasn = ndref(&tn, 1); 
-      if (pasn->nt == NT_NULL) {
-        pasn->nt = NT_LITERAL;
-        pasn->ts = TS_INT;
-        pasn->val.i = (long)ndlen(psn)-1; /* sans type */
-      }
-    }
-    /* replace placeholder type */
-    ndswap(ndref(psn, 0), &tn);
-  }
-  /* patch declarator's array size if needed */
-  if (psn->nt == NT_DISPLAY && ndref(psn, 0)->ts == TS_ARRAY) {
-    node_t *pasn = ndref(ndref(psn, 0), 1);
-    pn = ndbref(pnb, ndblen(pnb)-2); /* decl we just added above */
-    assert(pn->nt == NT_VARDECL && ndlen(pn) == 1 && ndref(pn, 0)->nt == NT_TYPE);
-    if (ndref(pn, 0)->ts == TS_ARRAY) {
-      node_t *pvsn = ndref(ndref(pn, 0), 1);
-      if (pvsn->nt == NT_NULL && pasn->nt != NT_NULL) ndcpy(pvsn, pasn);
-    }
+  patch_display_array_sizes(psn, &tn);
+  /* patch declarator's array size in decl we just added above */
+  pn = ndbref(pnb, ndblen(pnb)-2); assert(pn->nt == NT_VARDECL && ndlen(pn) == 1);
+  ptn = ndcref(pn, 0); assert(ptn->nt == NT_TYPE);
+  patch_type_array_sizes(psn, (node_t*)ptn);
+  /* wrap string literals intitializing arrays in casts */
+  if (psn->nt == NT_LITERAL && ptn->ts == TS_ARRAY) {
+    wrap_cast(ndcpy(&tn, ptn), psn); ndswap(&tn, psn);
   }
   ndfini(&tn);
 }
