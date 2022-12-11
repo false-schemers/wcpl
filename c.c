@@ -1005,6 +1005,51 @@ static node_t *vardef_check_type(node_t *ptn)
   return ptn;
 }
 
+/* check if this function type is legal in WCPL */
+static void fundef_check_type(node_t *ptn)
+{
+  size_t i;
+  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
+  for (i = 0; i < ndlen(ptn); ++i) {
+    node_t *ptni = ndref(ptn, i); 
+    assert(ptni->nt == NT_VARDECL && ndlen(ptni) == 1 || ptni->nt == NT_TYPE);
+    if (ptni->nt == NT_VARDECL) ptni = ndref(ptni, 0); assert(ptni->nt == NT_TYPE);
+    switch (ptni->ts) {
+      case TS_VOID:
+        if (i == 0) break; /* return type can be void */
+        neprintf(ptni, "unexpected void function argument type");
+      case TS_ENUM: /* ok, treated as int */
+      case TS_BOOL: /* ok but widened to int */
+      case TS_CHAR: case TS_UCHAR:   /* ok but widened to int */
+      case TS_SHORT: case TS_USHORT: /* ok but widened to int */
+      case TS_INT: case TS_UINT: 
+      case TS_LONG: case TS_ULONG:  
+      case TS_LLONG: case TS_ULLONG:  
+      case TS_FLOAT: case TS_DOUBLE:
+      case TS_PTR: 
+        break;
+      case TS_ARRAY: {
+        node_t *pcn; assert(ndlen(ptni) == 2);
+        pcn = ndref(ptni, 1);
+        if (pcn->nt == NT_NULL) { /* t foo[] == t* foo */
+          ndbrem(&ptni->body, 1); ptni->ts = TS_PTR;
+        } /* else neprintf(ptni, "not supported: array as function parameter/return type"); */
+      } break;
+      case TS_STRUCT:
+        if (i > 0) neprintf(ptni, "not supported: struct as function parameter type");
+        break;
+      case TS_UNION:
+        if (i > 0) neprintf(ptni, "not supported: union as function parameter type");
+        break;
+      case TS_ETC:
+        if (i+1 != ndlen(ptn)) neprintf(ptni, "nonfinal ... in function parameter list");
+        break; 
+      default:
+        neprintf(ptni, "function arguments of this type are not supported: %s", ts_name(ptni->ts));
+    }
+  }
+}
+
 /* initialize preallocated bulk data with display initializer */
 static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *ptn, node_t *pdn)
 {
@@ -1144,7 +1189,8 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
   /* check variable type for legality */
   assert(pdn->nt == NT_VARDECL); assert(ndlen(pdn) == 1);
   ptn = ndref(pdn, 0); assert(ptn->nt == NT_TYPE);
-  if (ptn->ts != TS_FUNCTION) vardef_check_type(ptn); /* evals array sizes */
+  if (ptn->ts == TS_FUNCTION) fundef_check_type(ptn); /* param: x[] => *x */
+  else vardef_check_type(ptn); /* evals array sizes */
   /* post it for later use */
   final = true; hide = (pdn->sc == SC_STATIC);
   /* if it is just function declared, allow definition to come later */
@@ -1204,51 +1250,6 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
       pg->mut = MT_VAR;
       pg->vt = ts2vt(ptn->ts);
       if (pg->vt == VT_UNKN) neprintf(pin, "invalid type for a global");
-    }
-  }
-}
-
-/* check if this function type is legal in WCPL */
-static void fundef_check_type(node_t *ptn)
-{
-  size_t i;
-  assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
-  for (i = 0; i < ndlen(ptn); ++i) {
-    node_t *ptni = ndref(ptn, i); 
-    assert(ptni->nt == NT_VARDECL && ndlen(ptni) == 1 || ptni->nt == NT_TYPE);
-    if (ptni->nt == NT_VARDECL) ptni = ndref(ptni, 0); assert(ptni->nt == NT_TYPE);
-    switch (ptni->ts) {
-      case TS_VOID:
-        if (i == 0) break; /* return type can be void */
-        neprintf(ptni, "unexpected void function argument type");
-      case TS_ENUM: /* ok, treated as int */
-      case TS_BOOL: /* ok but widened to int */
-      case TS_CHAR: case TS_UCHAR:   /* ok but widened to int */
-      case TS_SHORT: case TS_USHORT: /* ok but widened to int */
-      case TS_INT: case TS_UINT: 
-      case TS_LONG: case TS_ULONG:  
-      case TS_LLONG: case TS_ULLONG:  
-      case TS_FLOAT: case TS_DOUBLE:
-      case TS_PTR: 
-        break;
-      case TS_ARRAY: {
-        node_t *pcn; assert(ndlen(ptni) == 2);
-        pcn = ndref(ptni, 1);
-        if (pcn->nt == NT_NULL) { /* t foo[] == t* foo */
-          ndbrem(&ptni->body, 1); ptni->ts = TS_PTR;
-        } /* else neprintf(ptni, "not supported: array as function parameter/return type"); */
-      } break;
-      case TS_STRUCT:
-        if (i > 0) neprintf(ptni, "not supported: struct as function parameter type");
-        break;
-      case TS_UNION:
-        if (i > 0) neprintf(ptni, "not supported: union as function parameter type");
-        break;
-      case TS_ETC:
-        if (i+1 != ndlen(ptn)) neprintf(ptni, "nonfinal ... in function parameter list");
-        break; 
-      default:
-        neprintf(ptni, "function arguments of this type are not supported: %s", ts_name(ptni->ts));
     }
   }
 }
@@ -3943,7 +3944,7 @@ static void process_fundef(sym_t mmod, node_t *pn, wat_module_t *pm)
     fprintf(stderr, "process_fundef:\n");
     dump_node(pn, stderr);
   }
-  fundef_check_type(ndref(pn, 0));
+  fundef_check_type(ndref(pn, 0)); /* param: x[] => *x */
   if (pn->name == intern("main")) {
     if (ndlen(ptn) == 1 && ndref(ptn, 0)->ts == TS_INT) {
       pm->main = MAIN_VOID;
@@ -4058,8 +4059,8 @@ static void process_top_node(sym_t mmod, node_t *pn, wat_module_t *pm)
         neprintf(pni, "non-extern declaration in header");
       } else if (pni->nt == NT_VARDECL && pni->name && ndlen(pni) == 1) {
         node_t *ptn = ndref(pni, 0); assert(ptn->nt == NT_TYPE);
-        if (ptn->ts == TS_FUNCTION) fundef_check_type(ptn);
-        else vardef_check_type(ptn);
+        if (ptn->ts == TS_FUNCTION) fundef_check_type(ptn); /* param: x[] => *x */
+        else vardef_check_type(ptn); /* evals array sizes */
         post_vardecl(pn->name, pni, false, false); /* not final, not hidden */
       } else {
         neprintf(pni, "extern declaration expected");
