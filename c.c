@@ -291,6 +291,7 @@ static bool numval_eq(ts_t ts, numval_t *pnv1, numval_t *pnv2)
     case TS_USHORT: case TS_UINT:
     case TS_ULONG:  case TS_ULLONG: 
       return pnv1->u == pnv2->u;
+    default:;
   }    
   return pnv1->i == pnv2->i;
 } 

@@ -3406,8 +3406,16 @@ static void parse_stmt(pws_t *pw, node_t *pn)
       ndset(pn, NT_FOR, pw->id, pw->pos);
       dropt(pw);
       expect(pw, TT_LPAR, "(");
-      if (peekt(pw) != TT_SEMICOLON) parse_expr(pw, ndnewbk(pn));
-      else ndset(ndnewbk(pn), NT_NULL, pw->id, pw->pos); 
+      if (peekt(pw) != TT_SEMICOLON) {
+        if (storage_class_specifier_ahead(pw) || type_specifier_ahead(pw)) {
+          node_t *psn = ndnewbk(pn); sc_t sc;
+          ndset(psn, NT_BLOCK, pw->id, pw->pos);
+          if ((sc = parse_decl(pw, &psn->body)) == SC_EXTERN || sc == SC_STATIC)
+            reprintf(pw, pw->pos, "block-level extern/static declarations are not supported"); 
+        } else {
+          parse_expr(pw, ndnewbk(pn));
+        }
+      } else ndset(ndnewbk(pn), NT_NULL, pw->id, pw->pos); 
       expect(pw, TT_SEMICOLON, ";");
       if (peekt(pw) != TT_SEMICOLON) parse_expr(pw, ndnewbk(pn));
       else ndset(ndnewbk(pn), NT_NULL, pw->id, pw->pos); 
@@ -3416,6 +3424,11 @@ static void parse_stmt(pws_t *pw, node_t *pn)
       else ndset(ndnewbk(pn), NT_NULL, pw->id, pw->pos); 
       expect(pw, TT_RPAR, ")");
       parse_stmt(pw, ndnewbk(pn));
+      if (ndref(pn, 0)->nt == NT_BLOCK) {
+        node_t nd; ndinit(&nd); ndswap(&nd, ndref(pn, 0));
+        ndswap(pn, ndnewbk(&nd)); ndswap(pn, &nd);
+        ndfini(&nd);
+      }
     } break;
     case TT_BREAK_KW: {
       ndset(pn, NT_BREAK, pw->id, pw->pos);
