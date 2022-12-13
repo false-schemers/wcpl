@@ -3,7 +3,9 @@ WCPL
 
 Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 
-# C features supported
+# C features
+
+## C features supported
 
 - `#pragma once` in headers
 - `static_assert(expr);`, `static_assert(expr, "message");` on top level in headers and module files
@@ -14,24 +16,16 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
   corresponding parameterized forms (`#define FOO(a, b) ...`)   
 - `const` and `volatile` specifiers are allowed but ignored
 - variables can be declared at any top-level position in a block
+- variables can be declared in the first clause of the `for` statement
 - labels can only label starts/ends of sub-blocks; `goto` can only target labels in the same block or its parent blocks
 - assignment of structures/unions (and same-type arrays as well)
 - vararg macros and `stdarg.h`
-- object modules can have the following extensions: `.o`, `.wo`
-- system object modules are looked up in library directories given via `-L` option and `WCPL_LIBRARY_PATH` environment variable
-- system headers included as `#include <foo>` can have the following extensions: (none), `.h`, `.wh`
-- system headers are looked up in directories given via `-I` option and `WCPL_INCLUDE_PATH` environment variable
-- also, system headers are looked up in `include` sub-directories of library directories as specified above
-- user headers included as `#include "foo"` can have the following extensions: (none), `.h`, `.wh`
-- user headers are looked up first in current directory, then in system directories as stated above
-- user object modules should be provided explicitly as command line arguments
-- lookup directories should end in separator char (`/` on Un*x, `\` on Windows), file name is just appended to it
+- vararg `...` short integer and float arguments implicitly promoted to `int`/`double` respectively; arrays converted to pointers
 
-# C features not yet supported or supported partially
+## C features not yet supported or supported partially
 
 - adjacent mixed-char-size string literals concatenation (works for same-char-size)
 - implicit conversions of arrays to element pointers; explicit `&arr[0]` required for now
-- implicit promotions of char and short types as vararg `...` arguments (for now it's reported as an error)
 - implicit conversion of `0` to `NULL` (also currently reported as an error)
 - implicit conversion of pointer to boolean in `||`, `&&` and `?:` expressions (now requires explicit `!= NULL`)
 - implicit conversion of function pointer to function (reported as an error)
@@ -44,7 +38,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - static inline functions in header files
 - built-in `__DATE__` and `__TIME__` macros use `gmtime`, not `localtime` 
 
-# C features that won't be supported
+## C features that won't be supported
 
 - features beyond C90/ANSI-C other than the ones explicitly listed as supported
 - `#if`-category directives for conditional compilation
@@ -54,11 +48,13 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - free-form labels and `goto`
 - `setjmp`/`longjmp` (not in WASM model)
 
-# Additional WCPL-specific features
+## Additional WCPL-specific features
 
 - `#pragma module "foo"` in headers
 
-# Libraries already implemented
+# Libraries
+
+## Libraries already implemented
 
 - `<assert.h>` (C90, header only)
 - `<ctype.h>`  (C90)
@@ -85,7 +81,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - `<time.h>` (C90 + some POSIX-like extras)
 - `<locale.h>` (stub to allow setting utf8 locale)
  
-# Libaries that won't be supported
+## Libaries that won't be supported
 
 - `<setjmp.h>`
 - `<signal.h>`
@@ -96,9 +92,20 @@ Here's how you can compile WCPL on a Unix box; instructions for other
 systems/compilers are similar:
 
 ```
-gcc -o wcpl [wcpl].c 
+cc -o wcpl [wcpl].c 
 ```
 
+# Modules and compilation environment
+
+- object modules can have the following extensions: `.o`, `.wo`
+- system object modules are looked up in library directories given via `-L` option and `WCPL_LIBRARY_PATH` environment variable
+- system headers included as `#include <foo>` can have the following extensions: (none), `.h`, `.wh`
+- system headers are looked up in directories given via `-I` option and `WCPL_INCLUDE_PATH` environment variable
+- also, system headers are looked up in `include` sub-directories of library directories as specified above
+- user headers included as `#include "foo"` can have the following extensions: (none), `.h`, `.wh`
+- user headers are looked up first in current directory, then in system directories as stated above
+- user object modules should be provided explicitly as command line arguments
+- lookup directories should end in separator char (`/` on Un*x, `\` on Windows), file name is just appended to it
 
 # Use
 
