@@ -4311,6 +4311,193 @@ void compile_module_to_wat(const char *ifname, wat_module_t *pwm)
   fini_compiler();
 }
 
+/* convert parsed node into interface declaration */
+static void convert_node(sym_t mmod, idecl_t *pd, node_t *pn)
+{
+  switch (pn->nt) {
+    case NT_VARDECL: {
+      pd->it = IT_DECL;
+      pd->mod = mmod;
+      pd->id = pn->name;
+      assert(ndlen(pn) == 1 && ndref(pn, 0)->nt == NT_TYPE);
+      convert_node(0, ideclbnewbk(&pd->body), ndref(pn, 0));
+    } break;
+    case NT_TYPE: {
+      switch (pn->ts) {
+        case TS_VOID:   pd->it = IT_VOID; break;
+        case TS_ETC:    pd->it = IT_ETC; break;
+        case TS_BOOL:   pd->it = IT_BOOL; break; 
+        case TS_CHAR:   pd->it = IT_S8; break;
+        case TS_UCHAR:  pd->it = IT_U8; break;
+        case TS_SHORT:  pd->it = IT_S16; break;
+        case TS_USHORT: pd->it = IT_U16; break;
+        case TS_INT:    pd->it = IT_S32; break;
+        case TS_UINT:   pd->it = IT_U32; break;
+        case TS_LONG:   pd->it = IT_SSZ; break;
+        case TS_ULONG:  pd->it = IT_USZ; break;
+        case TS_LLONG:  pd->it = IT_S64; break;
+        case TS_ULLONG: pd->it = IT_U64; break;
+        case TS_FLOAT:  pd->it = IT_F32; break;
+        case TS_DOUBLE: pd->it = IT_F64; break;
+        case TS_ENUM: {
+          assert(false);
+        } break;
+        case TS_STRUCT: case TS_UNION: {
+          size_t i;
+          pd->it = (pn->ts == TS_UNION) ? IT_UNION : IT_RECORD;
+          pd->id = pn->name;
+          for (i = 0; i < ndlen(pn); ++i)
+            convert_node(0, ideclbnewbk(&pd->body), ndref(pn, i));
+        } break;
+        case TS_ARRAY: {
+          assert(ndlen(pn) == 2);
+          pd->it = IT_ARRAY;
+          assert(ndref(pn, 1)->ts == TS_INT);
+          pd->val = (int)(ndref(pn, 1)->val.i);
+          convert_node(0, ideclbnewbk(&pd->body), ndref(pn, 0));
+        } break;
+        case TS_PTR: {
+          assert(ndlen(pn) == 1);
+          pd->it = IT_PTR;
+          convert_node(0, ideclbnewbk(&pd->body), ndref(pn, 0));
+        } break;
+        case TS_FUNCTION: {
+          size_t i;
+          assert(ndlen(pn) >= 1);
+          pd->it = IT_FUNC;
+          pd->val = (int)ndlen(pn)-1; /* argc */
+          for (i = 1; i < ndlen(pn); ++i) {
+            node_t *pni = ndref(pn, i);
+            //if (pni->nt == NT_VARDECL) {
+            //  assert(ndlen(pni) == 1 && ndref(pni, 0)->nt == NT_TYPE);
+            //  pni = ndref(pni, 0); 
+            //}
+            convert_node(0, ideclbnewbk(&pd->body), pni);
+          }
+          if (ndref(pn, 0)->ts != TS_VOID)
+            convert_node(0, ideclbnewbk(&pd->body), ndref(pn, 0));
+        } break;
+        default: assert(false);
+      }
+    } break;
+    default: assert(false);
+  }
+}
+
+/* convert single top node (from include) into interface declarations */
+static void convert_top_node(sym_t mmod, node_t *pn, wat_interface_t *pi)
+{
+  size_t i;
+
+  /* ignore empty blocks left from macros */
+  if (pn->nt == NT_BLOCK && ndlen(pn) == 0) return;
+  /* ignore typedefs (they are already processed) */  
+  if (pn->nt == NT_TYPEDEF) {
+    if (getverbosity() > 0) {
+      size_t size = 0, align = 0;
+      dump_node(pn, stderr); assert(ndlen(pn) == 1);
+      /* measure_type(ndref(pn, 0), pn, &size, &align, 0);
+      fprintf(stderr, "size: %d, align: %d\n", (int)size, (int)align); */
+    }
+    return;
+  }
+  /* in header: declarations only */
+  if (pn->nt == NT_FUNDEF) neprintf(pn, "function definition in header");
+  else if (pn->nt == NT_INTRCALL) process_top_intrcall(pn); 
+  else if (pn->nt != NT_BLOCK) neprintf(pn, "invalid top-level declaration");
+  else if (!pn->name) neprintf(pn, "unscoped top-level declaration");
+  else for (i = 0; i < ndlen(pn); ++i) {
+    node_t *pni = ndref(pn, i);
+    if (pni->nt == NT_ASSIGN) {
+      neprintf(pni, "initialization in header");
+    } else if (pni->nt == NT_VARDECL && pni->sc != SC_EXTERN) {
+      neprintf(pni, "non-extern declaration in header");
+    } else if (pni->nt == NT_VARDECL && pni->name && ndlen(pni) == 1) {
+      node_t *ptn = ndref(pni, 0); assert(ptn->nt == NT_TYPE);
+      if (ptn->ts == TS_FUNCTION) fundef_check_type(ptn); /* param: x[] => *x */
+      else vardef_check_type(ptn); /* evals array sizes */
+      convert_node(mmod, ideclbnewbk(&pi->exports), pni);
+    } else {
+      neprintf(pni, "extern declaration expected");
+    }
+  }
+}
+
+/* parse/convert include file and its includes for interface declarations */
+static void convert_include(pws_t *pw, int startpos, bool sys, sym_t name, wat_interface_t *pi)
+{
+  pws_t *pwi; node_t nd = mknd();
+  pwi = pws_from_modname(sys, name); /* searches g_ibases */
+  if (pwi) {
+    /* this should be workspace #1... */
+    assert(pwsid(pwi) > 0);
+    while (parse_top_form(pwi, &nd)) {
+      if (nd.nt == NT_INCLUDE) {
+        bool sys = (nd.op != TT_STRING);
+        convert_include(pwi, nd.startpos, sys, nd.name, pi);
+      } else {
+        convert_top_node(pwscurmod(pw), &nd, pi);
+      }
+    }
+    closepws(pwi);
+  } else {
+    reprintf(pw, startpos, 
+      "cannot locate header file for %s: check -L option / WCPL_LIBRARY_PATH", 
+      symname(name));
+  }
+  ndfini(&nd);
+}
+
+/* convert header file to in-memory wat output interface */
+void convert_interface_to_wat(const char *fname, wat_interface_t *pi)
+{
+  pws_t *pw; node_t nd = mknd(); 
+  sym_t mod = 0; size_t i;
+
+  init_compiler();
+  wat_interface_clear(pi);
+
+  pw = newpws(fname);
+  if (pw) {
+    /* this should be workspace #0 */
+    assert(pwsid(pw) == 0);
+    assert(pwscurmod(pw));
+    /* parse top level */
+    while (parse_top_form(pw, &nd)) {
+      if (nd.nt == NT_INCLUDE) {
+        bool sys = (nd.op != TT_STRING);
+        convert_include(pw, nd.startpos, sys, nd.name, pi);
+      } else {
+        convert_top_node(pwscurmod(pw), &nd, pi);
+      }
+    }
+    mod = pwscurmod(pw);
+    closepws(pw);
+  } else {
+    exprintf("cannot read header file: %s", fname);
+  }
+  ndfini(&nd);
+
+  /* walk g_syminfo/g_nodes to add enum/union/struct decls */
+  for (i = 0; i < buflen(&g_syminfo); ++i) {
+    int *pe = bufref(&g_syminfo, i); /* <sym_t, tt_t, info> */
+    if ((pe[1] == TT_ENUM_KW || pe[1] == TT_STRUCT_KW || pe[1] == TT_UNION_KW)
+        && pe[2] >= 0 && pe[2] < (int)buflen(&g_nodes)) {
+      //sym_t id = pe[0]; char *s = symname(id), *name = NULL;
+      node_t *pn = bufref(&g_nodes, (size_t)pe[2]);
+      //switch (pe[1]) {
+      //  case TT_ENUM_KW: name = strprf(s, "enum "); break;
+      //  case TT_STRUCT_KW: name = strprf(s, "struct "); break;
+      //  case TT_UNION_KW: name = strprf(s, "union "); break;
+      //}
+      convert_node(0, ideclbnewbk(&pi->eusdecls), pn);
+    }
+  }
+
+  /* done */
+  fini_compiler();
+}  
+
 int main(int argc, char **argv)
 {
   int opt; char *eoarg;
@@ -4355,7 +4542,7 @@ int main(int argc, char **argv)
       case 'L':  eoarg = eoptarg; dsbpushbk(&libv, &eoarg); break;
       case 's':  s_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'a':  a_arg = strtoul(eoptarg, NULL, 0); break; 
-      case 'h':  eusage("WCPL 0.04 built on " __DATE__);
+      case 'h':  eusage("WCPL 0.05 built on " __DATE__);
     }
   }
 
@@ -4367,22 +4554,40 @@ int main(int argc, char **argv)
   init_wcpl(&incv, &libv, lvl_arg, (size_t)s_arg, (size_t)a_arg);
 
   if (c_opt) {
-    /* compile single source file */
-    wat_module_t wm; wat_module_init(&wm);
     if (eoptind < argc) ifile_arg = argv[eoptind++];
     if (eoptind < argc) eusage("too many input files for -c mode");
-    /* todo: autogenerate output file name (stdout for now) */
-    compile_module_to_wat(ifile_arg, &wm);
-    if (ofile_arg) {
-      FILE *pf = fopen(ofile_arg, "w");
-      if (!pf) exprintf("cannot open output file %s:", ofile_arg);
-      write_wat_module(&wm, pf);
-      fclose(pf);
-      logef("# object module written to %s\n", ofile_arg);
+    if (strsuf(ifile_arg, ".h") != NULL || strsuf(ifile_arg, ".wh") != NULL) {
+      /* compile single header file into an interface file (.wi) */
+      wat_interface_t wi; wat_interface_init(&wi);
+      logef("# creating interface from %s\n", ifile_arg);
+      /* todo: autogenerate output file name (stdout for now) */
+      convert_interface_to_wat(ifile_arg, &wi);
+      if (ofile_arg) {
+        FILE *pf = fopen(ofile_arg, "w");
+        if (!pf) exprintf("cannot open output file %s:", ofile_arg);
+        write_wat_interface(&wi, pf);
+        fclose(pf);
+        logef("# object interface written to %s\n", ofile_arg);
+      } else {
+        write_wat_interface(&wi, stdout);
+      }
+      wat_interface_fini(&wi);
     } else {
-      write_wat_module(&wm, stdout);
+      /* compile single source file into an object file (.wo) */
+      wat_module_t wm; wat_module_init(&wm);
+      /* todo: autogenerate output file name (stdout for now) */
+      compile_module_to_wat(ifile_arg, &wm);
+      if (ofile_arg) {
+        FILE *pf = fopen(ofile_arg, "w");
+        if (!pf) exprintf("cannot open output file %s:", ofile_arg);
+        write_wat_module(&wm, pf);
+        fclose(pf);
+        logef("# object module written to %s\n", ofile_arg);
+      } else {
+        write_wat_module(&wm, stdout);
+      }
+      wat_module_fini(&wm);
     }
-    wat_module_fini(&wm);   
   } else {
     /* load/compile input files, fetch libraries, link */
     wat_module_t wm; wat_module_buf_t wmb;

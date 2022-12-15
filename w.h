@@ -515,11 +515,51 @@ extern void wat_module_buf_fini(wat_module_buf_t* pb);
 #define wat_module_buf_ref(pb, i) ((wat_module_t*)bufref(pb, i))
 #define wat_module_buf_newbk(pb) (wat_module_init(bufnewbk(pb)))
 
+/* wat interface types */
+typedef enum it {
+  IT_NONE,     IT_VOID,     IT_ETC,      IT_BOOL, 
+  IT_S8,       IT_U8,       IT_S16,      IT_U16,
+  IT_S32,      IT_U32,      IT_SSZ,      IT_USZ,
+  IT_S64,      IT_U64,      IT_F32,      IT_F64,
+  IT_ENUM,     IT_ARRAY,    IT_RECORD,   IT_UNION,     
+  IT_FUNC,     IT_PTR,      IT_DECL
+} it_t;
+
+/* wat interface declaration */
+typedef buf_t ideclbuf_t; 
+
+typedef struct idecl {
+  it_t  it;
+  sym_t mod, id; /* top DECL: mod != 0, ENUM/RECORD/UNION/field DECL: mod = 0 */
+  int val; /* ARRAY: elt cnt; FUNC: argc, including etc if any, ENUM decl: val */
+  ideclbuf_t body; /* ENUM/ARRAY/RECORD/UNION/FUNC/PTR */
+} idecl_t;
+
+extern idecl_t* ideclinit(idecl_t* pd);
+extern void ideclfini(idecl_t* pd);
+#define ideclbinit(mem) (bufinit(mem, sizeof(idecl_t)))
+extern void ideclbfini(ideclbuf_t* pb);
+#define ideclblen(pb) (buflen(pb))
+#define ideclbref(pb, i) ((idecl_t*)bufref(pb, i))
+#define ideclbnewbk(pb) (ideclinit(bufnewbk(pb)))
+
+/* wat interface for object files */
+typedef struct wat_interface {
+  sym_t name;
+  ideclbuf_t eusdecls;
+  ideclbuf_t exports;
+} wat_interface_t;
+
+extern wat_interface_t* wat_interface_init(wat_interface_t* pi);
+extern void wat_interface_clear(wat_interface_t* pi);
+extern void wat_interface_fini(wat_interface_t* pi);
+
 /* read/write wcpl wat text modules */
 extern void read_wat_object_module(const char *fname, wat_module_t* pm);
 extern void read_wat_executable_module(const char *fname, wat_module_t* pm);
 extern void load_library_wat_module(sym_t mod, wat_module_t* pm);
 extern void write_wat_module(wat_module_t* pm, FILE *pf);
+extern void write_wat_interface(wat_interface_t* pi, FILE *pf);
 
 /* linker */
 extern void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm); 

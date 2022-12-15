@@ -1364,8 +1364,47 @@ void wat_module_buf_fini(wat_module_buf_t* pb)
   buffini(pb);
 }
 
+idecl_t* ideclinit(idecl_t* pd)
+{
+  memset(pd, 0, sizeof(idecl_t));
+  ideclbinit(&pd->body);
+  return pd;
+}
 
-/* write object wat text module */
+void ideclfini(idecl_t* pd)
+{
+  ideclbfini(&pd->body);
+}
+
+void ideclbfini(ideclbuf_t* pb)
+{
+  size_t i;
+  for (i = 0; i < ideclblen(pb); ++i) ideclfini(ideclbref(pb, i));
+  buffini(pb);
+}
+
+wat_interface_t* wat_interface_init(wat_interface_t* pi)
+{
+  memset(pi, 0, sizeof(wat_interface_t));
+  ideclbinit(&pi->eusdecls);
+  ideclbinit(&pi->exports);
+  return pi;
+}
+
+void wat_interface_fini(wat_interface_t* pi)
+{
+  ideclbfini(&pi->eusdecls);
+  ideclbfini(&pi->exports);
+}
+
+void wat_interface_clear(wat_interface_t* pi)
+{
+  wat_interface_fini(pi);
+  wat_interface_init(pi);
+}
+
+
+/* write wat text module */
 
 static void wat_indent(void)
 {
@@ -3152,6 +3191,176 @@ void load_library_wat_module(sym_t mod, wat_module_t* pm)
     exprintf("cannot locate object module: '%s'", symname(mod));
   }
   chbfini(&cb); 
+}
+
+void write_idecl(idecl_t *pd, bool brief)
+{
+  size_t i; const char *name = NULL;
+  switch (pd->it) {
+    case IT_NONE:  name = "?"; break; // temp hack
+    case IT_VOID:  name = "void"; break;
+    case IT_ETC:   name = "etc"; break;
+    case IT_BOOL:  name = "bool"; break;
+    case IT_S8:    name = "s8"; break;
+    case IT_U8:    name = "u8"; break;
+    case IT_S16:   name = "s16"; break;
+    case IT_U16:   name = "u16"; break;
+    case IT_S32:   name = "s32"; break;
+    case IT_U32:   name = "u32"; break;
+    case IT_SSZ:   name = "ssize"; break;
+    case IT_USZ:   name = "usize"; break;
+    case IT_S64:   name = "s64"; break;
+    case IT_U64:   name = "u64"; break;
+    case IT_F32:   name = "f32"; break;
+    case IT_F64:   name = "f64"; break;
+    case IT_ENUM: {
+      if (brief) {
+        if (!pd->id) chbputs("(enum)", g_watbuf);
+        else chbputf(g_watbuf, "(enum $%s)", symname(pd->id));
+      } else {
+        if (!pd->id) wat_linef("(enum");
+        else wat_linef("(enum $%s", symname(pd->id));
+        g_watindent += 2;
+        for (i = 0; i < ideclblen(&pd->body); ++i) {
+          idecl_t *pdi = ideclbref(&pd->body, i); assert(pdi->it == IT_DECL);
+          wat_linef("(const $%s %d)", symname(pdi->id), pdi->val);
+        }
+        g_watindent -= 2;
+        wat_line(")");
+      }
+    } break;
+    case IT_RECORD: case IT_UNION: {
+      const char *itname = (pd->it == IT_RECORD) ? "record" : "variant";  
+      const char *iteltn = (pd->it == IT_RECORD) ? "field" : "case";  
+      if (brief) {
+        if (!pd->id) chbputf(g_watbuf, "(%s)", itname);
+        else chbputf(g_watbuf, "(%s $%s)", itname, symname(pd->id));
+      } else {
+        if (!pd->id) wat_linef("(%s", itname);
+        else wat_linef("(%s $%s", itname, symname(pd->id));
+        g_watindent += 2;
+        for (i = 0; i < ideclblen(&pd->body); ++i) {
+          idecl_t *pdi = ideclbref(&pd->body, i); 
+          assert(pdi->it == IT_DECL && ideclblen(&pdi->body) == 1);
+          chbsetf(g_watbuf, "(%s $%s ", iteltn, symname(pdi->id));
+          write_idecl(ideclbref(&pdi->body, 0), true);
+          chbputc(')', g_watbuf);
+          wat_line(chbdata(g_watbuf));
+        }
+        g_watindent -= 2;
+        wat_line(")");
+      }
+    } break;
+    case IT_ARRAY: case IT_PTR: {
+      idecl_t *pdi;
+      assert(ideclblen(&pd->body) == 1);
+      pdi = ideclbref(&pd->body, 0);
+      if (brief) {
+        if (pd->it == IT_PTR) chbputf(g_watbuf, "(pointer ");
+        else chbputf(g_watbuf, "(array %d ", pd->val);
+        write_idecl(pdi, true);
+        chbputc(')', g_watbuf);
+      } else {
+        if (pd->it == IT_PTR) wat_linef("(pointer"); 
+        else wat_linef("(array %d", pd->val);
+        g_watindent += 2;
+        write_idecl(pdi, false);
+        g_watindent -= 2;
+        wat_line(")");
+      }
+    } break;
+    case IT_FUNC: {
+      bool allshort = true; 
+      assert((int)ideclblen(&pd->body) >= pd->val);
+      if (brief) {
+        chbputf(g_watbuf, "(func");
+      } else {
+        wat_linef("(func");
+        g_watindent += 2;
+      }
+      for (i = 0; (int)i < pd->val; ++i) {
+        idecl_t *pdi = ideclbref(&pd->body, i);
+        if (!brief) chbclear(g_watbuf);
+        else chbputc(' ', g_watbuf);
+        chbputs("(param ", g_watbuf);
+        if (pdi->it == IT_DECL) {
+          if (pdi->id) chbputf(g_watbuf, "$%s ", symname(pdi->id));
+          pdi = ideclbref(&pdi->body, 0);
+        }
+        write_idecl(pdi, true);
+        chbputc(')', g_watbuf);
+        if (!brief) wat_line(chbdata(g_watbuf));
+      }
+      for (; i < ideclblen(&pd->body); ++i) {
+        idecl_t *pdi = ideclbref(&pd->body, i);
+        if (!brief) chbclear(g_watbuf);
+        else chbputc(' ', g_watbuf);
+        chbputs("(result ", g_watbuf);
+        if (pdi->it == IT_DECL) {
+          if (pdi->id) chbputf(g_watbuf, "$%s ", symname(pdi->id));
+          pdi = ideclbref(&pdi->body, 0);
+        }
+        write_idecl(pdi, true);
+        chbputc(')', g_watbuf);
+        if (!brief) wat_line(chbdata(g_watbuf));
+      }
+      if (brief) {
+        chbputc(')', g_watbuf);
+      } else { 
+        g_watindent -= 2;
+        wat_line(")");
+      }
+    } break;
+    case IT_DECL: {
+      idecl_t *pdi;
+      assert(pd->mod);
+      assert(ideclblen(&pd->body) == 1);
+      pdi = ideclbref(&pd->body, 0);
+      if (brief) {
+        chbputf(g_watbuf, "(export $%s:%s ", symname(pd->mod), symname(pd->id));
+        write_idecl(pdi, true);
+        chbputc(')', g_watbuf);
+      } else {
+        wat_linef("(export $%s:%s", symname(pd->mod), symname(pd->id));
+        g_watindent += 2;
+        write_idecl(pdi, false);
+        g_watindent -= 2;
+        wat_line(")");
+      }
+    } break;
+    default: assert(false);
+  }
+  if (name != NULL) {
+    if (brief) chbputs(name, g_watbuf);
+    else wat_line(name);
+  }
+}
+
+void write_wat_interface(wat_interface_t* pi, FILE *pf)
+{
+  size_t i; chbuf_t cb;
+  g_watout = pf;
+  g_watbuf = chbinit(&cb);
+  if (!pi->name) wat_linef("(interface");
+  else wat_linef("(interface $%s", symname(pi->name));
+  g_watindent += 2;
+  for (i = 0; i < ideclblen(&pi->eusdecls); ++i) {
+    idecl_t *pd = ideclbref(&pi->eusdecls, i);
+    //assert(pd->it == IT_DECL);
+    write_idecl(pd, false);
+  }
+  for (i = 0; i < ideclblen(&pi->exports); ++i) {
+    idecl_t *pd = ideclbref(&pi->exports, i);
+    assert(pd->it == IT_DECL);
+    chbclear(g_watbuf);
+    write_idecl(pd, true);
+    wat_line(chbdata(g_watbuf));
+  }
+  g_watindent -= 2;
+  wat_writeln(")");
+  g_watout = NULL;
+  chbfini(&cb);
+  g_watbuf = NULL;
 }
 
 
