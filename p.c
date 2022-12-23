@@ -720,9 +720,21 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       } else if (c == '/') {
         chbputc(c, pcb);
         state = 2; continue;
-      } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
+      } else if (c == '\t' || c == '\f' || c == ' ') {
         chbputc(c, pcb);
         state = 1; continue;
+      } else if (c == '\r') {
+        readchar();
+        if (c == '\n') {
+          chbputc(c, pcb);
+          return TT_WHITESPACE; /* single-char token */
+        } else {
+          unreadchar();
+          return TT_EOF;
+        }
+      } else if (c == '\n') {
+        chbputc(c, pcb);
+        return TT_WHITESPACE; /* single-char token */
       } else {
         unreadchar();
         return TT_EOF;
@@ -731,7 +743,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       readchar();
       if (c == EOF) {
         return TT_WHITESPACE;
-      } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
+      } else if (c == '\t' || c == '\f' || c == ' ') {
         chbputc(c, pcb);
         state = 1; continue;
       } else {
@@ -1626,12 +1638,12 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
     case 75:
       readchar();
       if (c == EOF) {
-        return TT_EOF;
+        return TT_WHITESPACE; /* allow line comment ending in EOF */
       } else if (!(c == '\n')) {
         chbputc(c, pcb);
         state = 75; continue;
       } else {
-        chbputc(c, pcb);
+        unreadchar(); /* \n will be in a separtate whitespace token */
         return TT_WHITESPACE;
       }
     case 76:
