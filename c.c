@@ -4103,7 +4103,7 @@ static void process_include(pws_t *pw, int startpos, bool sys, sym_t name, wat_m
       if (nd.nt == NT_INCLUDE) {
         bool sys = (nd.op != TT_STRING);
         process_include(pwi, nd.startpos, sys, nd.name, pm);
-      } else {
+      } else if (nd.nt != NT_NULL) {
         process_top_node(0, &nd, pm);
       }
     }
@@ -4130,7 +4130,7 @@ static sym_t process_module(const char *fname, wat_module_t *pm)
       if (nd.nt == NT_INCLUDE) {
         bool sys = (nd.op != TT_STRING);
         process_include(pw, nd.startpos, sys, nd.name, pm);
-      } else {
+      } else if (nd.nt != NT_NULL) {
         process_top_node(pwscurmod(pw), &nd, pm);
       }
     }

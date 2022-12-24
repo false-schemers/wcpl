@@ -81,6 +81,7 @@ struct pws {
   chbuf_t token;      /* lookahead token char data */
   char *tokstr;       /* lookahead token string */
   int pos;            /* absolute pos of la token start */
+  int cclevel;        /* nesting of active cc blocks */
 }; /* pws_t */
 
 int pwsid(pws_t *pw)
@@ -118,6 +119,7 @@ pws_t *newpws(const char *infile)
     chbinit(&pw->token);
     pw->tokstr = NULL;
     pw->pos = 0;
+    pw->cclevel = 0;
     *(pws_t**)bufnewbk(&g_pwsbuf) = pw;
     return pw;
   }
@@ -444,6 +446,10 @@ void init_symbols(void)
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
   pn->ts = TS_STRING; chbputtime("%X", gmtime(&now), &pn->data);
   chbputc(0, &pn->data); wrap_node(pn, NT_MACRODEF); pn->name = intern("__TIME__");
+  intern_symbol("__WCPL__", TT_MACRO_NAME, (int)ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
+  pn->ts = TS_INT; pn->val.d = 1;
+  wrap_node(pn, NT_MACRODEF); pn->name = intern("__WCPL__");
 }
 
 /* simple comparison of NT_TYPE nodes for equivalence */
@@ -1638,12 +1644,12 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
     case 75:
       readchar();
       if (c == EOF) {
-        return TT_WHITESPACE; /* allow line comment ending in EOF */
+        return TT_EOF;
       } else if (!(c == '\n')) {
         chbputc(c, pcb);
         state = 75; continue;
       } else {
-        unreadchar(); /* \n will be in a separtate whitespace token */
+        unreadchar(); /* \n will be in a separate whitespace token */
         return TT_WHITESPACE;
       }
     case 76:
@@ -3649,6 +3655,48 @@ static void parse_include_directive(pws_t *pw, node_t *pn, int startpos)
   chbfini(&cb);
 }
 
+/* returns false if stopped on #endif, true if stopped on #else (both consumed) */
+static bool parse_inactive_cc_block(pws_t *pw) 
+{
+  bool bol = false, gotelse = false; 
+  int level = 0;
+  while (true) {
+    if (!pw->gottk) { /* raw peek */
+      pw->pos = (int)pw->discarded + pw->curi; 
+      pw->ctk = lex(pw, &pw->token); 
+      pw->gottk = true; 
+      pw->tokstr = chbdata(&pw->token); 
+    }
+    switch (pw->ctk) {
+      case TT_EOF:
+        if (pw->inateof) reprintf(pw, pw->pos, "missing #endif"); /* real eof */
+        else if (pw->curi < (int)chblen(&pw->chars)) pw->curi += 1; /* try to step over it */
+        else reprintf(pw, pw->pos, "can't skip token inside inactive cc block");
+        bol = false; dropt(pw); continue;
+      case TT_WHITESPACE:
+        if (pw->tokstr[0] == '\n') bol = true;
+        dropt(pw); continue;
+      case TT_HASH:
+        if (bol) {
+          dropt(pw);
+          if (ahead(pw, "if") || ahead(pw, "ifdef") || ahead(pw, "ifndef")) {
+            ++level; 
+          } else if (ahead(pw, "elif")) {
+            if (!level) reprintf(pw, pw->pos, "unexpected #elif outside of inactive cc block");
+          } else if (ahead(pw, "else")) {
+            if (!level) { gotelse = true; dropt(pw); break; }
+          } else if (ahead(pw, "endif")) {
+            if (!level) { dropt(pw); break; } else --level;
+          }
+        }
+      default: 
+        bol = false; dropt(pw); continue;
+    }
+    break;
+  }
+  return gotelse;
+}
+
 /* parse single top-level declaration/definition/directive */
 bool parse_top_form(pws_t *pw, node_t *pn)
 {
@@ -3657,18 +3705,34 @@ bool parse_top_form(pws_t *pw, node_t *pn)
     if (peekt(pw) == TT_HASH) {
       int startpos = peekpos(pw);
       dropt(pw);
-      if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "pragma")) {
+      if (ahead(pw, "pragma")) {
         bool cont = parse_pragma_directive(pw, startpos);
         if (!cont) return false; /* bail out on '#pragma once' repeat */
         ndset(pn, NT_BLOCK, pw->id, startpos);
-      } else if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "define")) {
+      } else if (ahead(pw, "define")) {
         parse_define_directive(pw, startpos);
         ndset(pn, NT_BLOCK, pw->id, startpos);
-      } else if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "undef")) {
+      } else if (ahead(pw, "undef")) {
         parse_define_directive(pw, startpos);
         ndset(pn, NT_BLOCK, pw->id, startpos);
-      } else if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "include")) {
+      } else if (ahead(pw, "include")) {
         parse_include_directive(pw, pn, startpos); 
+      } else if (ahead(pw, "ifdef")) {
+        dropt(pw); expect(pw, TT_MACRO_NAME, "__WCPL__");
+        pw->cclevel++; /* nothing to skip, go ahead as usual */ 
+      } else if (ahead(pw, "ifndef")) {
+        dropt(pw); expect(pw, TT_MACRO_NAME, "__WCPL__");
+        if (parse_inactive_cc_block(pw)) pw->cclevel++;
+      } else if (ahead(pw, "if")) {
+        bool skip; dropt(pw); skip = ahead(pw, "0"); expect(pw, TT_INT, "0 or 1");
+        if (!skip || parse_inactive_cc_block(pw)) pw->cclevel++;
+      } else if (ahead(pw, "else")) {
+        if (!pw->cclevel) reprintf(pw, startpos, "#else without a matching opening directive");
+        dropt(pw); if (!parse_inactive_cc_block(pw)) pw->cclevel--; 
+        else reprintf(pw, startpos, "duplicate #else"); 
+      } else if (ahead(pw, "endif")) {
+        if (!pw->cclevel--) reprintf(pw, startpos, "#endif without a match");
+        dropt(pw);
       } else {
         reprintf(pw, startpos, "invalid or unsupported preprocessor directive");
       }
@@ -3690,10 +3754,9 @@ void parse_translation_unit(pws_t *pw, ndbuf_t *pnb)
 {
   while (true) {
     node_t *pn = ndbnewbk(pnb);
-    if (!parse_top_form(pw, pn)) {
-      ndbrem(pnb, ndblen(pnb)-1);
-      return;
-    } 
+    bool ok = parse_top_form(pw, pn);
+    if (!ok || pn->nt == NT_NULL) ndbrem(pnb, ndblen(pnb)-1);
+    if (!ok) return;
   } 
 }
 
