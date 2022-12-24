@@ -5,15 +5,19 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 
 # C features
 
+WCPL supports most traditional pre-C99 C features except for K&R-style function paramter declarations (modern prototypes are fully supported). 
+Features listed below are the ones that are either borrowed from modern C dialects, or not implemented in the way described in C90 standard.
+
 ## C features supported
 
 - `#pragma once` in headers
 - `static_assert(expr);`, `static_assert(expr, "message");` on top level in headers and module files
-- `sizeof`, `alignof`, and `offsetof` are supported fot types and limited expressions
+- `sizeof`, `alignof`, and `offsetof` are supported for types and limited expressions
 - static evaluation of expressions (numerics only in general, numerics+static pointers in top-level initializers)
-- `asuint32`, `asfloat`, `asuint64`, `asdouble` reinterpret-cast-style intrinsics
 - top-level macros: `#define FOO 1234`, `#define FOO (expr)`, `#define FOO do {...} while (0)` as well as 
   corresponding parameterized forms (`#define FOO(a, b) ...`)   
+- top-level conditional compilation blocks formed with `#ifdef __WCPL__`, `#ifndef __WCPL__`, `#if 0`, `#if 1`, `#else`, `#endif`
+  are allowed and treated as fancy comments; inactive parts can contain any C99 code and properly nested conditional compilation blocks 
 - `const` and `volatile` specifiers are allowed but ignored
 - variables can be declared at any top-level position in a block
 - variables can be declared in the first clause of the `for` statement
@@ -41,7 +45,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 ## C features that won't be supported
 
 - features beyond C90/ANSI-C other than the ones explicitly listed as supported
-- `#if`-category directives for conditional compilation
+- full-scale conditional compilation blocks, conditional directives inside WCPL functions and top-level expressions
 - token-based macros (expression-based macros work as described above)
 - bit fields
 - free-form `switch`: nothing but cases in curly braces after test will be supported
@@ -51,6 +55,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 ## Additional WCPL-specific features
 
 - `#pragma module "foo"` in headers
+- `asuint32`, `asfloat`, `asuint64`, `asdouble` reinterpret-cast-style intrinsics
 
 # Libraries
 
@@ -58,9 +63,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 
 - `<assert.h>` (C90, header only)
 - `<ctype.h>`  (C90)
-- `<dirent.h>` (POSIX-like, abridged)
 - `<errno.h>` (C90 + full WASI error list)
-- `<fcntl.h>` (POSIX-like, abridged)
 - `<fenv.h>` (with WASM limitations)
 - `<float.h>` (C90, header only)
 - `<inttypes.h>` (C99, header only)
@@ -72,19 +75,21 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 - `<stdio.h>` (C90, abridged: no `gets`, `tmpfile`, `tmpnam`)
 - `<stdlib.h>` (C90, abridged: no `system`)
 - `<string.h>` (C90 + some POSIX-like extras)
-- `<sys/types.h>` (header only, internal)
-- `<sys/cdefs.h>` (header only, internal)
-- `<sys/stat.h>` (POSIX-like, abridged)
-- `<unistd.h>` (POSIX-like, abridged)
-- `<wasi/api.h>` (header only, implemented by host)
 - `<math.h>` (C90 + some C99 extras)
 - `<time.h>` (C90 + some POSIX-like extras)
 - `<locale.h>` (stub to allow setting utf8 locale)
+- `<sys/types.h>` (header only, internal)
+- `<sys/cdefs.h>` (header only, internal)
+- `<sys/stat.h>` (POSIX-like, abridged)
+- `<fcntl.h>` (POSIX-like, abridged)
+- `<dirent.h>` (POSIX-like, abridged)
+- `<unistd.h>` (POSIX-like, abridged)
+- `<wasi/api.h>` (header only, implemented by host)
  
 ## Libaries that won't be supported
 
-- `<setjmp.h>`
-- `<signal.h>`
+- `<setjmp.h>` (no support in WASM)
+- `<signal.h>` (no support in WASI)
 
 # Installation
 
