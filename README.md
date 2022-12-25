@@ -5,7 +5,7 @@ Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
 
 # C features
 
-WCPL supports most traditional pre-C99 C features except for K&R-style function paramter declarations (modern prototypes are fully supported). 
+WCPL supports most traditional pre-C99 C features except for K&R-style function parameter declarations (modern prototypes are fully supported). 
 Features listed below are the ones that are either borrowed from modern C dialects, or not implemented in the way described in C90 standard.
 
 ## C features supported
