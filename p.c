@@ -459,6 +459,13 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
   assert(ptn1->nt == NT_TYPE && ptn2->nt == NT_TYPE);
   if (ptn1->ts == TS_ENUM && ptn2->ts == TS_INT) return true;
   if (ptn1->ts == TS_INT && ptn2->ts == TS_ENUM) return true;
+  if (ptn1->ts == TS_ARRAY && ptn2->ts == TS_PTR) { 
+    assert(ndlen(ptn1) == 2 && ndlen(ptn2) == 1);
+    return ndref(ptn1, 1)->nt == NT_NULL && same_type(ndref(ptn1, 0), ndref(ptn2, 0));
+  } else if (ptn1->ts == TS_PTR && ptn2->ts == TS_ARRAY) { 
+    assert(ndlen(ptn1) == 1 && ndlen(ptn2) == 2);
+    return ndref(ptn2, 1)->nt == NT_NULL && same_type(ndref(ptn1, 0), ndref(ptn2, 0));
+  }
   if (ptn1->ts != ptn2->ts) return false;
   if (ptn1->ts == TS_ENUM && (ptn1->name && ptn2->name && ptn1->name != ptn2->name)) return false;
   if (ptn1->ts == TS_STRUCT || ptn1->ts == TS_UNION || 

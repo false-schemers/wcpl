@@ -3209,7 +3209,7 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
     case IEK_DATA: { 
       watie_t *pd = bufbsearch(&pmi->exports, pmii, &modid_cmp), *newpd;
       modid_t mi; size_t i;
-      if (!pd || pd->iek != IEK_DATA) 
+      if (!pd || pd->iek != IEK_DATA)
         exprintf("cannot locate data '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
       for (i = 0; i < icblen(&pd->code); ++i) {
         inscode_t *pic = icbref(&pd->code, i);
@@ -3237,7 +3237,14 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
         assert(mi.mod != 0 && mi.id != 0); /* must be relocatable! */
         if (process_subsystem_depglobal(&mi, pmi, pm)) /* ok */ ;
         else if (!bufsearch(pdg, &mi, &modid_cmp)) *(modid_t*)bufnewbk(pdg) = mi;              
-      }
+      } else if (pe->ic.in == IN_REF_FUNC) {
+        inscode_t *pic = &pe->ic;
+        modid_t mi; mi.mod = pic->arg2.mod; mi.id = pic->id;
+        mi.iek = IEK_FUNC;
+        assert(mi.mod != 0 && mi.id != 0); /* must be relocatable! */
+        if (process_subsystem_depglobal(&mi, pmi, pm)) /* ok */ ;
+        else if (!bufsearch(pdg, &mi, &modid_cmp)) *(modid_t*)bufnewbk(pdg) = mi;
+      } 
       newpe = watiebnewbk(&pm->exports, IEK_GLOBAL); newpe->mod = pe->mod; newpe->id = pe->id; 
       memswap(pe, newpe, sizeof(watie_t)); /* mod/id still there so bsearch works */
       newpe->exported = false;
@@ -3431,12 +3438,12 @@ size_t watify_wat_module(wat_module_t* pm)
           pic->in = IN_I32_CONST;
           pic->arg.i = (long long)pdpme->address + pic->arg.i;
         } else if (pic->in == IN_REF_FUNC) {
-          dpme_t e, *pe;
+          dpme_t e, *pdpme;
           e.mod = pic->arg2.mod; e.id = pic->id;
-          pe = bufsearch(&table, &e, &modid_cmp);
-          if (!pe) { pe = bufnewbk(&table); *pe = e; }
+          pdpme = bufsearch(&table, &e, &modid_cmp);
+          if (!pdpme) { pdpme = bufnewbk(&table); *pdpme = e; }
           pic->in = IN_I32_CONST;
-          pic->arg.i = (long long)bufoff(&table, pe) + 1; /* elem #0 reserved */
+          pic->arg.i = (long long)bufoff(&table, pdpme) + 1; /* elem #0 reserved */
         }
       }
     } else if (pe->iek == IEK_GLOBAL) {
@@ -3457,6 +3464,13 @@ size_t watify_wat_module(wat_module_t* pm)
           symname(mi.mod), symname(mi.id));
         pe->ic.in = IN_I32_CONST;
         pe->ic.arg.i = (long long)pdpme->address + pe->ic.arg.i;
+      } else if (pe->ic.in == IN_REF_FUNC) {
+        dpme_t e, *pdpme;
+        e.mod = pe->ic.arg2.mod; e.id = pe->ic.id;
+        pdpme = bufsearch(&table, &e, &modid_cmp);
+        if (!pdpme) { pdpme = bufnewbk(&table); *pdpme = e; }
+        pe->ic.in = IN_I32_CONST;
+        pe->ic.arg.i = (long long)bufoff(&table, pdpme) + 1; /* elem #0 reserved */
       }
     }
   }

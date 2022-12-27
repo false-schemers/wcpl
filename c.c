@@ -1243,8 +1243,9 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
           } else {
             const node_t *pimn = lookup_global(r.id); inscode_t *pic = &pg->ic;
             if (!pimn) neprintf(pdn, "unknown identifier in address initializer");
-            assert(pimn->nt == NT_IMPORT && pimn->name != 0);
-            pic->in = IN_REF_DATA; pic->id = r.id; pic->arg2.mod = pimn->name;
+            assert(pimn->nt == NT_IMPORT && pimn->name != 0 && ndlen(pimn) == 1);
+            pic->in = ndcref(pimn, 0)->ts == TS_FUNCTION ? IN_REF_FUNC : IN_REF_DATA; 
+            pic->id = r.id; pic->arg2.mod = pimn->name;
           }
         }
       }  
@@ -1628,7 +1629,14 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           node_t cn = mknd(); ndset(&cn, NT_TYPE, -1, -1); cn.ts = pvi->cast;
           ndswap(&cn, pn); wrap_cast(pn, &cn); ndfini(&cn);
         }
-      } /* else global: todo: static globals may need to be converted too! */
+      } else { /* global */
+        const node_t *ptn = lookup_global(pn->name);
+        if (ptn && ptn->nt == NT_IMPORT && ndlen(ptn) == 1) ptn = ndcref(ptn, 0);
+        if (ptn->nt == NT_TYPE && ptn->ts >= TS_BOOL && ptn->ts < TS_INT) { /* add narrowing cast */
+          node_t cn = mknd(); ndset(&cn, NT_TYPE, -1, -1); cn.ts = ptn->ts;
+          ndswap(&cn, pn); wrap_cast(pn, &cn); ndfini(&cn);
+        }
+      }
     } break;
     case NT_INTRCALL: {
       switch (pn->intr) {
@@ -3099,8 +3107,9 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
       ndicpy(&nd, pftni); nd_inited = true;
       pftni = &nd; pftni->ts = ts_integral_promote(pftni->ts);
     }
-    if (!assign_compatible(pftni, ptni))
+    if (!assign_compatible(pftni, ptni)) {
       n2eprintf(pani, prn, "can't pass argument[%d]: unexpected type", i);
+    }
     if (!same_type(pftni, ptni)) pani = compile_cast(prn, pftni, pani);
     acode_swapin(pcn, pani); /* leaves arg on stack */
     if (nd_inited) ndfini(&nd);
@@ -3897,7 +3906,9 @@ static void tn2vt(node_t *ptn, vtbuf_t *pvtb)
   if (ptn->ts == TS_VOID) {
     /* put nothing */
   } else {
-    valtype_t vt = ts2vt(ptn->ts);
+    valtype_t vt;
+    if (ptn->ts == TS_ARRAY && ndlen(ptn) == 2 && ndref(ptn, 1)->nt == NT_NULL) vt = ts2vt(TS_PTR);
+    else vt = ts2vt(ptn->ts);
     if (vt == VT_UNKN) {
       neprintf(ptn, "function arguments of this type are not supported");
     } else {
