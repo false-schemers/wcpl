@@ -3119,7 +3119,7 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     sym_t pname = rpalloc(VT_I32); /* arg frame ptr (wasm32) */
     node_t tn = mknd(); /* for temporary type conversions */
     /* frame is an array of uint64s (va_arg_t), aligned to 16 */
-    size_t asz = 8, nargs = buflen(pab)-i, framesz = (size_t)((nargs*asz + 15) & ~0xFLL), basei;
+    size_t asz = 8, nargs = buflen(pab)-i, framesz = (size_t)((nargs*asz + 15) & ~0xFULL), basei;
     inscode_t *pic = icbnewfr(&pcn->data); pic->in = IN_REGDECL;
     pic->id = pname; pic->arg.u = VT_I32; /* wasm32 pointer */
     acode_pushin_id_mod(pcn, IN_GLOBAL_GET, g_sp_id, g_crt_mod);

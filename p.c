@@ -219,7 +219,7 @@ static int fetchline(pws_t *pw, char **ptbase, int *pendi)
       unsigned long ch = 0; char *ln = line; 
       while (*ln) {
         ch = unutf8((unsigned char **)&ln);
-        if (ch == 0 || ch == -1) {
+        if (ch == 0 || ch == (unsigned long)-1) {
           int lno = (int)buflen(&pw->lsposs)+1;
           exprintf("%s:%d: utf-8 encoding error", pw->infile, lno);
         }

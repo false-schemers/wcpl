@@ -154,7 +154,7 @@ typedef buf_t chbuf_t;
 #define freechb(pb) (freebuf(pb))
 #define chblen(pb) (buflen(pb))
 #define chbclear(pb) (bufclear(pb))
-#define chbputc(c, pb) (*(char*)bufnewbk(pb) = (int)(c))
+#define chbputc(c, pb) (*(char*)bufnewbk(pb) = (char)(c))
 extern void chbput(const char *s, size_t n, chbuf_t* pcb);
 extern void chbputs(const char *s, chbuf_t* pcb);
 extern void chbputlc(unsigned long uc, chbuf_t* pcb);

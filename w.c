@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -1214,7 +1215,7 @@ char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       else chbputf(pcb, " %lld", pic->arg.i); 
       break;
     case INSIG_I32: {
-      long long i = (pic->arg.i << 32) >> 32; /* extend sign to upper 32 bits */
+      long long i = (long long)(pic->arg.u << 32) >> 32; /* extend sign to upper 32 bits */
       chbputf(pcb, " %lld", i); /* write negatives (if considered signed) as negatives */
       if (pic->id) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
     } break;
@@ -2557,7 +2558,7 @@ static char *scan_string(sws_t *pw, const char *s, chbuf_t *pcb)
         chbput(s, e-s, pcb); /* as-is! */
         s = e;
       } else if (c == '\\' && isxdigit(s[1]) && isxdigit(s[2])) {
-        int b, h; 
+        unsigned b, h; 
         c = tolower(s[1]); h = ('0' <= c && c <= '9') ? c-'0' : 10+c-'a'; b = h << 4;
         c = tolower(s[2]); h = ('0' <= c && c <= '9') ? c-'0' : 10+c-'a'; b = b | h;
         chbputc(b, pcb);
@@ -2766,7 +2767,7 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
         if (peekt(pw) == WT_INT) {
           scan_integer(pw, pw->tokstr, &v); dropt(pw);
           pic->arg = v; 
-          if (is == INSIG_I32 && ((v.i << 32) >> 32) != v.i)
+          if (is == INSIG_I32 && (v.i < INT32_MIN || v.i > INT32_MAX))
             seprintf(pw, "i32 literal is out of range %s", pw->tokstr);
         } else {
           seprintf(pw, "invalid integer literal %s", pw->tokstr);

@@ -740,21 +740,21 @@ void bufcpy(buf_t* pb, const buf_t* pab)
   size_t an = buflen(pab);
   assert(pb->esz == pab->esz);
   bufclear(pb);
-  memcpy(bufalloc(pb, an), pab->buf, an*pab->esz);
+  if (pab->buf) memcpy(bufalloc(pb, an), pab->buf, an*pab->esz);
 }
 
 void bufcat(buf_t* pb, const buf_t* pab)
 {
   size_t an = buflen(pab);
   assert(pb->esz == pab->esz);
-  memcpy(bufalloc(pb, an), pab->buf, an*pab->esz);
+  if (pab->buf) memcpy(bufalloc(pb, an), pab->buf, an*pab->esz);
 }
 
 /* unstable sort */
 void bufqsort(buf_t* pb, int (*cmp)(const void *, const void *))
 {
   assert(pb); assert(cmp);
-  qsort(pb->buf, pb->fill, pb->esz, cmp);
+  if (pb->buf) qsort(pb->buf, pb->fill, pb->esz, cmp);
 }
 
 /* removes adjacent */
@@ -805,7 +805,7 @@ void* bufsearch(const buf_t* pb, const void *pe, int (*cmp)(const void *, const 
 void* bufbsearch(const buf_t* pb, const void *pe, int (*cmp)(const void *, const void *))
 {
   assert(pb); assert(pe); assert(cmp);
-  return bsearch(pe, pb->buf, pb->fill, pb->esz, cmp);
+  return pb->buf ? bsearch(pe, pb->buf, pb->fill, pb->esz, cmp) : NULL;
 }
 
 size_t bufoff(const buf_t* pb, const void *pe)
