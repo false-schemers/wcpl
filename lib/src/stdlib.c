@@ -581,19 +581,16 @@ void *calloc(size_t nels, size_t esz)
 void *realloc(void *ptr, size_t nbytes)
 {
   if (!ptr) return malloc(nbytes);
-  if (!nbytes) {
-    free(ptr);
-    return NULL;
-  }
+  if (!nbytes) { free(ptr); return NULL; }
 
   header_t *currp = ((header_t *)ptr) - 1;
   size_t nunits = ((nbytes + sizeof(header_t) - 1) / sizeof(header_t)) + 1;
-  if (currp->s.size <= nunits) return ptr;
-  size_t currnb = currp->s.size * sizeof(header_t);
+  if (currp->s.size >= nunits) return ptr;
+  size_t currnb = (currp->s.size - 1) * sizeof(header_t);
 
   /* todo: try to merge with next free block if possible */
   void *newptr = malloc(nbytes);
-  if (!newptr) return NULL;
+  if (!newptr) { free(ptr); return NULL; }
 
   memcpy(newptr, ptr, currnb < nbytes ? currnb : nbytes);
   free(ptr);

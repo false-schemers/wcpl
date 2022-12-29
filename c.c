@@ -1632,7 +1632,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
       } else { /* global */
         const node_t *ptn = lookup_global(pn->name);
         if (ptn && ptn->nt == NT_IMPORT && ndlen(ptn) == 1) ptn = ndcref(ptn, 0);
-        if (ptn->nt == NT_TYPE && ptn->ts >= TS_BOOL && ptn->ts < TS_INT) { /* add narrowing cast */
+        if (ptn && ptn->nt == NT_TYPE && ptn->ts >= TS_BOOL && ptn->ts < TS_INT) { /* add narrowing cast */
           node_t cn = mknd(); ndset(&cn, NT_TYPE, -1, -1); cn.ts = ptn->ts;
           ndswap(&cn, pn); wrap_cast(pn, &cn); ndfini(&cn);
         }
