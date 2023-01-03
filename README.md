@@ -1,14 +1,14 @@
 WCPL
 ====
 
-Standalone compiler/linker/libc for a subset of C targeting Webassembly and WASI
+Standalone self-hosted compiler/linker/libc for a subset of C targeting Webassembly and WASI
 
 # C features
 
-WCPL supports most traditional pre-C99 C features except for K&R-style function parameter declarations (modern prototypes are fully supported). 
+WCPL supports most traditional pre-C99 C features except for full C preprocessor and K&R-style function parameter declarations (modern prototypes are fully supported). 
 Features listed below are the ones that are either borrowed from modern C dialects, or not implemented in the way described in C90 standard.
 
-## C features supported
+## Notable C features supported
 
 - `#pragma once` in headers
 - `static_assert(expr);`, `static_assert(expr, "message");` on top level in headers and module files
@@ -153,9 +153,29 @@ tools.
 Please read the documentation on your WASM runtime for details on directory/environment
 mapping and passing command line arguments.
 
+## Self-hosting
+
+Starting with version 1.0, WCPL can compile its own source code and the resulting WASM
+executable produces the same results as the original. Example session using `wasmtime`*
+runtime may look something like this:
+
+```
+$ cc -o wcpl [wcpl].c
+$ ./wcpl -q -L lib/ -o wcpl.wasm [wcpl].c
+$ wasmtime --dir=. -- wcpl.wasm -q -L lib/ -o wcpl1.wasm [wcpl].c
+$ diff -s wcpl.wasm wcpl1.wasm
+Files wcpl.wasm and wcpl1.wasm are identical
+```
+
 \* available at https://github.com/bytecodealliance/wasmtime/releases
 
 \*\* available at https://github.com/WebAssembly/wabt/releases
 
+# Future directions
 
+WASM executables produced by WCPL are quite small but not very fast. We plan to add
+more optimizations and improved library algorithms such as `malloc()` to improve
+performance without increasing size of executables too much. We also plan to add more 
+C features such as local static variables, as well as more popular libraries such as
+POSIX-compatible regular expressions.
 
