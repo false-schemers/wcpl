@@ -180,11 +180,12 @@ unsigned long strtou8c(const char *s, char **ep)
 /* size of buffer large enough to hold char escapes */
 #define SBSIZE 32
 /* convert a single C99-like char/escape sequence (-1 on error) */
-unsigned long strtocc32(const char *s, char** ep)
+unsigned long strtocc32(const char *s, char** ep, bool *rp)
 {
   char buf[SBSIZE+1]; 
   int c;
   assert(s);
+  if (rp) *rp = true;
   if (*s) {
     c = *s++;
     if (c == '\\') {
@@ -220,7 +221,8 @@ unsigned long strtocc32(const char *s, char** ep)
           buf[i] = 0;
           l = strtol(buf, NULL, 16);
           c = (int)l & 0xffff;
-          if ((long)c != l) goto err; 
+          if ((long)c != l) goto err;
+          if (rp) *rp = false; 
         } break;
         case 'U': {
           int i = 0; long l;
@@ -236,6 +238,7 @@ unsigned long strtocc32(const char *s, char** ep)
           l = strtol(buf, NULL, 16);
           c = (int)l & 0x7fffffff;
           if ((long)c != l) goto err; 
+          if (rp) *rp = false; 
         } break;
         case '0': case '1': case '2': case '3':
         case '4': case '5': case '6': case '7': {
@@ -266,9 +269,10 @@ unsigned long strtocc32(const char *s, char** ep)
   return (unsigned long)(-1);
 }
 
-unsigned long strtou8cc32(const char *s, char **ep)
+unsigned long strtou8cc32(const char *s, char **ep, bool *rp)
 {
-  return is8chead(*s) ? strtou8c(s, ep) : strtocc32(s, ep);
+  if (is8chead(*s)) { if (rp) *rp = false;  return strtou8c(s, ep); }  
+  return strtocc32(s, ep, rp);
 }
 
 

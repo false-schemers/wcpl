@@ -2348,7 +2348,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
     case TT_CHAR: {
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      if (errno = 0, ul = strtou8cc32(ns, NULL), !errno && ul <= 0x10FFFFUL) {
+      if (errno = 0, ul = strtou8cc32(ns, NULL, NULL), !errno && ul <= 0x10FFFFUL) {
         pn->val.i = ul; /* no sext: too small */
       } else reprintf(pw, startpos, "char literal overflow");
       pn->ts = TS_INT;
@@ -2357,17 +2357,18 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
     case TT_LCHAR: {
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      if (errno = 0, ul = strtou8cc32(ns, NULL), !errno && ul <= 0x10FFFFUL) {
+      if (errno = 0, ul = strtou8cc32(ns, NULL, NULL), !errno && ul <= 0x10FFFFUL) {
         pn->val.i = ul; /* no sext: too small */
       } else reprintf(pw, startpos, "long char literal overflow");
       pn->ts = TS_LONG;
       dropt(pw);
     } break;
     case TT_STRING: {
-      char *ns = pw->tokstr; unsigned long ul;
+      char *ns = pw->tokstr; unsigned long ul; bool raw;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      while (*ns && (errno = 0, ul = strtou8cc32(ns, &ns), !errno && ul <= 0x10FFFFUL)) {
-        chbputlc(ul, &pn->data); /* in utf-8 */
+      while (*ns && (errno = 0, ul = strtou8cc32(ns, &ns, &raw), !errno && ul <= 0x10FFFFUL)) {
+        if (raw) { assert(ul <= 0xFFL); chbputc(ul, &pn->data); }
+        else chbputlc(ul, &pn->data); /* in utf-8 */
       }
       chbputc(0, &pn->data); /* terminating zero char, C-style */
       if (*ns) 
@@ -2378,7 +2379,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
     case TT_LSTRING: {
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      while (*ns && (errno = 0, ul = strtou8cc32(ns, &ns), !errno && ul <= 0x10FFFFUL)) {
+      while (*ns && (errno = 0, ul = strtou8cc32(ns, &ns, NULL), !errno && ul <= 0x10FFFFUL)) {
         chbput4le((unsigned)ul, &pn->data); /* 4 bytes, in LE order */
       }
       chbput4le(0, &pn->data); /* terminating zero wchar, C-style */
@@ -3821,10 +3822,9 @@ static void fdumpss(const char *str, size_t n, FILE* fp)
   chbuf_t cb = mkchb();
   chbputc('\"', &cb);
   while (n > 0) {
-    int c = *str & 0xFF; const char *s;
-    unsigned long uc;
+    int c = *str & 0xFF;
     /* check for control chars manually */
-    if (c <= 0x1F) {
+    if (c <= 0x1F || c >= 0x7F) {
       switch (c) {
         case '\a' : chbputs("\\a", &cb); break;
         case '\b' : chbputs("\\b", &cb); break;
@@ -3832,7 +3832,7 @@ static void fdumpss(const char *str, size_t n, FILE* fp)
         case '\n' : chbputs("\\n", &cb); break;
         case '\r' : chbputs("\\r", &cb); break;
         default   : {
-          char buf[10]; sprintf(buf, "\\x%.2X;", c);
+          char buf[10]; sprintf(buf, "\\%.2X", c); /* WAT-style; R7RS: "\\x%.2X;" */
           chbputs(buf, &cb);
         } break;
       }
@@ -3845,20 +3845,9 @@ static void fdumpss(const char *str, size_t n, FILE* fp)
       }
       ++str; --n;
       continue;
-    }
-    /* get next unicode char */
-    s = str; uc = unutf8((unsigned char **)&str);
-    assert(str-s <= (ptrdiff_t)n);
-    if (s+n < str) break; n -= (str-s);
-    if (uc <= 0x1F) {
-      /* should have been taken care of above! */
-      assert(false);
-    } else if (uc <= 0x80) {
+    } else { 
       /* put ascii chars as-is */
-      assert(uc == c);
       chbputc(c, &cb);
-    } else {
-      chbputlc(uc, &cb);
     }
   }
   chbputc('\"', &cb);

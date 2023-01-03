@@ -56,17 +56,22 @@ FILE *freopen(const char *filename, const char *mode, FILE *fp)
   if (!initialized) initialize();
   if (fp != NULL) fclose(fp); else fp = findfp();
   if (fp == NULL || filename == NULL || mode == NULL) return NULL;
-  switch (mode[0]) {
-    case 'w': oflags = (mode[1] == '+' ? O_RDWR : O_WRONLY) | O_TRUNC | O_CREAT; break;
-    case 'a': oflags = (mode[1] == '+' ? O_RDWR : O_WRONLY) | O_APPEND | O_CREAT; break;
-    case 'r': oflags = mode[1] == '+' ? O_RDWR : O_RDONLY; break;
+  switch (*mode++) {
+    case 'w': oflags = O_WRONLY | O_TRUNC | O_CREAT; break;
+    case 'a': oflags = O_WRONLY | O_APPEND | O_CREAT; break;
+    case 'r': oflags = O_RDONLY; break;
     default: return NULL;
+  }
+  while (*mode) switch (*mode++) {
+    case '+': oflags |= O_RDWR; break;
+    case 'x': oflags |= O_EXCL; break;
+    default:; /* other flags are ignored */
   }
   if ((fd = open(filename, oflags)) < 0) return NULL;
   fp->fd = fd; fp->cnt = 0;
   fp->base = fp->ptr = fp->end = NULL;
-  fp->flags = (oflags & O_RDWR) ? _IORW : (oflags & O_RDONLY) ? _IOREAD : _IOWRT;
-  if ((oflags & O_APPEND) && !(oflags & O_RDWR) && lseek(fd, 0L, SEEK_END) < 0) {
+  fp->flags = ((oflags & O_RDWR) == O_RDWR) ? _IORW : (oflags & O_RDONLY) ? _IOREAD : _IOWRT;
+  if ((oflags & O_APPEND) && (oflags & O_RDWR) != O_RDWR && lseek(fd, 0L, SEEK_END) < 0) {
     fclose(fp); fp = NULL;
   }
   return fp;
@@ -80,22 +85,22 @@ FILE *fopen(const char *name, const char *mode)
 FILE *fdopen(int fd, const char *mode)
 {
   if (!initialized) initialize();
-	FILE *fp = findfp();
-	if (fp == NULL) return NULL;
-	fp->fd = fd;
-	fp->cnt = 0;fp->flags = 0;
+  FILE *fp = findfp();
+  if (fp == NULL) return NULL;
+  fp->fd = fd;
+  fp->cnt = 0; fp->flags = 0;
   fp->base = fp->ptr = fp->end = NULL;
-	switch (*mode) {
-		case 'r': fp->flags |= _IOREAD; break;
-		case 'a': lseek(fd, 0L, 2); /* fall thru */
-		case 'w':	fp->flags |= _IOWRT; break;
-		default: return NULL;
-	}
-	if (mode[1] == '+') {
-		fp->flags &= ~(_IOREAD|_IOWRT);
-		fp->flags |= _IORW;
-	}
-	return fp;
+  switch (*mode++) {
+    case 'r': fp->flags |= _IOREAD; break;
+    case 'a': lseek(fd, 0L, 2); /* fall thru */
+    case 'w': fp->flags |= _IOWRT; break;
+    default: return NULL;
+  }
+  while (*mode) switch (*mode++) {
+    case '+': fp->flags = (fp->flags & ~(_IOREAD|_IOWRT)) | _IORW; break;
+    default:; /* other flags are ignored */
+  }
+  return fp;
 }
 
 int fclose(FILE *fp)
@@ -200,7 +205,7 @@ static int wrtchk(FILE *fp)
 {
   if ((fp->flags & (_IOWRT|_IOEOF)) != _IOWRT) {
     if (!(fp->flags & (_IOWRT|_IORW))) return EOF; /* read-only */
-    fp->flags &= ~_IOEOF|_IOWRT; /* clear flags */
+    fp->flags = fp->flags & ~_IOEOF | _IOWRT; /* clear flags */
   }
   if (fp->base == NULL) {
     /* first attempt to bufferize output */
@@ -306,17 +311,18 @@ int puts(const char *s)
   return fputc('\n', stdout);
 }
 
-/* macros in stdio.h
-int feof(FILE *fp)
+int fflush(FILE *fp)
 {
-  return (fp->flags & _IOEOF) != 0;
+  if (!(fp->flags & _IOWRT)) {
+    fp->cnt = 0;
+    return 0;
+  }
+  while (!(fp->flags & _IONBF) && (fp->flags & _IOWRT) &&
+         (fp->base != NULL) && (fp->ptr > fp->base)) {
+    writebuf(fp);
+  }
+  return ferror(fp) ? EOF : 0;
 }
-
-int ferror(FILE *fp)
-{
-  return (fp->flags & _IOERR) != 0);
-}
-*/
 
 int fgetc(FILE *fp)
 {
@@ -465,19 +471,6 @@ int fsetpos(FILE *fp, const fpos_t *ptr)
     p = lseek(fp->fd, offset, SEEK_SET);
   }
   return (p == -1) ? -1 : 0;
-}
-
-int fflush(FILE *fp)
-{
-  if (!(fp->flags & _IOWRT)) {
-    fp->cnt = 0;
-    return 0;
-  }
-  while (!(fp->flags & _IONBF) && (fp->flags & _IOWRT) &&
-         (fp->base != NULL) && (fp->ptr > fp->base)) {
-    writebuf(fp);
-  }
-  return ferror(fp) ? EOF : 0;
 }
 
 int setvbuf(FILE *fp, char *buf, int mode, size_t size)

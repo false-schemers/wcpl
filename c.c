@@ -3158,6 +3158,8 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     if (cic.in == IN_CALL_INDIRECT) acode_swapin(pcn, pfn); /* func on stack */ 
     asm_pushbk(&pcn->data, &cic);
     acode_pushin_id(pcn, IN_LOCAL_GET, pname);
+    acode_pushin_uarg(pcn, IN_I32_CONST, framesz);
+    acode_pushin(pcn, IN_I32_ADD);
     acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_crt_mod); 
     ndfini(&tn);
   } else {

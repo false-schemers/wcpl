@@ -40,7 +40,7 @@ extern FILE _iob[FOPEN_MAX];
 extern FILE *fopen(const char *filename, const char *mode);
 extern FILE *fdopen(int fd, const char *mode);
 extern FILE *freopen(const char *filename, const char *mode, FILE *stream);
-extern int int fclose(FILE *stream);
+extern int fclose(FILE *stream);
 #define getc(p) (--(p)->cnt >= 0 ? (unsigned char)*(p)->ptr++ : _fillbuf(p))
 #define putc(x, p) (--(p)->cnt >= 0 ? *(p)->ptr++ = (x) : _flushbuf((x), p))
 #define getchar() (getc(stdin))

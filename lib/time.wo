@@ -1212,6 +1212,8 @@
     local.get $i1$
     call $stdio:snprintf
     local.get $i1$
+    i32.const 64
+    i32.add
     global.set $crt:sp$
     drop
     local.get $buf
