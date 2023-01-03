@@ -3543,7 +3543,7 @@ static bool parse_pragma_directive(pws_t *pw, int startpos)
     if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "once")) {
       dropt(pw);
       if (!check_once(pw->infile)) {
-        fprintf(stderr, "# repeated #include of '%s' ignored\n", pw->infile);
+        logef("# repeated #include of '%s' ignored\n", pw->infile);
         return false;
       }
     } else if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "module")) {
@@ -3551,7 +3551,7 @@ static bool parse_pragma_directive(pws_t *pw, int startpos)
       if (peekt(pw) == TT_STRING) {
         sym_t name = intern(pw->tokstr);
         dropt(pw);
-        fprintf(stderr, "# module name set to '%s'\n", symname(name));
+        logef("# module name set to '%s'\n", symname(name));
         pw->curmod = name;
       } else reprintf(pw, peekpos(pw), "missing module name string after #pragma module");
     }
