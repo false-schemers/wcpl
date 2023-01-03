@@ -45,7 +45,7 @@ Features listed below are the ones that are either borrowed from modern C dialec
 ## C features that won't be supported
 
 - features beyond C90/ANSI-C other than the ones explicitly listed as supported
-- full-scale conditional compilation blocks, conditional directives inside WCPL functions and top-level expressions
+- full-scale conditional compilation blocks, conditional directives inside WCPL functions, and top-level expressions
 - token-based macros (expression-based macros work as described above)
 - bit fields
 - free-form `switch`: nothing but cases in curly braces after test will be supported
@@ -103,7 +103,7 @@ cc -o wcpl [wcpl].c
 # Modules and compilation environment
 
 - object modules can have the following extensions: `.o`, `.wo`
-- system object modules are looked up in library directories given via `-L` option and `WCPL_LIBRARY_PATH` environment variable
+- system object modules are looked up in library directories specified via `-L` option and `WCPL_LIBRARY_PATH` environment variable
 - system headers included as `#include <foo>` can have the following extensions: (none), `.h`, `.wh`
 - system headers are looked up in directories given via `-I` option and `WCPL_INCLUDE_PATH` environment variable
 - also, system headers are looked up in `include` sub-directories of library directories as specified above
@@ -126,8 +126,8 @@ wcpl -c -o infile.wo infile.c
 
 If `-o` option is not specified, output goes to standard output.
 WCPL uses extended WAT format with symbolic identifiers in place of indices as
-object file format which uses symbolic names for relocatable constants, so no 
-custom sections or relocation tables are needed.
+object file format using symbolic names for relocatable constants. This way,
+no custom sections or relocation tables are needed.
 
 
 ## Compilation and linking
@@ -139,7 +139,7 @@ wcpl -o out.wasm infile1.c infile2.c infile3.wo ...
 Any mix of source and object files can be given; one of the input files should
 contain implementation of the `main()` procedure. Library dependences are automatically
 loaded and used. If -o file name argument ends in `.wasm`, linker's output will be
-a WASM binary; otherwise the output is in a regular WAT format with no extensions.
+a WASM binary; otherwise, the output is in a regular WAT format with no extensions.
 
 
 ## Running executables
