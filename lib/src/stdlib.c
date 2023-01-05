@@ -13,7 +13,7 @@
 
 double atof(const char *s)
 {
-	return strtod(s, NULL);
+  return strtod(s, NULL);
 }
 
 int atoi(const char *s)
@@ -295,32 +295,32 @@ intmax_t strntoimax(const char *nptr, char **endptr, int base, size_t n)
 
 intmax_t strtoimax(const char *nptr, char **endptr, int base)
 {
-	return (intmax_t)strntoumax(nptr, endptr, base, ~(size_t)0);
+  return (intmax_t)strntoumax(nptr, endptr, base, ~(size_t)0);
 }
 
 long strtol(const char *nptr, char **endptr, int base)
 {
-	return (long)strntoumax(nptr, endptr, base, ~(size_t)0);
+  return (long)strntoumax(nptr, endptr, base, ~(size_t)0);
 }
 
 long long strtoll(const char *nptr, char **endptr, int base)
 {
-	return (long long)strntoumax(nptr, endptr, base, ~(size_t)0);
+  return (long long)strntoumax(nptr, endptr, base, ~(size_t)0);
 }
 
 unsigned long strtoul(const char *nptr, char **endptr, int base)
 {
-	return (unsigned long)strntoumax(nptr, endptr, base, ~(size_t)0);
+  return (unsigned long)strntoumax(nptr, endptr, base, ~(size_t)0);
 }
 
 unsigned long long strtoull(const char *nptr, char **endptr, int base)
 {
-	return (unsigned long long) strntoumax(nptr, endptr, base, ~(size_t)0);
+  return (unsigned long long) strntoumax(nptr, endptr, base, ~(size_t)0);
 }
 
 uintmax_t strtoumax(const char *nptr, char **endptr, int base)
 {
-	return (uintmax_t)strntoumax(nptr, endptr, base, ~(size_t)0);
+  return (uintmax_t)strntoumax(nptr, endptr, base, ~(size_t)0);
 }
 
 static unsigned short rand48_seed[3]; 
@@ -413,8 +413,8 @@ char *getenv(const char *name)
     initialize_environ();
     char **env;
     for (env = _environ; *env; ++env) {
-			if (strncmp(name, *env, len) && (*env)[len] == '=')
-				return *env + len + 1;
+      if (strncmp(name, *env, len) && (*env)[len] == '=')
+        return *env + len + 1;
     }
   }
   return NULL;
@@ -469,9 +469,11 @@ void qsort(void *base, size_t nmemb, size_t size, int (*cmp)(const void *, const
 }
 
 
-/* memory allocator (after k&R) */
+/* memory allocator */
 
 #define WASMPAGESIZE 65536
+
+#if 1 /* 'sequential next fit' allocator (after K&R) */
 
 typedef union header {
   struct {
@@ -597,22 +599,147 @@ void *realloc(void *ptr, size_t nbytes)
   return newptr;
 }
 
+#else /* 'binary buddies' allocator (no recombining) */
+
+#define NBUCKETS       28            /* 2^4 .. 2^31 */
+#define SBRKBUCKET     12            /* 2^12 is WASMPAGESIZE */
+#define MAXBLOCKSZ     0x80000000UL  /* 2^31 */
+#define MAXPAYLOAD     0x7FFFFFF8UL  /* 2^31-sizeof(header) */
+#define HDRPTRMASK     0x00000007UL  /* lower 3 bits */
+#define BI2BLKSZ(bi)   (1UL << ((bi) + 4))
+#define CHECKHDRPTR(p) (assert(!((uintptr_t)(p) & HDRPTRMASK)))
+
+typedef union header {
+  struct { union header *next, *prev; } free;
+  struct { size_t bi; size_t plsz; } used;
+} header_t;
+static_assert(sizeof(header_t) == 8);
+
+static header_t* buckets[NBUCKETS];
+static size_t bucketlens[NBUCKETS];
+
+static header_t *sbrkblock(size_t bi)
+{
+  assert(bi >= SBRKBUCKET);
+  void *freemem = sbrk((intptr_t)BI2BLKSZ(bi));
+  if (freemem == (void *)-1) return NULL;
+  return freemem;
+}
+
+static void pushblock(size_t bi, void *pb);
+static header_t *pullblock(size_t bi)
+{
+  header_t *pbi = buckets[bi];
+  if (pbi != NULL) {
+    CHECKHDRPTR(pbi->free.prev);
+    CHECKHDRPTR(pbi->free.next);
+    if (pbi->free.next != NULL) pbi->free.next->free.prev = NULL;
+    buckets[bi] = pbi->free.next;
+    bucketlens[bi] -= 1;
+    return pbi;
+  }
+  if (bi < SBRKBUCKET) {
+    pbi = pullblock(bi + 1);
+    if (!pbi) return NULL;
+    pushblock(bi, (char*)pbi + BI2BLKSZ(bi));
+    return pbi;
+  }
+  return sbrkblock(bi);
+}
+
+static void pushblock(size_t bi, void *p)
+{
+  header_t *pbi = buckets[bi], *pb = p;
+  if (pbi) pb->free.prev = pb;
+  pb->free.next = pbi; pb->free.prev = NULL;
+  buckets[bi] = pb; bucketlens[bi] += 1;
+}
+
+static size_t findbktidx(size_t payload)
+{
+  if (payload <= MAXPAYLOAD) {
+    size_t blkmin = payload + sizeof(header_t) - 1;
+    size_t p2 = 32U - (uint32_t)asm(local.get blkmin, i32.clz);
+    return p2 < 4U ? 0 : p2 - 4U;
+  }
+  return NBUCKETS;
+}
+
+void *realloc(void *p, size_t n)
+{
+  if (p != NULL) { /* realloc or free */
+    CHECKHDRPTR(p);
+    header_t *pb = (header_t*)p - 1;
+    size_t bi = pb->used.bi; 
+    assert(bi < NBUCKETS);
+    if (n > 0) { /* realloc */
+      if (n + sizeof(header_t) <= BI2BLKSZ(bi)) {
+        pb->used.plsz = n;
+        return p;
+      } else {
+        void *np = realloc(NULL, n); /* malloc */
+        size_t orgn = pb->used.plsz;
+        if (np != NULL) memcpy(np, p, n < orgn ? n : orgn);
+        pushblock(bi, pb);
+        return np;
+      }
+    } else { /* free */
+      pushblock(bi, pb);
+    }
+  } else { /* malloc */
+    size_t bi = findbktidx(n);
+    if (bi < NBUCKETS) {
+      header_t *pb = pullblock(bi);
+      if (pb != NULL) {
+        pb->used.plsz = n;
+        pb->used.bi = bi;
+        return pb+1;
+      }
+    }
+  }
+  return NULL;  
+}
+
+void *malloc(size_t n)
+{
+  return realloc(NULL, n);
+}
+
+void *calloc(size_t n, size_t sz)
+{
+  void *p = NULL; 
+  assert(sz);
+  if (n <= MAXPAYLOAD/sz) {
+    n *= sz;
+    p = realloc(NULL, n);
+    if (p != NULL) memset(p, 0, n);
+  }
+  return p;
+}
+
+void free(void *p)
+{
+  if (p != NULL) realloc(p, 0);
+}
+
+#endif
+
 
 /* misc */
 
 int abs(int n)
 {
-	return (n < 0) ? -n : n;
+  return (n < 0) ? -n : n;
 }
 
 long labs(long n)
 {
-	return (n < 0L) ? -n : n;
+  return (n < 0L) ? -n : n;
 }
 
 long long llabs(long long n)
 {
-	return (n < 0LL) ? -n : n;
+  return (n < 0LL) ? -n : n;
 }
 
 div_t div(int num, int den)
