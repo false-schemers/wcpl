@@ -473,7 +473,7 @@ void qsort(void *base, size_t nmemb, size_t size, int (*cmp)(const void *, const
 
 #define WASMPAGESIZE 65536
 
-#if 1 /* 'sequential next fit' allocator (after K&R) */
+#if 0 /* 'sequential next fit' allocator (after K&R) */
 
 typedef union header {
   struct {
@@ -599,31 +599,35 @@ void *realloc(void *ptr, size_t nbytes)
   return newptr;
 }
 
-#else /* 'binary buddies' allocator (no recombining) */
+#else /* 'binary buddies' allocator */
 
 #define NBUCKETS       28            /* 2^4 .. 2^31 */
-#define SBRKBUCKET     12            /* 2^12 is WASMPAGESIZE */
+#define SBRKBUCKET     12            /* BI2BLKSZ(12) = WASMPAGESIZE */
+#define POPREDLINE     0             /* turn on merging in big buckets */
 #define MAXBLOCKSZ     0x80000000UL  /* 2^31 */
 #define MAXPAYLOAD     0x7FFFFFF8UL  /* 2^31-sizeof(header) */
-#define HDRPTRMASK     0x00000007UL  /* lower 3 bits */
-#define BI2BLKSZ(bi)   (1UL << ((bi) + 4))
+#define HDRPTRMASK     0x00000007UL  /* lower 3 bits must be 0 */
+#define BI2BLKSZ(bi)   (1U << ((bi) + 4))
 #define CHECKHDRPTR(p) (assert(!((uintptr_t)(p) & HDRPTRMASK)))
 
+/* in WASM 'ff' overlaps w/ ls quad of 'next' */
 typedef union header {
   struct { union header *next, *prev; } free;
-  struct { size_t bi; size_t plsz; } used;
+  struct { uint8_t ff, bi; size_t plsz; } used;
 } header_t;
 static_assert(sizeof(header_t) == 8);
 
 static header_t* buckets[NBUCKETS];
 static size_t bucketlens[NBUCKETS];
 
+
 static header_t *sbrkblock(size_t bi)
 {
   assert(bi >= SBRKBUCKET);
-  void *freemem = sbrk((intptr_t)BI2BLKSZ(bi));
-  if (freemem == (void *)-1) return NULL;
-  return freemem;
+  void *p = sbrk((intptr_t)BI2BLKSZ(bi));
+  if (p == (void *)-1) return NULL;
+  assert(!((uintptr_t)(p) & (uintptr_t)(WASMPAGESIZE-1)));
+  return p;
 }
 
 static void pushblock(size_t bi, void *pb);
@@ -631,29 +635,86 @@ static header_t *pullblock(size_t bi)
 {
   header_t *pbi = buckets[bi];
   if (pbi != NULL) {
-    CHECKHDRPTR(pbi->free.prev);
-    CHECKHDRPTR(pbi->free.next);
+    //assert(!((uintptr_t)pbi & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
+    //assert(pbi->free.prev == NULL); 
+    //CHECKHDRPTR(pbi->free.next);
     if (pbi->free.next != NULL) pbi->free.next->free.prev = NULL;
     buckets[bi] = pbi->free.next;
     bucketlens[bi] -= 1;
     return pbi;
   }
   if (bi < SBRKBUCKET) {
-    pbi = pullblock(bi + 1);
-    if (!pbi) return NULL;
-    pushblock(bi, (char*)pbi + BI2BLKSZ(bi));
-    return pbi;
+    header_t *pb = pullblock(bi + 1);
+    if (pb != NULL) {
+      header_t *pb2 = (header_t *)((char*)pb + BI2BLKSZ(bi));
+      if ((pbi = buckets[bi]) != NULL) pbi->free.prev = pb2;
+      pb2->free.next = pbi; pb2->free.prev = NULL;
+      buckets[bi] = pb2; bucketlens[bi] += 1;
+      //assert(!((uintptr_t)pb & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
+    }
+    return pb;
   }
   return sbrkblock(bi);
 }
 
+#if 0 /* no recombining */
+
 static void pushblock(size_t bi, void *p)
 {
+  //assert(!((uintptr_t)p & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
   header_t *pbi = buckets[bi], *pb = p;
-  if (pbi) pb->free.prev = pb;
+  if (pbi) pbi->free.prev = pb;
   pb->free.next = pbi; pb->free.prev = NULL;
   buckets[bi] = pb; bucketlens[bi] += 1;
 }
+
+#else /* with recombining (threshold = POPREDLINE) */
+
+static void unlinkblock(size_t bi, header_t *pb)
+{
+  //assert(!((uintptr_t)pb & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
+  //CHECKHDRPTR(pb->free.prev); CHECKHDRPTR(pb->free.next);
+  if (pb->free.prev == NULL) buckets[bi] = pb->free.next;
+  else pb->free.prev->free.next = pb->free.next;
+  if (pb->free.next == NULL) /* do nothing */ ;
+  else pb->free.next->free.prev = pb->free.prev;
+  bucketlens[bi] -= 1;
+}
+
+static void pushblock(size_t bi, void *p)
+{
+  header_t *pbi, *pb;
+  //assert(!((uintptr_t)p & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
+  { retry:
+    pbi = buckets[bi], pb = p;
+    if (bi < SBRKBUCKET && bucketlens[bi] >= POPREDLINE) {
+      size_t bsz = BI2BLKSZ(bi); /* odd/even sibling bit */
+      if ((uintptr_t)pb & bsz) {
+        header_t *pbi_prec = (header_t*)((char*)pb - bsz);
+        /* check if prec block is free and belongs to the same bucket */
+        if (pbi_prec->used.ff != 0xff && (pbi_prec+1)->used.bi == bi) { 
+          unlinkblock(bi, pbi_prec); 
+          bi += 1; p = pbi_prec; 
+          goto retry; 
+        }
+      } else {
+        header_t *pbi_succ = (header_t*)((char*)pb + bsz);
+        /* check if next block is free and belongs to the same bucket */
+        if (pbi_succ->used.ff != 0xff && (pbi_succ+1)->used.bi == bi) { 
+          unlinkblock(bi, pbi_succ); 
+          bi += 1; p = pb; 
+          goto retry; 
+        }
+      }
+    }
+  }
+  if (pbi) pbi->free.prev = pb;
+  pb->free.next = pbi; pb->free.prev = NULL;
+  (pb+1)->used.bi = (uint8_t)bi; /* bi mark */
+  buckets[bi] = pb; bucketlens[bi] += 1;
+}
+
+#endif
 
 static size_t findbktidx(size_t payload)
 {
@@ -668,10 +729,12 @@ static size_t findbktidx(size_t payload)
 void *realloc(void *p, size_t n)
 {
   if (p != NULL) { /* realloc or free */
-    CHECKHDRPTR(p);
+    //CHECKHDRPTR(p);
     header_t *pb = (header_t*)p - 1;
+    assert(pb->used.ff == (uint8_t)0xff);
     size_t bi = pb->used.bi; 
-    assert(bi < NBUCKETS);
+    //assert(!((uintptr_t)pb & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
+    //assert(bi < NBUCKETS);
     if (n > 0) { /* realloc */
       if (n + sizeof(header_t) <= BI2BLKSZ(bi)) {
         pb->used.plsz = n;
@@ -692,7 +755,8 @@ void *realloc(void *p, size_t n)
       header_t *pb = pullblock(bi);
       if (pb != NULL) {
         pb->used.plsz = n;
-        pb->used.bi = bi;
+        pb->used.ff = (uint8_t)0xff;
+        pb->used.bi = (uint8_t)bi;
         return pb+1;
       }
     }

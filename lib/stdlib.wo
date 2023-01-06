@@ -22,14 +22,14 @@
   (import "crt" "onterm_count" (global $crt:onterm_count i32))
   (import "crt" "terminate" (func $crt:terminate (param i32)))
   (global $stdlib:_environ (export "_environ") (mut i32) (i32.const 0))
-  (global $stdlib:malloc_freep (mut i32))
   (data $stdlib:powers_of_10 var align=8 "\00\00\00\00\00\00$@\00\00\00\00\00\00Y@\00\00\00\00\00\88\c3@\00\00\00\00\84\d7\97A\00\80\e07y\c3AC\17n\05\b5\b5\b8\93F\f5\f9?\e9\03O8M2\1d0\f9Hw\82Z<\bfs\7f\ddO\15u")
   (data $stdlib:ds8$ const align=1 "INFINITY\00")
   (data $stdlib:ds9$ const align=1 "NAN(*)\00")
   (data $stdlib:rand48_seed var align=2 size=6)
   (data $stdlib:empty_environ var align=4 size=4)
   (data $stdlib:ds29$ const align=1 "internal error: unable to retrieve environment strings\n\00")
-  (data $stdlib:malloc_base var align=4 size=16)
+  (data $stdlib:buckets var align=4 size=112)
+  (data $stdlib:bucketlens var align=4 size=112)
   (data $stdlib:utf8_table var align=4 "\80\00\00\00\00\00\00\00\00\00\00\00\7f\00\00\00\00\00\00\00\e0\00\00\00\c0\00\00\00\06\00\00\00\ff\07\00\00\80\00\00\00\f0\00\00\00\e0\00\00\00\0c\00\00\00\ff\ff\00\00\00\08\00\00\f8\00\00\00\f0\00\00\00\12\00\00\00\ff\ff\1f\00\00\00\01\00\fc\00\00\00\f8\00\00\00\18\00\00\00\ff\ff\ff\03\00\00 \00\fe\00\00\00\fc\00\00\00\1e\00\00\00\ff\ff\ff\7f\00\00\00\04\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00")
   (func $stdlib:atof (export "atof")
     (param $s i32) (result f64) 
@@ -2106,381 +2106,578 @@
     end $2$
     return
   )
-  (func $stdlib:morecore
-    (param $nunits i32) (result i32) 
-    (local $freemem i32) (local $insertp i32) (local $i1$ i32) 
-    local.get $nunits
-    i32.const 0
-    i32.gt_u
+  (func $stdlib:sbrkblock
+    (param $bi i32) (result i32) 
+    (local $p i32) 
+    local.get $bi
+    i32.const 12
+    i32.ge_u
     if
     i32.const 0
     drop
     else
     unreachable
     end
-    local.get $nunits
-    i32.const 4096
-    i32.add
     i32.const 1
-    i32.sub
-    i32.const 4096
-    i32.div_u
-    i32.const 4096
-    i32.mul
-    local.tee $nunits
-    i32.const 16
-    i32.mul
+    local.get $bi
+    i32.const 4
+    i32.add
+    i32.shl
     call $unistd:sbrk
-    local.tee $freemem
+    local.tee $p
     i32.const -1
     i32.eq
     if
     i32.const 0
     return
     end
-    local.get $freemem
-    local.tee $insertp
-    i32.const 4
-    i32.add
-    local.tee $i1$
-    local.get $nunits
-    i32.store offset=0 align=4
-    local.get $insertp
-    i32.const 16
-    i32.add
-    call $stdlib:free
-    global.get $stdlib:malloc_freep
-    return
-  )
-  (func $stdlib:malloc (export "malloc")
-    (param $nbytes i32) (result i32) 
-    (local $currp i32) (local $prevp i32) (local $nunits i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) 
-    local.get $nbytes
-    i32.const 16
-    i32.add
-    i32.const 1
-    i32.sub
-    i32.const 16
-    i32.div_u
-    i32.const 1
-    i32.add
-    local.set $nunits
-    global.get $stdlib:malloc_freep
-    i32.const 0
-    i32.eq
-    if
-    ref.data $stdlib:malloc_base
-    local.tee $i1$
-    ref.data $stdlib:malloc_base
-    i32.store offset=0 align=4
-    ref.data $stdlib:malloc_base
-    i32.const 4
-    i32.add
-    local.tee $i2$
-    i32.const 0
-    i32.store offset=0 align=4
-    ref.data $stdlib:malloc_base
-    global.set $stdlib:malloc_freep
-    end
-    global.get $stdlib:malloc_freep
-    local.tee $prevp
-    i32.load offset=0 align=4
-    local.set $currp
-    block $2$
-    loop $1$
-    i32.const 0
-    br_if $2$
-    block $3$
-    local.get $currp
-    i32.load offset=4 align=4
-    local.get $nunits
-    i32.ge_u
-    if
-    local.get $currp
-    i32.load offset=4 align=4
-    local.get $nunits
-    i32.eq
-    if
-    local.get $prevp
-    local.tee $i3$
-    local.get $currp
-    i32.load offset=0 align=4
-    i32.store offset=0 align=4
-    else
-    local.get $currp
-    i32.const 4
-    i32.add
-    local.tee $i4$
-    local.get $i4$
-    i32.load offset=0 align=4
-    local.get $nunits
-    i32.sub
-    i32.store offset=0 align=4
-    local.get $currp
-    local.get $currp
-    i32.load offset=4 align=4
-    i32.const 16
-    i32.mul
-    i32.add
-    local.tee $currp
-    i32.const 4
-    i32.add
-    local.tee $i5$
-    local.get $nunits
-    i32.store offset=0 align=4
-    end
-    local.get $prevp
-    global.set $stdlib:malloc_freep
-    local.get $currp
-    i32.const 16
-    i32.add
-    return
-    end
-    local.get $currp
-    global.get $stdlib:malloc_freep
-    i32.eq
-    if
-    local.get $nunits
-    call $stdlib:morecore
-    local.tee $currp
-    i32.const 0
-    i32.eq
-    if
-    i32.const 48
-    global.set $errno:errno
-    i32.const 0
-    return
-    end
-    end
-    end $3$
-    local.get $currp
-    local.set $prevp
-    local.get $currp
-    i32.load offset=0 align=4
-    local.set $currp
-    br $1$
-    end $1$
-    end $2$
-    i32.const 0
-    return
-  )
-  (func $stdlib:free (export "free")
-    (param $ptr i32) 
-    (local $currp i32) (local $insertp i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) 
-    local.get $ptr
+    local.get $p
+    i32.const 65535
+    i32.and
     i32.eqz
     if
-    return
-    end
-    local.get $ptr
-    i32.const 16
-    i32.sub
-    local.set $insertp
-    block $2$
-    global.get $stdlib:malloc_freep
-    local.set $currp
-    loop $1$
-    local.get $currp
-    local.get $insertp
-    i32.lt_u
-    if (result i32)
-    local.get $insertp
-    local.get $currp
-    i32.load offset=0 align=4
-    i32.lt_u
-    else
     i32.const 0
-    end
-    i32.eqz
-    i32.eqz
-    br_if $2$
-    block $3$
-    local.get $currp
-    local.get $currp
-    i32.load offset=0 align=4
-    i32.ge_u
-    if (result i32)
-    local.get $currp
-    local.get $insertp
-    i32.lt_u
-    if (result i32)
-    i32.const 1
+    drop
     else
-    local.get $insertp
-    local.get $currp
-    i32.load offset=0 align=4
-    i32.lt_u
+    unreachable
     end
-    else
-    i32.const 0
-    end
-    br_if $2$
-    end $3$
-    local.get $currp
-    i32.load offset=0 align=4
-    local.set $currp
-    br $1$
-    end $1$
-    end $2$
-    local.get $insertp
-    local.get $insertp
-    i32.load offset=4 align=4
-    i32.const 16
-    i32.mul
-    i32.add
-    local.get $currp
-    i32.load offset=0 align=4
-    i32.eq
-    if
-    local.get $insertp
-    i32.const 4
-    i32.add
-    local.tee $i1$
-    local.get $i1$
-    i32.load offset=0 align=4
-    local.get $currp
-    i32.load offset=0 align=4
-    i32.load offset=4 align=4
-    i32.add
-    i32.store offset=0 align=4
-    local.get $insertp
-    local.tee $i2$
-    local.get $currp
-    i32.load offset=0 align=4
-    i32.load offset=0 align=4
-    i32.store offset=0 align=4
-    else
-    local.get $insertp
-    local.tee $i3$
-    local.get $currp
-    i32.load offset=0 align=4
-    i32.store offset=0 align=4
-    end
-    local.get $currp
-    local.get $currp
-    i32.load offset=4 align=4
-    i32.const 16
-    i32.mul
-    i32.add
-    local.get $insertp
-    i32.eq
-    if
-    local.get $currp
-    i32.const 4
-    i32.add
-    local.tee $i4$
-    local.get $i4$
-    i32.load offset=0 align=4
-    local.get $insertp
-    i32.load offset=4 align=4
-    i32.add
-    i32.store offset=0 align=4
-    local.get $currp
-    local.tee $i5$
-    local.get $insertp
-    i32.load offset=0 align=4
-    i32.store offset=0 align=4
-    else
-    local.get $currp
-    local.tee $i6$
-    local.get $insertp
-    i32.store offset=0 align=4
-    end
-    local.get $currp
-    global.set $stdlib:malloc_freep
+    local.get $p
     return
   )
-  (func $stdlib:calloc (export "calloc")
-    (param $nels i32) (param $esz i32) (result i32) 
-    (local $nbytes i32) (local $ptr i32) 
-    local.get $nels
-    local.get $esz
+  (func $stdlib:pullblock
+    (param $bi i32) (result i32) 
+    (local $pbi i32) (local $pb i32) (local $pb2 i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) (local $i7$ i32) (local $i8$ i32) 
+    ref.data $stdlib:buckets
+    local.get $bi
+    i32.const 4
     i32.mul
-    local.tee $nbytes
-    call $stdlib:malloc
-    local.tee $ptr
+    i32.add
+    i32.load offset=0 align=4
+    local.tee $pbi
     i32.const 0
     i32.ne
     if
-    local.get $ptr
+    local.get $pbi
+    i32.load offset=0 align=4
     i32.const 0
-    local.get $nbytes
-    call $string:memset
-    drop
+    i32.ne
+    if
+    local.get $pbi
+    i32.load offset=0 align=4
+    i32.const 4
+    i32.add
+    local.tee $i1$
+    i32.const 0
+    i32.store offset=0 align=4
     end
-    local.get $ptr
+    ref.data $stdlib:buckets
+    local.get $bi
+    i32.const 4
+    i32.mul
+    i32.add
+    local.tee $i2$
+    local.get $pbi
+    i32.load offset=0 align=4
+    i32.store offset=0 align=4
+    ref.data $stdlib:bucketlens
+    local.get $bi
+    i32.const 4
+    i32.mul
+    i32.add
+    local.tee $i3$
+    local.get $i3$
+    i32.load offset=0 align=4
+    i32.const 1
+    i32.sub
+    i32.store offset=0 align=4
+    local.get $pbi
+    return
+    end
+    local.get $bi
+    i32.const 12
+    i32.lt_u
+    if
+    local.get $bi
+    i32.const 1
+    i32.add
+    call $stdlib:pullblock
+    local.tee $pb
+    i32.const 0
+    i32.ne
+    if
+    local.get $pb
+    i32.const 1
+    local.get $bi
+    i32.const 4
+    i32.add
+    i32.shl
+    i32.add
+    local.set $pb2
+    ref.data $stdlib:buckets
+    local.get $bi
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    local.tee $pbi
+    i32.const 0
+    i32.ne
+    if
+    local.get $pbi
+    i32.const 4
+    i32.add
+    local.tee $i4$
+    local.get $pb2
+    i32.store offset=0 align=4
+    end
+    local.get $pb2
+    local.tee $i5$
+    local.get $pbi
+    i32.store offset=0 align=4
+    local.get $pb2
+    i32.const 4
+    i32.add
+    local.tee $i6$
+    i32.const 0
+    i32.store offset=0 align=4
+    ref.data $stdlib:buckets
+    local.get $bi
+    i32.const 4
+    i32.mul
+    i32.add
+    local.tee $i7$
+    local.get $pb2
+    i32.store offset=0 align=4
+    ref.data $stdlib:bucketlens
+    local.get $bi
+    i32.const 4
+    i32.mul
+    i32.add
+    local.tee $i8$
+    local.get $i8$
+    i32.load offset=0 align=4
+    i32.const 1
+    i32.add
+    i32.store offset=0 align=4
+    end
+    local.get $pb
+    return
+    end
+    local.get $bi
+    call $stdlib:sbrkblock
+    return
+  )
+  (func $stdlib:unlinkblock
+    (param $bi i32) (param $pb i32) 
+    (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
+    local.get $pb
+    i32.load offset=4 align=4
+    i32.const 0
+    i32.eq
+    if
+    ref.data $stdlib:buckets
+    local.get $bi
+    i32.const 4
+    i32.mul
+    i32.add
+    local.tee $i1$
+    local.get $pb
+    i32.load offset=0 align=4
+    i32.store offset=0 align=4
+    else
+    local.get $pb
+    i32.load offset=4 align=4
+    local.tee $i2$
+    local.get $pb
+    i32.load offset=0 align=4
+    i32.store offset=0 align=4
+    end
+    local.get $pb
+    i32.load offset=0 align=4
+    i32.const 0
+    i32.eq
+    if
+    else
+    local.get $pb
+    i32.load offset=0 align=4
+    i32.const 4
+    i32.add
+    local.tee $i3$
+    local.get $pb
+    i32.load offset=4 align=4
+    i32.store offset=0 align=4
+    end
+    ref.data $stdlib:bucketlens
+    local.get $bi
+    i32.const 4
+    i32.mul
+    i32.add
+    local.tee $i4$
+    local.get $i4$
+    i32.load offset=0 align=4
+    i32.const 1
+    i32.sub
+    i32.store offset=0 align=4
+    return
+  )
+  (func $stdlib:pushblock
+    (param $bi i32) (param $p i32) 
+    (local $pbi i32) (local $pb i32) (local $bsz i32) (local $pbi_prec i32) (local $pbi_succ i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) (local $i5$ i32) (local $i6$ i32) 
+    loop $retry
+    ref.data $stdlib:buckets
+    local.get $bi
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    local.set $pbi
+    local.get $p
+    local.set $pb
+    local.get $bi
+    i32.const 12
+    i32.lt_u
+    if (result i32)
+    ref.data $stdlib:bucketlens
+    local.get $bi
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load offset=0 align=4
+    i32.const 0
+    i32.ge_u
+    else
+    i32.const 0
+    end
+    if
+    i32.const 1
+    local.get $bi
+    i32.const 4
+    i32.add
+    i32.shl
+    local.set $bsz
+    local.get $pb
+    local.get $bsz
+    i32.and
+    if
+    local.get $pb
+    local.get $bsz
+    i32.sub
+    local.tee $pbi_prec
+    i32.load8_u offset=0 align=1
+    i32.const 255
+    i32.ne
+    if (result i32)
+    local.get $pbi_prec
+    i32.load8_u offset=9 align=1
+    local.get $bi
+    i32.eq
+    else
+    i32.const 0
+    end
+    if
+    local.get $bi
+    local.get $pbi_prec
+    call $stdlib:unlinkblock
+    local.get $bi
+    i32.const 1
+    i32.add
+    local.set $bi
+    local.get $pbi_prec
+    local.set $p
+    br $retry
+    end
+    else
+    local.get $pb
+    local.get $bsz
+    i32.add
+    local.tee $pbi_succ
+    i32.load8_u offset=0 align=1
+    i32.const 255
+    i32.ne
+    if (result i32)
+    local.get $pbi_succ
+    i32.load8_u offset=9 align=1
+    local.get $bi
+    i32.eq
+    else
+    i32.const 0
+    end
+    if
+    local.get $bi
+    local.get $pbi_succ
+    call $stdlib:unlinkblock
+    local.get $bi
+    i32.const 1
+    i32.add
+    local.set $bi
+    local.get $pb
+    local.set $p
+    br $retry
+    end
+    end
+    end
+    end $retry
+    local.get $pbi
+    i32.const 0
+    i32.ne
+    if
+    local.get $pbi
+    i32.const 4
+    i32.add
+    local.tee $i1$
+    local.get $pb
+    i32.store offset=0 align=4
+    end
+    local.get $pb
+    local.tee $i2$
+    local.get $pbi
+    i32.store offset=0 align=4
+    local.get $pb
+    i32.const 4
+    i32.add
+    local.tee $i3$
+    i32.const 0
+    i32.store offset=0 align=4
+    local.get $pb
+    i32.const 8
+    i32.add
+    i32.const 1
+    i32.add
+    local.tee $i4$
+    local.get $bi
+    i32.const 255
+    i32.and
+    i32.store8 offset=0 align=1
+    ref.data $stdlib:buckets
+    local.get $bi
+    i32.const 4
+    i32.mul
+    i32.add
+    local.tee $i5$
+    local.get $pb
+    i32.store offset=0 align=4
+    ref.data $stdlib:bucketlens
+    local.get $bi
+    i32.const 4
+    i32.mul
+    i32.add
+    local.tee $i6$
+    local.get $i6$
+    i32.load offset=0 align=4
+    i32.const 1
+    i32.add
+    i32.store offset=0 align=4
+    return
+  )
+  (func $stdlib:findbktidx
+    (param $payload i32) (result i32) 
+    (local $blkmin i32) (local $p2 i32) 
+    local.get $payload
+    i32.const 2147483640
+    i32.le_u
+    if
+    local.get $payload
+    i32.const 8
+    i32.add
+    i32.const 1
+    i32.sub
+    local.set $blkmin
+    i32.const 32
+    local.get $blkmin
+    i32.clz
+    i32.sub
+    local.tee $p2
+    i32.const 4
+    i32.lt_u
+    if (result i32)
+    i32.const 0
+    else
+    local.get $p2
+    i32.const 4
+    i32.sub
+    end
+    return
+    end
+    i32.const 28
     return
   )
   (func $stdlib:realloc (export "realloc")
-    (param $ptr i32) (param $nbytes i32) (result i32) 
-    (local $currp i32) (local $nunits i32) (local $currnb i32) (local $newptr i32) 
-    local.get $ptr
-    i32.eqz
-    if
-    local.get $nbytes
-    call $stdlib:malloc
-    return
-    end
-    local.get $nbytes
-    i32.eqz
-    if
-    local.get $ptr
-    call $stdlib:free
+    (param $p i32) (param $n i32) (result i32) 
+    (local $pb i32) (local $bi i32) (local $np i32) (local $orgn i32) (local $bi#4 i32) (local $pb#5 i32) (local $i1$ i32) (local $i2$ i32) (local $i3$ i32) (local $i4$ i32) 
+    local.get $p
     i32.const 0
-    return
-    end
-    local.get $ptr
-    i32.const 16
+    i32.ne
+    if
+    local.get $p
+    i32.const 8
     i32.sub
-    local.set $currp
-    local.get $nbytes
-    i32.const 16
+    local.tee $pb
+    i32.load8_u offset=0 align=1
+    i32.const 255
+    i32.eq
+    if
+    i32.const 0
+    drop
+    else
+    unreachable
+    end
+    local.get $pb
+    i32.load8_u offset=1 align=1
+    local.set $bi
+    local.get $n
+    i32.const 0
+    i32.gt_u
+    if
+    local.get $n
+    i32.const 8
     i32.add
     i32.const 1
-    i32.sub
-    i32.const 16
-    i32.div_u
-    i32.const 1
+    local.get $bi
+    i32.const 4
     i32.add
-    local.set $nunits
-    local.get $currp
-    i32.load offset=4 align=4
-    local.get $nunits
-    i32.ge_u
+    i32.shl
+    i32.le_u
     if
-    local.get $ptr
+    local.get $pb
+    i32.const 4
+    i32.add
+    local.tee $i1$
+    local.get $n
+    i32.store offset=0 align=4
+    local.get $p
     return
-    end
-    local.get $currp
-    i32.load offset=4 align=4
-    i32.const 1
-    i32.sub
-    i32.const 16
-    i32.mul
-    local.set $currnb
-    local.get $nbytes
-    call $stdlib:malloc
-    local.tee $newptr
-    i32.eqz
-    if
-    local.get $ptr
-    call $stdlib:free
+    else
     i32.const 0
-    return
-    end
-    local.get $newptr
-    local.get $ptr
-    local.get $currnb
-    local.get $nbytes
-    local.get $currnb
-    local.get $nbytes
+    local.get $n
+    call $stdlib:realloc
+    local.set $np
+    local.get $pb
+    i32.load offset=4 align=4
+    local.set $orgn
+    local.get $np
+    i32.const 0
+    i32.ne
+    if
+    local.get $np
+    local.get $p
+    local.get $n
+    local.get $orgn
+    local.get $n
+    local.get $orgn
     i32.lt_u
     select
     call $string:memcpy
     drop
-    local.get $ptr
-    call $stdlib:free
-    local.get $newptr
+    end
+    local.get $bi
+    local.get $pb
+    call $stdlib:pushblock
+    local.get $np
+    return
+    end
+    else
+    local.get $bi
+    local.get $pb
+    call $stdlib:pushblock
+    end
+    else
+    local.get $n
+    call $stdlib:findbktidx
+    local.tee $bi#4
+    i32.const 28
+    i32.lt_u
+    if
+    local.get $bi#4
+    call $stdlib:pullblock
+    local.tee $pb#5
+    i32.const 0
+    i32.ne
+    if
+    local.get $pb#5
+    i32.const 4
+    i32.add
+    local.tee $i2$
+    local.get $n
+    i32.store offset=0 align=4
+    local.get $pb#5
+    local.tee $i3$
+    i32.const 255
+    i32.store8 offset=0 align=1
+    local.get $pb#5
+    i32.const 1
+    i32.add
+    local.tee $i4$
+    local.get $bi#4
+    i32.const 255
+    i32.and
+    i32.store8 offset=0 align=1
+    local.get $pb#5
+    i32.const 8
+    i32.add
+    return
+    end
+    end
+    end
+    i32.const 0
+    return
+  )
+  (func $stdlib:malloc (export "malloc")
+    (param $n i32) (result i32) 
+    i32.const 0
+    local.get $n
+    call $stdlib:realloc
+    return
+  )
+  (func $stdlib:calloc (export "calloc")
+    (param $n i32) (param $sz i32) (result i32) 
+    (local $p i32) 
+    i32.const 0
+    local.set $p
+    local.get $sz
+    if
+    i32.const 0
+    drop
+    else
+    unreachable
+    end
+    local.get $n
+    i32.const 2147483640
+    local.get $sz
+    i32.div_u
+    i32.le_u
+    if
+    local.get $n
+    local.get $sz
+    i32.mul
+    local.set $n
+    i32.const 0
+    local.get $n
+    call $stdlib:realloc
+    local.tee $p
+    i32.const 0
+    i32.ne
+    if
+    local.get $p
+    i32.const 0
+    local.get $n
+    call $string:memset
+    drop
+    end
+    end
+    local.get $p
+    return
+  )
+  (func $stdlib:free (export "free")
+    (param $p i32) 
+    local.get $p
+    i32.const 0
+    i32.ne
+    if
+    local.get $p
+    i32.const 0
+    call $stdlib:realloc
+    drop
+    end
     return
   )
   (func $stdlib:abs (export "abs")
