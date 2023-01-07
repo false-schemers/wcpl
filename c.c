@@ -1295,6 +1295,21 @@ static void expr_hoist_locals(node_t *ptn, node_t *pn, henv_t *phe, ndbuf_t *plb
       sym_t nname = henv_lookup(pn->name, phe, NULL);
       if (nname) pn->name = nname; /* else global */
     } break;
+    case NT_ACODE: { /* inline assembly */
+      size_t i;
+      assert(pn->data.esz == sizeof(inscode_t));
+      for (i = 0; i < buflen(&pn->data); ++i) {
+        inscode_t *pic = bufref(&pn->data, i);
+        switch (pic->in) {
+          case IN_LOCAL_GET: case IN_LOCAL_SET: case IN_LOCAL_TEE:
+            if (pic->id) {
+              sym_t nid = henv_lookup(pic->id, phe, NULL);
+              if (nid) pic->id = nid;
+            }
+          default:;
+        }
+      }      
+    } break;
     case NT_BLOCK: {
       size_t i;
       henv_t he; he.up = phe; bufinit(&he.idmap, 2*sizeof(sym_t));

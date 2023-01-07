@@ -3848,6 +3848,7 @@ static void fdumpss(const char *str, size_t n, FILE* fp)
     } else { 
       /* put ascii chars as-is */
       chbputc(c, &cb);
+      ++str; --n;
     }
   }
   chbputc('\"', &cb);
