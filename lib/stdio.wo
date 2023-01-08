@@ -7,13 +7,10 @@
   (import "ctype" "isdigit" (func $ctype:isdigit (param i32) (result i32)))
   (import "ctype" "isspace" (func $ctype:isspace (param i32) (result i32)))
   (import "ctype" "tolower" (func $ctype:tolower (param i32) (result i32)))
-  (import "string" "memcpy" (func $string:memcpy (param i32) (param i32) (param i32) (result i32)))
   (import "string" "memchr" (func $string:memchr (param i32) (param i32) (param i32) (result i32)))
-  (import "string" "memset" (func $string:memset (param i32) (param i32) (param i32) (result i32)))
   (import "string" "strlen" (func $string:strlen (param i32) (result i32)))
   (import "string" "strerror" (func $string:strerror (param i32) (result i32)))
   (import "string" "memccpy" (func $string:memccpy (param i32) (param i32) (param i32) (param i32) (result i32)))
-  (import "string" "bzero" (func $string:bzero (param i32) (param i32)))
   (import "stdlib" "strtod" (func $stdlib:strtod (param i32) (param i32) (result f64)))
   (import "stdlib" "strtoll" (func $stdlib:strtoll (param i32) (param i32) (param i32) (result i64)))
   (import "stdlib" "strtoull" (func $stdlib:strtoull (param i32) (param i32) (param i32) (result i64)))
@@ -592,8 +589,9 @@
     end
     end
     local.get $fp
+    i32.const 0
     i32.const 32
-    call $string:bzero
+    memory.fill
     local.get $res
     return
   )
@@ -952,8 +950,7 @@
     local.get $fp
     i32.load offset=8 align=4
     local.get $n
-    call $string:memcpy
-    drop
+    memory.copy
     local.get $ptr
     local.get $n
     i32.add
@@ -1425,8 +1422,7 @@
     local.get $cptr
     local.get $ptr
     local.get $n
-    call $string:memcpy
-    drop
+    memory.copy
     local.get $fp
     local.tee $i2$
     local.get $i2$
@@ -5136,8 +5132,7 @@
     local.get $fp$
     i32.const -1
     i32.const 257
-    call $string:memset
-    drop
+    memory.fill
     local.get $fp$
     local.tee $i7$
     i32.const 0
@@ -5207,8 +5202,7 @@
     local.get $fp$
     local.get $invert
     i32.const 257
-    call $string:memset
-    drop
+    memory.fill
     local.get $fp$
     local.tee $i14$
     i32.const 0

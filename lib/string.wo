@@ -13,8 +13,7 @@
     local.get $dst
     i32.const 0
     local.get $n
-    call $string:memset
-    drop
+    memory.fill
     return
   )
   (func $string:memccpy (export "memccpy")
@@ -143,36 +142,10 @@
   )
   (func $string:memcpy (export "memcpy")
     (param $dst i32) (param $src i32) (param $n i32) (result i32) 
-    (local $p i32) (local $q i32) (local $i1$ i32) 
-    local.get $src
-    local.set $p
     local.get $dst
-    local.set $q
-    block $1$
-    loop $2$
+    local.get $src
     local.get $n
-    local.get $n
-    i32.const 1
-    i32.sub
-    local.set $n
-    if
-    local.get $q
-    local.get $q
-    i32.const 1
-    i32.add
-    local.set $q
-    local.tee $i1$
-    local.get $p
-    local.get $p
-    i32.const 1
-    i32.add
-    local.set $p
-    i32.load8_s offset=0 align=1
-    i32.store8 offset=0 align=1
-    br $2$
-    end
-    end $2$
-    end $1$
+    memory.copy
     local.get $dst
     return
   )
@@ -319,100 +292,19 @@
   )
   (func $string:memmove (export "memmove")
     (param $dst i32) (param $src i32) (param $n i32) (result i32) 
-    (local $p i32) (local $q i32) (local $i1$ i32) (local $i2$ i32) 
-    local.get $src
-    local.set $p
     local.get $dst
-    local.tee $q
-    local.get $p
-    i32.lt_u
-    if
-    block $1$
-    loop $2$
+    local.get $src
     local.get $n
-    local.get $n
-    i32.const 1
-    i32.sub
-    local.set $n
-    if
-    local.get $q
-    local.get $q
-    i32.const 1
-    i32.add
-    local.set $q
-    local.tee $i1$
-    local.get $p
-    local.get $p
-    i32.const 1
-    i32.add
-    local.set $p
-    i32.load8_s offset=0 align=1
-    i32.store8 offset=0 align=1
-    br $2$
-    end
-    end $2$
-    end $1$
-    else
-    local.get $p
-    local.get $n
-    i32.add
-    local.set $p
-    local.get $q
-    local.get $n
-    i32.add
-    local.set $q
-    block $3$
-    loop $4$
-    local.get $n
-    local.get $n
-    i32.const 1
-    i32.sub
-    local.set $n
-    if
-    local.get $q
-    i32.const 1
-    i32.sub
-    local.tee $q
-    local.tee $i2$
-    local.get $p
-    i32.const 1
-    i32.sub
-    local.tee $p
-    i32.load8_s offset=0 align=1
-    i32.store8 offset=0 align=1
-    br $4$
-    end
-    end $4$
-    end $3$
-    end
+    memory.copy
     local.get $dst
     return
   )
   (func $string:memset (export "memset")
     (param $dst i32) (param $c i32) (param $n i32) (result i32) 
-    (local $q i32) (local $i1$ i32) 
     local.get $dst
-    local.set $q
-    block $1$
-    loop $2$
-    local.get $n
-    local.get $n
-    i32.const 1
-    i32.sub
-    local.set $n
-    if
-    local.get $q
-    local.get $q
-    i32.const 1
-    i32.add
-    local.set $q
-    local.tee $i1$
     local.get $c
-    i32.store8 offset=0 align=1
-    br $2$
-    end
-    end $2$
-    end $1$
+    local.get $n
+    memory.fill
     local.get $dst
     return
   )
@@ -701,8 +593,7 @@
     local.get $d
     local.get $s
     local.get $l
-    call $string:memcpy
-    drop
+    memory.copy
     end
     local.get $d
     return
@@ -927,8 +818,7 @@
     local.get $q
     i32.const 0
     local.get $n
-    call $string:memset
-    drop
+    memory.fill
     local.get $dst
     return
   )
@@ -956,8 +846,7 @@
     local.get $d
     local.get $s
     local.get $l
-    call $string:memcpy
-    drop
+    memory.copy
     local.get $d
     local.get $n
     i32.add

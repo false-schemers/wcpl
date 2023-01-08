@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <wasi/api.h>
 #include <sys/crt.h>
+#include <sys/intrs.h>
 
 double atof(const char *s)
 {
@@ -564,7 +565,7 @@ static size_t findbktidx(size_t payload)
 {
   if (payload <= MAXPAYLOAD) {
     size_t blkmin = payload + sizeof(header_t) - 1;
-    size_t p2 = 32U - (uint32_t)asm(local.get blkmin, i32.clz);
+    size_t p2 = 32U - __builtin_clz32((unsigned)blkmin);
     return p2 < 4U ? 0 : p2 - 4U;
   }
   return NBUCKETS;

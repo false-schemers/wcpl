@@ -2782,6 +2782,21 @@ static void parse_asm_code(pws_t *pw, node_t *pn, node_t *ptn)
     else break;
   }
   expect(pw, TT_RPAR, ")");
+  if (peekt(pw) == TT_LPAR) {
+    node_t nd = mknd();
+    dropt(pw);
+    ndset(&nd, NT_INTRCALL, pn->pwsid, pn->startpos);
+    nd.intr = INTR_ACODE;
+    ndswap(pn, ndnewbk(&nd));
+    while (peekt(pw) != TT_RPAR) {
+      parse_assignment_expr(pw, ndnewbk(&nd));
+      if (peekt(pw) != TT_COMMA) break;
+      dropt(pw); 
+    }
+    expect(pw, TT_RPAR, ")");
+    ndswap(pn, &nd);
+    ndfini(&nd);
+  }
 }
 
 static void patch_type_array_sizes(const node_t *psn, node_t *ptn)
@@ -3923,6 +3938,7 @@ const char *intr_name(intr_t intr)
   switch (intr) {
     case INTR_NONE: s = ""; break; 
     case INTR_ALLOCA: s = "alloca"; break; 
+    case INTR_ACODE: s = "acode"; break; 
     case INTR_ASU32: s = "asuint32"; break;
     case INTR_ASFLT: s = "asfloat"; break;
     case INTR_ASU64: s = "asuint64"; break;

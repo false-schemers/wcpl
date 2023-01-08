@@ -1676,7 +1676,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           pan = ndref(pn, 0);
           if (pan->nt != NT_TYPE) expr_wasmify(pan, pvib, plib);
         } break;
-        case INTR_ALLOCA: 
+        case INTR_ALLOCA: case INTR_ACODE:
         case INTR_ASU32:  case INTR_ASFLT:
         case INTR_ASU64:  case INTR_ASDBL: {
           size_t i;
@@ -3185,6 +3185,41 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
   return pcn;
 }
 
+/* compile acode application expression */
+static node_t *compile_acapp(node_t *prn, node_t *pacn, buf_t *pab)
+{
+  node_t *pcn = npnewcode(prn), *pftn = acode_type(pacn); size_t i;
+  size_t alen = ndlen(pftn);
+  if (pftn->ts != TS_PTR || ndref(pftn, 0)->ts != TS_FUNCTION) 
+    n2eprintf(ndref(prn, 0), prn, "can't apply asm() of non-function-pointer type");
+  pftn = ndref(pftn, 0);
+  if (ndlen(pftn) != buflen(pab)+1)
+    n2eprintf(ndref(prn, 0), prn, "%d-parameter asm code called with %d arguments",
+      (int)ndlen(pftn)-1, (int)buflen(pab));
+  if (ts_bulk(ndref(pftn, 0)->ts)) 
+    n2eprintf(ndref(prn, 0), prn, "asm code can't return bulk value"); 
+  ndpushbk(pcn, ndref(pftn, 0));
+  for (i = 0; i < buflen(pab); ++i) {
+    node_t **ppani = bufref(pab, i), *pani = *ppani;
+    node_t *ptni = acode_type(pani), *pftni = ndref(pftn, i+1);
+    node_t nd; bool nd_inited = false;
+    if (pftni->nt == NT_VARDECL) pftni = ndref(pftni, 0);
+    /* see if we need to promote param type */
+    if (ts_numerical(pftni->ts) && pftni->ts < TS_INT) {
+      ndicpy(&nd, pftni); nd_inited = true;
+      pftni = &nd; pftni->ts = ts_integral_promote(pftni->ts);
+    }
+    if (!assign_compatible(pftni, ptni)) {
+      n2eprintf(pani, prn, "can't pass argument[%d]: unexpected type", i);
+    }
+    if (!same_type(pftni, ptni)) pani = compile_cast(prn, pftni, pani);
+    acode_swapin(pcn, pani); /* leaves arg on stack */
+    if (nd_inited) ndfini(&nd);
+  }
+  acode_swapin(pcn, pacn); /* func on stack */ 
+  return pcn;
+}
+
 /* compile statement (i.e. drop value if any) */
 static node_t *compile_stm(node_t *pcn)
 {
@@ -3470,6 +3505,16 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
           } else {
             neprintf(pn, "asdouble() intrinsic expects one argument");
           }
+        } break;
+        case INTR_ACODE: {
+          size_t i; buf_t apb = mkbuf(sizeof(node_t*));
+          node_t *pacn = ndref(pn, 0), *pact;
+          assert(pacn->nt == NT_ACODE && ndlen(pacn) == 1);
+          pact = ndref(pacn, 0); assert(pact->nt == NT_TYPE);
+          for (i = 1; i < ndlen(pn); ++i) 
+            *(node_t**)bufnewbk(&apb) = expr_compile(ndref(pn, i), prib, NULL);
+          pcn = compile_acapp(pn, pacn, &apb);
+          buffini(&apb);
         } break;
         case INTR_SIZEOF: case INTR_ALIGNOF: {
           size_t size, align; numval_t v;
