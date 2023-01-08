@@ -123,7 +123,6 @@ int fclose(FILE *fp)
 
 static void addbuf(FILE *fp)
 {
-  if (!initialized) initialize();
   if (fp->flags & _IONBF) {
     fp->base = (unsigned char *)&fp->sbuf[0];
     fp->end = fp->base + SBFSIZ;
@@ -144,6 +143,7 @@ static void addbuf(FILE *fp)
 int _fillbuf(FILE *fp)
 {
   FILE *fpi; size_t readc;
+  if (!initialized) initialize();
   if (fp->base == NULL) addbuf(fp);
   if (!(fp->flags & _IOREAD)) {
     if (fp->flags & _IORW) fp->flags |= _IOREAD;
@@ -152,9 +152,10 @@ int _fillbuf(FILE *fp)
   /* if this device is a terminal (line-buffered) or unbuffered, then
    * flush buffers of all line-buffered devices currently writing */
   if (fp->flags & (_IOLBF|_IONBF))
-    for (fpi = &_iob[0]; fpi < &_iob[FOPEN_MAX]; ++fpi)
-      if (fpi->flags & (_IOREAD|_IOLBF) == _IOLBF) 
+    for (fpi = &_iob[0]; fpi < &_iob[FOPEN_MAX]; ++fpi) {
+      if ((fpi->flags & (_IOREAD|_IOLBF)) == _IOLBF) 
         fflush(fpi);
+    }
   fp->ptr = fp->base;
   readc = (fp->flags & _IONBF) ? 1 : fp->end - fp->base;
   fp->cnt = read(fp->fd, (char *)fp->base, readc);
@@ -203,6 +204,7 @@ static int writebuf(FILE *fp)
 
 static int wrtchk(FILE *fp)
 {
+  if (!initialized) initialize();
   if ((fp->flags & (_IOWRT|_IOEOF)) != _IOWRT) {
     if (!(fp->flags & (_IOWRT|_IORW))) return EOF; /* read-only */
     fp->flags = fp->flags & ~_IOEOF | _IOWRT; /* clear flags */

@@ -469,141 +469,11 @@ void qsort(void *base, size_t nmemb, size_t size, int (*cmp)(const void *, const
 }
 
 
-/* memory allocator */
+/* 'binary buddies' memory allocator */
 
 #define WASMPAGESIZE 65536
-
-#if 0 /* 'sequential next fit' allocator (after K&R) */
-
-typedef union header {
-  struct {
-    union header *next;
-    size_t size;
-  } s;
-  char a[16];
-} header_t;
-
-static_assert(sizeof(header_t) == 16, "header is not 16 bytes long");
-#define UNITSIZE (sizeof(header_t)) 
-#define NALLOC (WASMPAGESIZE/UNITSIZE) 
-
-static header_t malloc_base;
-static header_t *malloc_freep;
-
-static header_t *morecore(size_t nunits)
-{
-  assert(nunits > 0);
-  nunits = ((nunits + NALLOC - 1) / NALLOC) * NALLOC;
-
-  void *freemem = sbrk((intptr_t)(nunits * UNITSIZE));
-  if (freemem == (void *)-1) return NULL;
-
-  header_t *insertp = (header_t *)freemem;
-  insertp->s.size = nunits;
-
-  free((void *)(insertp + 1));
-
-  return malloc_freep;
-}
-
-void *malloc(size_t nbytes)
-{
-  header_t *currp, *prevp;
-  /* each unit is a chunk of sizeof(header_t) bytes */
-  size_t nunits = ((nbytes + sizeof(header_t) - 1) / sizeof(header_t)) + 1; 
-
-  if (malloc_freep == NULL) {
-    malloc_base.s.next = &malloc_base;
-    malloc_base.s.size = 0;
-    malloc_freep = &malloc_base;
-  }
-
-  prevp = malloc_freep;
-  currp = prevp->s.next;
-
-  for (;; prevp = currp, currp = currp->s.next) {
-    if (currp->s.size >= nunits) {
-      if (currp->s.size == nunits) {
-        prevp->s.next = currp->s.next;
-      } else {
-        currp->s.size -= nunits;
-        currp += currp->s.size;
-        currp->s.size = nunits;
-      }
-      malloc_freep = prevp;
-      return (void *)(currp + 1);
-    }
-
-    if (currp == malloc_freep) {
-      if ((currp = morecore(nunits)) == NULL) {
-        errno = ENOMEM;
-        return NULL;
-      }
-    } 
-  }
-  
-  return NULL;
-}
-
-void free(void *ptr)
-{
-  if (!ptr) return;
-
-  header_t *currp, *insertp = ((header_t *)ptr) - 1;
-
-  for (currp = malloc_freep; !((currp < insertp) && (insertp < currp->s.next)); currp = currp->s.next) {
-    if ((currp >= currp->s.next) && ((currp < insertp) || (insertp < currp->s.next))) break;
-  }
-
-  if ((insertp + insertp->s.size) == currp->s.next) {
-    insertp->s.size += currp->s.next->s.size;
-    insertp->s.next = currp->s.next->s.next;
-  } else {
-    insertp->s.next = currp->s.next;
-  }
-
-  if ((currp + currp->s.size) == insertp) {
-    currp->s.size += insertp->s.size;
-    currp->s.next = insertp->s.next;
-  } else {
-    currp->s.next = insertp;
-  }
-
-  malloc_freep = currp;
-}
-
-void *calloc(size_t nels, size_t esz)
-{
-  size_t nbytes = nels * esz;
-  void *ptr = malloc(nbytes);
-  if (ptr) memset(ptr, 0, nbytes);
-  return ptr;
-}
-
-void *realloc(void *ptr, size_t nbytes)
-{
-  if (!ptr) return malloc(nbytes);
-  if (!nbytes) { free(ptr); return NULL; }
-
-  header_t *currp = ((header_t *)ptr) - 1;
-  size_t nunits = ((nbytes + sizeof(header_t) - 1) / sizeof(header_t)) + 1;
-  if (currp->s.size >= nunits) return ptr;
-  size_t currnb = (currp->s.size - 1) * sizeof(header_t);
-
-  /* todo: try to merge with next free block if possible */
-  void *newptr = malloc(nbytes);
-  if (!newptr) { free(ptr); return NULL; }
-
-  memcpy(newptr, ptr, currnb < nbytes ? currnb : nbytes);
-  free(ptr);
-  return newptr;
-}
-
-#else /* 'binary buddies' allocator */
-
 #define NBUCKETS       28            /* 2^4 .. 2^31 */
 #define SBRKBUCKET     12            /* BI2BLKSZ(12) = WASMPAGESIZE */
-#define POPREDLINE     0             /* turn on merging in big buckets */
 #define MAXBLOCKSZ     0x80000000UL  /* 2^31 */
 #define MAXPAYLOAD     0x7FFFFFF8UL  /* 2^31-sizeof(header) */
 #define HDRPTRMASK     0x00000007UL  /* lower 3 bits must be 0 */
@@ -618,8 +488,6 @@ typedef union header {
 static_assert(sizeof(header_t) == 8);
 
 static header_t* buckets[NBUCKETS];
-static size_t bucketlens[NBUCKETS];
-
 
 static header_t *sbrkblock(size_t bi)
 {
@@ -635,12 +503,8 @@ static header_t *pullblock(size_t bi)
 {
   header_t *pbi = buckets[bi];
   if (pbi != NULL) {
-    //assert(!((uintptr_t)pbi & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
-    //assert(pbi->free.prev == NULL); 
-    //CHECKHDRPTR(pbi->free.next);
     if (pbi->free.next != NULL) pbi->free.next->free.prev = NULL;
     buckets[bi] = pbi->free.next;
-    bucketlens[bi] -= 1;
     return pbi;
   }
   if (bi < SBRKBUCKET) {
@@ -649,45 +513,27 @@ static header_t *pullblock(size_t bi)
       header_t *pb2 = (header_t *)((char*)pb + BI2BLKSZ(bi));
       if ((pbi = buckets[bi]) != NULL) pbi->free.prev = pb2;
       pb2->free.next = pbi; pb2->free.prev = NULL;
-      buckets[bi] = pb2; bucketlens[bi] += 1;
-      //assert(!((uintptr_t)pb & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
+      buckets[bi] = pb2;
     }
     return pb;
   }
   return sbrkblock(bi);
 }
 
-#if 0 /* no recombining */
-
-static void pushblock(size_t bi, void *p)
-{
-  //assert(!((uintptr_t)p & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
-  header_t *pbi = buckets[bi], *pb = p;
-  if (pbi) pbi->free.prev = pb;
-  pb->free.next = pbi; pb->free.prev = NULL;
-  buckets[bi] = pb; bucketlens[bi] += 1;
-}
-
-#else /* with recombining (threshold = POPREDLINE) */
-
 static void unlinkblock(size_t bi, header_t *pb)
 {
-  //assert(!((uintptr_t)pb & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
-  //CHECKHDRPTR(pb->free.prev); CHECKHDRPTR(pb->free.next);
   if (pb->free.prev == NULL) buckets[bi] = pb->free.next;
   else pb->free.prev->free.next = pb->free.next;
   if (pb->free.next == NULL) /* do nothing */ ;
   else pb->free.next->free.prev = pb->free.prev;
-  bucketlens[bi] -= 1;
 }
 
 static void pushblock(size_t bi, void *p)
 {
   header_t *pbi, *pb;
-  //assert(!((uintptr_t)p & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
   { retry:
     pbi = buckets[bi], pb = p;
-    if (bi < SBRKBUCKET && bucketlens[bi] >= POPREDLINE) {
+    if (bi < SBRKBUCKET) {
       size_t bsz = BI2BLKSZ(bi); /* odd/even sibling bit */
       if ((uintptr_t)pb & bsz) {
         header_t *pbi_prec = (header_t*)((char*)pb - bsz);
@@ -711,10 +557,8 @@ static void pushblock(size_t bi, void *p)
   if (pbi) pbi->free.prev = pb;
   pb->free.next = pbi; pb->free.prev = NULL;
   (pb+1)->used.bi = (uint8_t)bi; /* bi mark */
-  buckets[bi] = pb; bucketlens[bi] += 1;
+  buckets[bi] = pb;
 }
-
-#endif
 
 static size_t findbktidx(size_t payload)
 {
@@ -726,15 +570,85 @@ static size_t findbktidx(size_t payload)
   return NBUCKETS;
 }
 
+static void panic(const char *s, size_t n)
+{
+  ciovec_t iov; size_t ret;
+  fd_t fd = 2; /* stderr */
+  iov.buf = (uint8_t*)s; iov.buf_len = n;
+  fd_write(fd, &iov, 1, &ret);
+}
+
+static void panicf(const char *fmt, ...)
+{
+  va_arg_t *ap = va_etc();
+  while (*fmt) {
+    if (*fmt != '%' || *++fmt == '%') {
+      panic(fmt++, 1);
+    } else if (fmt[0] == 's') {
+      char *s = va_arg(ap, char*);
+      if (s) panic(s, strlen(s)); 
+      else panic("(NULL)", 6);
+      fmt += 1;
+    } else if (fmt[0] == 'd') {
+      int val = va_arg(ap, int);
+      char buf[39+1]; /* enough up to 128 bits (w/sign) */
+      char *e = &buf[40], *p = e;
+      if (val) {
+        unsigned m; 
+        if (val == (-1-0x7fffffff)) m = (0x7fffffff) + (unsigned)1;
+        else if (val < 0) m = -val;
+        else m = val;
+        do *--p = (int)(m%10) + '0';
+          while ((m /= 10) > 0);
+        if (val < 0) *--p = '-';
+      } else *--p = '0';
+      panic(p, e-p);
+      fmt += 1;
+    } else if (fmt[0] == 'u') {
+      unsigned val = va_arg(ap, unsigned);
+      char buf[39+1]; /* enough up to 128 bits */
+      char *e = &buf[40], *p = e;
+      if (val) {
+        unsigned m = val; 
+        do *--p = (int)(m%10) + '0';
+          while ((m /= 10) > 0);
+      } else *--p = '0';
+      panic(p, e-p);
+      fmt += 1;
+    } else if (fmt[0] == 'o') {
+      unsigned val = va_arg(ap, unsigned);
+      char buf[39+1]; /* enough up to 128 bits */
+      char *e = &buf[40], *p = e;
+      if (val) {
+        unsigned m = val; 
+        do *--p = (int)(m%8) + '0';
+          while ((m /= 8) > 0);
+      } else *--p = '0';
+      panic(p, e-p);
+      fmt += 1;
+    } else if (fmt[0] == 'p' || fmt[0] == 'x') {
+      unsigned val = va_arg(ap, unsigned);
+      char buf[39+1]; /* enough up to 128 bits */
+      char *e = &buf[40], *p = e;
+      if (val) {
+        unsigned m = val, d; 
+        do *--p = (int)(d = (m%16), d < 10 ? d + '0' : d-10 + 'a');
+          while ((m /= 16) > 0);
+      } else *--p = '0';
+      panic(p, e-p);
+      fmt += 1;
+    }
+  }
+}
+
 void *realloc(void *p, size_t n)
 {
   if (p != NULL) { /* realloc or free */
-    //CHECKHDRPTR(p);
     header_t *pb = (header_t*)p - 1;
     assert(pb->used.ff == (uint8_t)0xff);
-    size_t bi = pb->used.bi; 
-    //assert(!((uintptr_t)pb & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
-    //assert(bi < NBUCKETS);
+    size_t bi = pb->used.bi;
+    assert(bi < NBUCKETS);
+    assert(bi > SBRKBUCKET || !((uintptr_t)pb & (uintptr_t)(BI2BLKSZ(bi)-1UL)));
     if (n > 0) { /* realloc */
       if (n + sizeof(header_t) <= BI2BLKSZ(bi)) {
         pb->used.plsz = n;
@@ -785,8 +699,6 @@ void free(void *p)
 {
   if (p != NULL) realloc(p, 0);
 }
-
-#endif
 
 
 /* misc */
