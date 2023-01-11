@@ -118,7 +118,7 @@ int fclose(FILE *fp)
   if (fp->base && fp->base != &fp->sbuf[0]) {
     if (fp->flags & _IOMYBUF) free(fp->base);
   }
-  __builtin_memset(fp, 0, sizeof(FILE));
+  _bzero(fp, sizeof(FILE));
   return res;
 }
 
@@ -182,7 +182,7 @@ size_t fread(void *buf, size_t size, size_t count, FILE *fp)
       fp->ptr--; fp->cnt++; /* ungetc */
     }
     n = fp->cnt; if (nleft < (size_t)n) n = (ssize_t)nleft;
-    __builtin_memcpy(ptr, (char *)fp->ptr, n);
+    _bcopy(ptr, (char *)fp->ptr, n);
     ptr += n; fp->ptr += n; fp->cnt -= n; 
     if (nleft <= (size_t)n) return count;
     nleft -= (size_t)n;
@@ -266,7 +266,7 @@ size_t fwrite(const void *buf, size_t size, size_t count, FILE *fp)
       if (writebuf(fp) == EOF) return count - (nleft + size - 1)/size;
     }
     if (nleft < n) n = (ssize_t)nleft;
-    __builtin_memcpy(cptr, ptr, n);
+    _bcopy(cptr, ptr, n);
     fp->cnt -= n; fp->ptr += n;
     /* done; flush if linebuffered with a newline */
     if ((nleft -= n) == 0) { 
@@ -922,7 +922,7 @@ int _vsnscanf(in_fct_t in, void *data, size_t maxlen, const char *format, va_lis
       case 'c':
       case '[':
         if (t == 'c' || t == 's') {
-          __builtin_memset(&scanset[0], -1, 257);
+          _bset(&scanset[0], -1, 257);
           scanset[0] = 0;
           if (t == 's') {
             scanset[1 + '\t'] = 0;
@@ -935,7 +935,7 @@ int _vsnscanf(in_fct_t in, void *data, size_t maxlen, const char *format, va_lis
         } else {
           if (*++p == '^') p++, invert = 1;
           else invert = 0;
-          __builtin_memset(&scanset[0], invert, 257);
+          _bset(&scanset[0], invert, 257);
           scanset[0] = 0;
           if (*p == '-') p++, scanset[1 + '-'] = 1 - invert;
           else if (*p == ']') p++, scanset[1 + ']'] = 1 - invert;

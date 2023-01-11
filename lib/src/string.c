@@ -6,8 +6,7 @@
 
 void bzero(void *dst, size_t n)
 {
-  __builtin_memset(dst, 0, n);
-  //memset(dst, 0, n);
+  _bzero(dst, n);
 }
 
 void *memccpy(void *dst, const void *src, int c, size_t n)
@@ -42,20 +41,11 @@ int memcmp(const void *s1, const void *s2, size_t n)
   return d;
 }
 
-#if 1
 void *memcpy(void *dst, const void *src, size_t n)
 {
-  __builtin_memcpy(dst, src, n);
+  _bcopy(dst, src, n);
   return dst;
 }
-#else
-void *memcpy(void *dst, const void *src, size_t n)
-{
-  const char *p = src; char *q = dst;
-  while (n--) *q++ = *p++;
-  return dst;
-}
-#endif
 
 /* See http://www-igm.univ-mlv.fr/~lecroq/string/  */
 void *memmem(const void *haystack, size_t n, const void *needle, size_t m)
@@ -90,41 +80,17 @@ void *memmem(const void *haystack, size_t n, const void *needle, size_t m)
   return NULL;
 }
 
-#if 1
 void *memmove(void *dst, const void *src, size_t n)
 {
-  __builtin_memcpy(dst, src, n);
+  _bcopy(dst, src, n);
   return dst;
 }
-#else
-void *memmove(void *dst, const void *src, size_t n)
-{
-  const char *p = src;
-  char *q = dst;
-  if (q < p) {
-    while (n--) *q++ = *p++;
-  } else {
-    p += n; q += n;
-    while (n--) *--q = *--p;
-  }
-  return dst;
-}
-#endif
 
-#if 1
 void *memset(void *dst, int c, size_t n)
 {
-  __builtin_memset(dst, c, n);
+  _bset(dst, c, n);
   return dst;
 }
-#else
-void *memset(void *dst, int c, size_t n)
-{
-  char *q = dst;
-  while (n--) *q++ = c;
-  return dst;
-}
-#endif
 
 void memswap(void *m1, void *m2, size_t n)
 {
@@ -199,7 +165,7 @@ char *strdup(const char *s)
 {
   size_t l = strlen(s) + 1;
   char *d = malloc(l);
-  if (d) __builtin_memcpy(d, s, l);
+  if (d) _bcopy(d, s, l);
   return d;
 }
 
@@ -256,7 +222,7 @@ char *strncpy(char *dst, const char *src, size_t n)
     if (!ch) break;
   }
   /* The specs say strncpy() fills the entire buffer with 0 */
-  __builtin_memset(q, 0, n);
+  _bzero(q, n);
   return dst;
 }
 
@@ -265,7 +231,7 @@ char *strndup(const char *s, size_t n)
   size_t sl = strlen(s), l = (n > sl ? sl : n) + 1;
   char *d = malloc(l);
   if (!d) return NULL;
-  __builtin_memcpy(d, s, l);
+  _bcopy(d, s, l);
   d[n] = '\0';
   return d;
 }
