@@ -435,6 +435,8 @@ void init_symbols(void)
   intern_symbol("asfloat", TT_INTR_NAME, INTR_ASFLT);
   intern_symbol("asuint64", TT_INTR_NAME, INTR_ASU64);
   intern_symbol("asdouble", TT_INTR_NAME, INTR_ASDBL);
+  intern_symbol("_Generic", TT_INTR_NAME, INTR_GENERIC); /* C11 */
+  intern_symbol("generic", TT_INTR_NAME, INTR_GENERIC);
   intern_symbol("va_etc", TT_INTR_NAME, INTR_VAETC);
   intern_symbol("va_arg", TT_INTR_NAME, INTR_VAARG);
   intern_symbol("static_assert", TT_INTR_NAME, INTR_SASSERT);
@@ -2491,6 +2493,35 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           ptn->name = getid(pw); 
           expect(pw, TT_RPAR, ")"); 
         } break;
+        case INTR_GENERIC: { /* (expr/type, type: expr, ..., default: expr) */
+          expect(pw, TT_LPAR, "(");
+          if (type_specifier_ahead(pw)) {
+            node_t *ptn = ndnewbk(pn);
+            parse_base_type(pw, ptn);
+            if (parse_declarator(pw, ptn)) 
+              reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+          } else {
+            parse_assignment_expr(pw, ndnewbk(pn));
+          }
+          while (peekt(pw) != TT_RPAR) {
+            node_t *ptn = ndnewbk(pn);
+            int defpos = 0;
+            expect(pw, TT_COMMA, ",");
+            if (peekt(pw) == TT_DEFAULT_KW) {
+              defpos = peekpos(pw);
+              dropt(pw); ptn->nt = NT_NULL;
+            } else {
+              parse_base_type(pw, ptn);
+              if (parse_declarator(pw, ptn)) 
+                reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+            }
+            expect(pw, TT_COLON, ":");
+            parse_assignment_expr(pw, ndnewbk(pn));
+            if (defpos && peekt(pw) != TT_RPAR)
+              reprintf(pw, defpos, "generic default: variant should be last");
+          }          
+          expect(pw, TT_RPAR, ")"); 
+        } break;
         case INTR_ALLOCA:
         case INTR_ASU32: case INTR_ASFLT: 
         case INTR_ASU64: case INTR_ASDBL: 
@@ -3139,7 +3170,7 @@ static void parse_primary_declarator(pws_t *pw, node_t *pn)
       ndset(pn, NT_IDENTIFIER, pw->id, peekpos(pw)); 
       pn->name = getid(pw);
     } break;
-    case TT_COMMA: case TT_LBRK: case TT_RPAR: {
+    case TT_COMMA: case TT_LBRK: case TT_RPAR: case TT_COLON: {
       /* identifier is missing: allow here, but check in the caller */
       ndset(pn, NT_NULL, pw->id, peekpos(pw)); 
     } break;
@@ -3945,7 +3976,8 @@ const char *intr_name(intr_t intr)
     case INTR_ASDBL: s = "asdouble"; break;
     case INTR_SIZEOF: s = "sizeof"; break; 
     case INTR_ALIGNOF: s = "alignof"; break; 
-    case INTR_OFFSETOF: s = "offsetof"; break; 
+    case INTR_OFFSETOF: s = "offsetof"; break;
+    case INTR_GENERIC: s = "generic"; break; 
     case INTR_VAETC: s = "va_etc"; break; 
     case INTR_VAARG: s = "va_arg"; break; 
     case INTR_SASSERT: s = "static_assert"; break; 

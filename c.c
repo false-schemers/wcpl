@@ -809,6 +809,18 @@ bool static_eval(node_t *pn, buf_t *prib, seval_t *pr)
         pr->ts = TS_INT; 
         pr->val.i = (int)offset;
         return true;
+      } else if (pn->intr == INTR_GENERIC) {
+        size_t i; const node_t *ptn = NULL;
+        assert(ndlen(pn) >= 1);
+        if (ndref(pn, 0)->nt == NT_TYPE) ptn = ndref(pn, 0);
+        else ptn = type_eval(ndref(pn, 0), prib);
+        if (!ptn) return false; /* can't get type */
+        for (i = 1; i+1 < ndlen(pn); i += 2) {
+          node_t *ptni = ndref(pn, i), *pxni = ndref(pn, i+1);
+          if (ptni->nt == NT_NULL || same_type(ptn, ptni))
+            return static_eval(pxni, prib, pr); /* tail call? */
+        }
+        return false;
       } else if (pn->intr == INTR_ASU32 || pn->intr == INTR_ASFLT) {
         ts_t tc = pn->intr == INTR_ASU32 ? TS_FLOAT : TS_UINT; 
         seval_t rx; bool ok = false; assert(ndlen(pn) == 1);
@@ -848,6 +860,7 @@ bool static_eval(node_t *pn, buf_t *prib, seval_t *pr)
               pr->val = rx.val; ok = true;
             }
           } break;
+          default:;
         }
         return ok;
       }
@@ -1698,6 +1711,14 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           node_t *pan; assert(ndlen(pn) >= 1);
           pan = ndref(pn, 0);
           if (pan->nt != NT_TYPE) expr_wasmify(pan, pvib, plib);
+        } break;
+        case INTR_GENERIC: {
+          size_t i;
+          for (i = 0; i < ndlen(pn); ++i) {
+            node_t *pni = ndref(pn, i);
+            if (pni->nt != NT_NULL && pni->nt != NT_TYPE)
+              expr_wasmify(pni, pvib, plib);
+          }
         } break;
         case INTR_ALLOCA: case INTR_ACODE:
         case INTR_ASU32:  case INTR_ASFLT:
@@ -3556,6 +3577,18 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
           v.i = (int)offset;
           pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_INT);
           asm_numerical_const(TS_INT, &v, icbnewbk(&pcn->data));
+        } break;
+        case INTR_GENERIC: {
+          size_t i; node_t *ptn = ndref(pn, 0);
+          if (ptn->nt != NT_TYPE) ptn = acode_type(expr_compile(ptn, prib, NULL));
+          for (i = 1; i+1 < ndlen(pn); i += 2) {
+            node_t *ptni = ndref(pn, i), *pxni = ndref(pn, i+1);
+            if (ptni->nt == NT_NULL || same_type(ptn, ptni)) {
+              pcn = expr_compile(pxni, prib, ret); /* tail call? */
+              break;
+            }
+          }
+          if (!pcn) n2eprintf(ndref(pn, 0), pn, "generic() failed to find matching variant");
         } break;
         case INTR_VAETC: 
         case INTR_VAARG: assert(false); /* wasmified */
