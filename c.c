@@ -827,6 +827,29 @@ bool static_eval(node_t *pn, buf_t *prib, seval_t *pr)
           pr->val = rx.val; ok = true;
         }
         return ok;
+      } else if (pn->intr == INTR_ACODE) {
+        instr_t in = IN_UNREACHABLE; node_t *pan; seval_t rx; bool ok = false;
+        if (ndlen(pn) > 0 && (pan = ndref(pn, 0))->nt == NT_ACODE && icblen(&pan->data) == 1)
+          in = icbref(&pan->data, 0)->in;
+        switch (in) {
+          case IN_I32_REINTERPRET_F32: case IN_F32_REINTERPRET_I32: {
+            ts_t tc = in == IN_I32_REINTERPRET_F32 ? TS_FLOAT : TS_UINT; 
+            if (ndlen(pn) == 2 && static_eval(ndref(pn, 1), prib, &rx) && rx.ts == tc) {
+              union { unsigned u; float f; } uf;
+              if (tc == TS_FLOAT) { uf.f = rx.val.f; pr->ts = TS_UINT; pr->val.u = uf.u; }
+              else { uf.u = (unsigned)rx.val.u; pr->ts = TS_FLOAT; pr->val.f = uf.f; }
+              ok = true;
+            }
+          } break;
+          case IN_I64_REINTERPRET_F64: case IN_F64_REINTERPRET_I64: {
+            ts_t tc = in == IN_I64_REINTERPRET_F64 ? TS_DOUBLE : TS_ULLONG; 
+            if (ndlen(pn) == 2 && static_eval(ndref(pn, 1), prib, &rx) && rx.ts == tc) {
+              pr->ts = (tc == TS_DOUBLE) ? TS_ULLONG : TS_DOUBLE;
+              pr->val = rx.val; ok = true;
+            }
+          } break;
+        }
+        return ok;
       }
     } break;
     case NT_PREFIX: {

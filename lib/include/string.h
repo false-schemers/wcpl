@@ -29,9 +29,9 @@ extern void *memset(void *dst, int c, size_t n);
 extern size_t strlen(const char *s);
 extern const char *strerror(int errno);
 /* nonstandard but common */
-extern char *strdup(const char *s);
-extern char *strndup(const char *s, size_t n);
-extern void *memccpy(void *d, const void *s, int c, size_t n);
+extern char *strdup(const char *s); // POSIX, C23
+extern char *strndup(const char *s, size_t n); // POSIX, C23
+extern void *memccpy(void *d, const void *s, int c, size_t n); // POSIX, C23
 extern void *memmem(const void *, size_t, const void *, size_t);
 extern size_t strnlen(const char *s, size_t maxlen);
 extern void memswap(void *s1, void *s2, size_t n);
