@@ -825,24 +825,6 @@ bool static_eval(node_t *pn, buf_t *prib, seval_t *pr)
             return static_eval(pxni, prib, pr); /* tail call? */
         }
         return false;
-      } else if (pn->intr == INTR_ASU32 || pn->intr == INTR_ASFLT) {
-        ts_t tc = pn->intr == INTR_ASU32 ? TS_FLOAT : TS_UINT; 
-        seval_t rx; bool ok = false; assert(ndlen(pn) == 1);
-        if (static_eval(ndref(pn, 0), prib, &rx) && rx.ts == tc) {
-          union { unsigned u; float f; } uf;
-          if (pn->intr == INTR_ASU32) { uf.f = rx.val.f; pr->ts = TS_UINT; pr->val.u = uf.u; }
-          else { uf.u = (unsigned)rx.val.u; pr->ts = TS_FLOAT; pr->val.f = uf.f; }
-          ok = true;
-        }
-        return ok;
-      } else if (pn->intr == INTR_ASU64 || pn->intr == INTR_ASDBL) {
-        ts_t tc = pn->intr == INTR_ASU64 ? TS_DOUBLE : TS_ULLONG; 
-        seval_t rx; bool ok = false; assert(ndlen(pn) == 1);
-        if (static_eval(ndref(pn, 0), prib, &rx) && rx.ts == tc) {
-          pr->ts = (pn->intr == INTR_ASU64) ? TS_ULLONG : TS_DOUBLE;
-          pr->val = rx.val; ok = true;
-        }
-        return ok;
       } else if (pn->intr == INTR_ACODE) {
         instr_t in = IN_UNREACHABLE; node_t *pan; seval_t rx; bool ok = false;
         if (ndlen(pn) > 0 && (pan = ndref(pn, 0))->nt == NT_ACODE && icblen(&pan->data) == 1)
@@ -1467,10 +1449,6 @@ static bool arithmetic_constant_expr(node_t *pn)
       switch (pn->intr) {
         case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF:
           return true;
-        case INTR_ASU32: case INTR_ASFLT: 
-        case INTR_ASU64: case INTR_ASDBL:
-          assert(ndlen(pn) == 1); 
-          return arithmetic_constant_expr(ndref(pn, 0));
         case INTR_GENERIC: {
           size_t i; assert(ndlen(pn) >= 1);
           for (i = 1; i+1 < ndlen(pn); i += 2)
@@ -1737,9 +1715,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
               expr_wasmify(pni, pvib, plib);
           }
         } break;
-        case INTR_ALLOCA: case INTR_ACODE:
-        case INTR_ASU32:  case INTR_ASFLT:
-        case INTR_ASU64:  case INTR_ASDBL: {
+        case INTR_ACODE: {
           size_t i;
           for (i = 0; i < ndlen(pn); ++i) expr_wasmify(ndref(pn, i), pvib, plib);
         } break;
@@ -3519,54 +3495,6 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
             neprintf(pn, "alloca() intrinsic expects one argument");
           }
         } break;
-        case INTR_ASU32: {
-          if (ndlen(pn) == 1) {
-            node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
-            node_t *ptni = acode_type(pan);
-            if (ptni->ts != TS_FLOAT) neprintf(pn, "asuint32() argument should have 'float' type");
-            acode_pushin(pan, IN_I32_REINTERPRET_F32);
-            ptni->ts = TS_UINT;
-            pcn = pan;
-          } else {
-            neprintf(pn, "asuint32() intrinsic expects one argument");
-          }
-        } break;
-        case INTR_ASFLT: {
-          if (ndlen(pn) == 1) {
-            node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
-            node_t *ptni = acode_type(pan);
-            if (ptni->ts != TS_UINT) neprintf(pn, "asfloat() argument should have 'uint32_t' type");
-            acode_pushin(pan, IN_F32_REINTERPRET_I32);
-            ptni->ts = TS_FLOAT;
-            pcn = pan;
-          } else {
-            neprintf(pn, "asfloat() intrinsic expects one argument");
-          }
-        } break;
-        case INTR_ASU64: {
-          if (ndlen(pn) == 1) {
-            node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
-            node_t *ptni = acode_type(pan);
-            if (ptni->ts != TS_DOUBLE) neprintf(pn, "asuint64() argument should have 'double' type");
-            acode_pushin(pan, IN_I64_REINTERPRET_F64);
-            ptni->ts = TS_ULLONG;
-            pcn = pan;
-          } else {
-            neprintf(pn, "asuint64() intrinsic expects one argument");
-          }
-        } break;
-        case INTR_ASDBL: {
-          if (ndlen(pn) == 1) {
-            node_t *pan = expr_compile(ndref(pn, 0), prib, NULL);
-            node_t *ptni = acode_type(pan);
-            if (ptni->ts != TS_ULLONG) neprintf(pn, "asdouble() argument should have 'uint64_t' type");
-            acode_pushin(pan, IN_F64_REINTERPRET_I64);
-            ptni->ts = TS_DOUBLE;
-            pcn = pan;
-          } else {
-            neprintf(pn, "asdouble() intrinsic expects one argument");
-          }
-        } break;
         case INTR_ACODE: {
           size_t i; buf_t apb = mkbuf(sizeof(node_t*));
           node_t *pacn = ndref(pn, 0), *pact;
@@ -4501,7 +4429,7 @@ int main(int argc, char **argv)
       case 'L':  eoarg = eoptarg; dsbpushbk(&libv, &eoarg); break;
       case 's':  s_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'a':  a_arg = strtoul(eoptarg, NULL, 0); break; 
-      case 'h':  eusage("WCPL 1.00 built on " __DATE__);
+      case 'h':  eusage("WCPL 1.01 built on " __DATE__);
     }
   }
 
