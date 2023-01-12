@@ -23,6 +23,7 @@ Features listed below are the ones that are either borrowed from modern C dialec
 - variables can be declared in the first clause of the `for` statement
 - labels can only label starts/ends of sub-blocks; `goto` can only target labels in the same block or its parent blocks
 - assignment of structures/unions (and same-type arrays as well)
+- generic type diapatch via C11-like `_Generic`/`generic` forms
 - vararg macros and `stdarg.h`
 - vararg `...` short integer and float arguments implicitly promoted to `int`/`double` respectively; arrays converted to pointers
 
@@ -55,7 +56,7 @@ Features listed below are the ones that are either borrowed from modern C dialec
 ## Additional WCPL-specific features
 
 - `#pragma module "foo"` in headers
-- `asuint32`, `asfloat`, `asuint64`, `asdouble` reinterpret-cast-style intrinsics
+- `asm` form for inline webassembly
 
 # Libraries
 
@@ -80,6 +81,7 @@ Features listed below are the ones that are either borrowed from modern C dialec
 - `<locale.h>` (stub to allow setting utf8 locale)
 - `<sys/types.h>` (header only, internal)
 - `<sys/cdefs.h>` (header only, internal)
+- `<sys/intrs.h>` (header only, internal -- WASM intrinsics)
 - `<sys/stat.h>` (POSIX-like, abridged)
 - `<fcntl.h>` (POSIX-like, abridged)
 - `<dirent.h>` (POSIX-like, abridged)
@@ -153,6 +155,25 @@ tools.
 Please read the documentation on your WASM runtime for details on directory/environment
 mapping and passing command line arguments.
 
+## Profiling executables
+
+WCPL's executables in WAT format can be profiled via Intel's `vtune` profiler while
+running under `wasmtime`* runtime with `--vtune` option. Runtime statistics is dispayed
+in terms of the original WCPL functions, so hotspots in WCPL code can be identified.
+
+## Additional optimizations
+
+WASM executables produced by WCPL are quite small but not as fast as ones produced
+by industry-scale optimizing compilers such as `clang`. As a rule, executables
+produced by WCPL are about as fast as the ones produced by `clang`'s `-O0` mode. 
+Fortunately, some advanced optimizations can be applied to WASM output post-factum.
+One tool that can be used for this purpose is `wasm-opt` from `bynaryen`*** project:
+
+```
+$ wcpl -L lib/ -o foo.wasm foo.c
+$ wasm-opt -o foo-opt.wasm -O3 foo.wasm
+```
+
 ## Self-hosting
 
 Starting with version 1.0, WCPL can compile its own source code and the resulting WASM
@@ -171,11 +192,11 @@ Files wcpl.wasm and wcpl1.wasm are identical
 
 \*\* available at https://github.com/WebAssembly/wabt/releases
 
+\*\*\* available at https://github.com/WebAssembly/binaryen
+
+
 # Future directions
 
-WASM executables produced by WCPL are quite small but not very fast. We plan to add
-more optimizations and improved library algorithms such as `malloc()` to improve
-performance without increasing size of executables too much. We also plan to add more 
-C features such as local static variables, as well as more popular libraries such as
-POSIX-compatible regular expressions.
+We plan to add more C features such as local static variables and macros with variable number
+of arguments, as well as some popular libraries such as POSIX-compatible regular expressions.
 
