@@ -46,13 +46,14 @@
     unsigned long long: __builtin_rotr64(x, n), \
              long long: __builtin_rotr64(x, n), \
                default: __builtin_rotr32(x, n)))
-#define _fasui(x) (generic((x), \
-                 float: __builtin_asuint32(x), \
+#define _fasu(x) (generic((x), \
+                 float: __builtin_asuint32(x)))
+#define _dasull(x) (generic((x), \
                 double: __builtin_asuint64(x)))
-#define _uiasf(x) (generic((x), \
-    unsigned long long: __builtin_asdouble(x), \
-             long long: __builtin_asdouble(x), \
-               default: __builtin_asfloat(x)))
-#define _bset(d, v, n)  __builtin_memset(d, v, n)
-#define _bzero(d, n)    __builtin_memset(d, 0, n)
-#define _bcopy(d, s, n) __builtin_memmove(d, s, n)
+#define _uasf(x) (generic((x), \
+              unsigned: __builtin_asfloat(x)))
+#define _ullasd(x) (generic((x), \
+    unsigned long long: __builtin_asdouble(x)))
+#define _bfill(d, v, n) (__builtin_memset(d, v, n))
+#define _bzero(d, n)    (__builtin_memset(d, 0, n))
+#define _bcopy(d, s, n) (__builtin_memmove(d, s, n))

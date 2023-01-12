@@ -1,9 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-
-#define INFINITY (asdouble(0x7FF0000000000000ULL))
-#define NAN      (asdouble(0x7FF8000000000000ULL))
+#include <math.h>
 
 #define REQUIRE(x) do { ++testno; if (!(x)) fail(testno, buffer); } while(0)
 

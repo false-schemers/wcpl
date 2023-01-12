@@ -922,7 +922,7 @@ int _vsnscanf(in_fct_t in, void *data, size_t maxlen, const char *format, va_lis
       case 'c':
       case '[':
         if (t == 'c' || t == 's') {
-          _bset(&scanset[0], -1, 257);
+          _bfill(&scanset[0], -1, 257);
           scanset[0] = 0;
           if (t == 's') {
             scanset[1 + '\t'] = 0;
@@ -935,7 +935,7 @@ int _vsnscanf(in_fct_t in, void *data, size_t maxlen, const char *format, va_lis
         } else {
           if (*++p == '^') p++, invert = 1;
           else invert = 0;
-          _bset(&scanset[0], invert, 257);
+          _bfill(&scanset[0], invert, 257);
           scanset[0] = 0;
           if (*p == '-') p++, scanset[1 + '-'] = 1 - invert;
           else if (*p == ']') p++, scanset[1 + ']'] = 1 - invert;

@@ -9,10 +9,10 @@
 #define FE_UNDERFLOW 0
 #define FE_INEXACT 0
 
-#define ieee754_fabs(x) (asdouble(asuint64(x) & 0x7FFFFFFFFFFFFFFFULL))
-#define ieee754_copysign(x, y) (asdouble((asuint64(x) & 0x7FFFFFFFFFFFFFFFULL) | (asuint64(y) & 0x8000000000000000ULL)))
+#define ieee754_fabs(x) (_ullasd(_dasull(x) & 0x7FFFFFFFFFFFFFFFULL))
+#define ieee754_copysign(x, y) (_ullasd((_dasull(x) & 0x7FFFFFFFFFFFFFFFULL) | (_dasull(y) & 0x8000000000000000ULL)))
 
-#define __builtin_nan(s) (asdouble(0x7FF8000000000000ULL)) /* +nan */
+#define __builtin_nan(s) (_ullasd(0x7FF8000000000000ULL)) /* +nan */
 #define math_force_eval(x) ((void)(x)) /* supposed to raise exception but won't */
 
 /* wasm raises no exceptions, so these are straightforward */
@@ -35,26 +35,26 @@
 #define IEEE754_DOUBLE_SHIFT 20
 
 #define GET_DOUBLE_WORDS(ix0,ix1,d)          \
-do { uint64_t __t = asuint64(d);             \
+do { uint64_t __t = _dasull(d);             \
      (ix0) = (int32_t)(__t >> 32);           \
      (ix1) = (int32_t)(__t); } while (0)
 
 #define GET_HIGH_WORD(i,d)                   \
- ((i) = (int32_t)(asuint64(d) >> 32))
+ ((i) = (int32_t)(_dasull(d) >> 32))
 
 #define GET_LOW_WORD(i,d)                    \
- ((i) = (int32_t)asuint64(d))
+ ((i) = (int32_t)_dasull(d))
 
 #define INSERT_WORDS(d,ix0,ix1)              \
- ((d) = asdouble(((uint64_t)(ix0) << 32)     \
+ ((d) = _ullasd(((uint64_t)(ix0) << 32)     \
      | ((uint64_t)(ix1) & 0xFFFFFFFFULL)))
      
 #define SET_HIGH_WORD(d,v)                   \
-  ((d) = asdouble((asuint64(d) &             \
+  ((d) = _ullasd((_dasull(d) &             \
      0xFFFFFFFFULL) | ((uint64_t)(v) << 32)))
      
 #define SET_LOW_WORD(d,v)                    \
- ((d) = asdouble((asuint64(d) &~             \
+ ((d) = _ullasd((_dasull(d) &~             \
      0xFFFFFFFFULL) | (uint64_t)(v))) 
 
 #define IC(x) ((int32_t) x)
@@ -66,130 +66,130 @@ do { uint64_t __t = asuint64(d);             \
  * compiler will convert from decimal to binary accurately enough 
  * to produce the hexadecimal values shown. */
 
-#define two54   (asdouble(0x4350000000000000ULL)) /* 2^54 = 0x1p54 = 1.80143985094819840000e+16 */
-#define twom54  (asdouble(0x3C90000000000000ULL)) /* 2^-54 = 0x1p-54 = 5.55111512312578270212e-17 */
-#define hugeval (asdouble(0x7E37E43C8800759CULL)) /* 1.0e+300 */
-#define tiny    (asdouble(0x01A56E1FC2F8F359ULL)) /* 1.0e-300 */
+#define two54   (_ullasd(0x4350000000000000ULL)) /* 2^54 = 0x1p54 = 1.80143985094819840000e+16 */
+#define twom54  (_ullasd(0x3C90000000000000ULL)) /* 2^-54 = 0x1p-54 = 5.55111512312578270212e-17 */
+#define hugeval (_ullasd(0x7E37E43C8800759CULL)) /* 1.0e+300 */
+#define tiny    (_ullasd(0x01A56E1FC2F8F359ULL)) /* 1.0e-300 */
 static const double bp[] = { 
-  (asdouble(0x3FF0000000000000ULL)), /* 1.0 */ 
-  (asdouble(0x3FF8000000000000ULL))  /* 1.5 */ 
+  (_ullasd(0x3FF0000000000000ULL)), /* 1.0 */ 
+  (_ullasd(0x3FF8000000000000ULL))  /* 1.5 */ 
 };
 static const double dp_h[] = { 
-  (asdouble(0x0000000000000000ULL)), /* 0.0 */ 
-  (asdouble(0x3FE2B80340000000ULL))  /* 5.84962487220764160156e-01 */
+  (_ullasd(0x0000000000000000ULL)), /* 0.0 */ 
+  (_ullasd(0x3FE2B80340000000ULL))  /* 5.84962487220764160156e-01 */
 };
 static const double dp_l[] = { 
-  (asdouble(0x0000000000000000ULL)), /* 0.0 */
-  (asdouble(0x3E4CFDEB43CFD006ULL))  /* 1.35003920212974897128e-08 */
+  (_ullasd(0x0000000000000000ULL)), /* 0.0 */
+  (_ullasd(0x3E4CFDEB43CFD006ULL))  /* 1.35003920212974897128e-08 */
 }; 
 static const double Zero[] = { 
-  (asdouble(0x0000000000000000ULL)), /* 0.0 */
-  (asdouble(0x8000000000000000ULL))  /* -0.0 */
+  (_ullasd(0x0000000000000000ULL)), /* 0.0 */
+  (_ullasd(0x8000000000000000ULL))  /* -0.0 */
 }; 
-#define zero      (asdouble(0x0000000000000000ULL))   /* 0.0 */
-#define half      (asdouble(0x3FE0000000000000ULL))   /* 0.5 */
-#define one       (asdouble(0x3FF0000000000000ULL))   /* 1.0 */
-#define two       (asdouble(0x4000000000000000ULL))   /* 2.0 */
-#define two53     (asdouble(0x4340000000000000ULL))   /* 9007199254740992.0 */
+#define zero      (_ullasd(0x0000000000000000ULL))   /* 0.0 */
+#define half      (_ullasd(0x3FE0000000000000ULL))   /* 0.5 */
+#define one       (_ullasd(0x3FF0000000000000ULL))   /* 1.0 */
+#define two       (_ullasd(0x4000000000000000ULL))   /* 2.0 */
+#define two53     (_ullasd(0x4340000000000000ULL))   /* 9007199254740992.0 */
 /* poly coefs for (3/2)*(log(x)-2s-2/3*s**3 */
-#define L1        (asdouble(0x3FE3333333333303ULL))   /*  5.99999999999994648725e-01 */
-#define L2        (asdouble(0x3FDB6DB6DB6FABFFULL))   /*  4.28571428578550184252e-01 */
-#define L3        (asdouble(0x3FD55555518F264DULL))   /*  3.33333329818377432918e-01 */
-#define L4        (asdouble(0x3FD17460A91D4101ULL))   /*  2.72728123808534006489e-01 */
-#define L5        (asdouble(0x3FCD864A93C9DB65ULL))   /*  2.30660745775561754067e-01 */
-#define L6        (asdouble(0x3FCA7E284A454EEFULL))   /*  2.06975017800338417784e-01 */
-#define P1        (asdouble(0x3FC555555555553EULL))   /*  1.66666666666666019037e-01 */
-#define P2        (asdouble(0xBF66C16C16BEBD93ULL))   /* -2.77777777770155933842e-03 */
-#define P3        (asdouble(0x3F11566AAF25DE2CULL))   /*  6.61375632143793436117e-05 */
-#define P4        (asdouble(0xBEBBBD41C5D26BF1ULL))   /* -1.65339022054652515390e-06 */
-#define P5        (asdouble(0x3E66376972BEA4D0ULL))   /*  4.13813679705723846039e-08 */
-#define lg2       (asdouble(0x3FE62E42FEFA39EFULL))   /*  6.93147180559945286227e-01 */
-#define lg2_h     (asdouble(0x3FE62E4300000000ULL))   /*  6.93147182464599609375e-01 */
-#define lg2_l     (asdouble(0xBE205C610CA86C39ULL))   /* -1.90465429995776804525e-09 */
-#define ovt       (asdouble(0x3C971547652B82FEULL))   /*  8.00856625953729443720e-17 =-(1024-log2(ovfl+.5ulp)) */
-#define cp        (asdouble(0x3FEEC709DC3A03FDULL))   /*  9.61796693925975554329e-01 =2/(3ln2) */
-#define cp_h      (asdouble(0x3FEEC709E0000000ULL))   /*  9.61796700954437255859e-01 =(float)cp */
-#define cp_l      (asdouble(0xBE3E2FE0145B01F5ULL))   /* -7.02846165095275826516e-09 =tail of cp_h */
-#define ivln2     (asdouble(0x3FF71547652B82FEULL))   /*  1.44269504088896338700e+00 =1/ln2 */
-#define ivln2_h   (asdouble(0x3FF7154760000000ULL))   /*  1.44269502162933349609e+00 =24b 1/ln2 */
-#define ivln2_l   (asdouble(0x3E54AE0BF85DDF44ULL))   /*  1.92596299112661746887e-08 =1/ln2 tail */
-#define ln2_hi    (asdouble(0x3FE62E42FEE00000ULL))   /*  6.93147180369123816490e-01 */
-#define ln2_lo    (asdouble(0x3DEA39EF35793C76ULL))   /*  1.90821492927058770002e-10 */
-#define Lg1       (asdouble(0x3FE5555555555593ULL))   /*  6.666666666666735130e-01 */
-#define Lg2       (asdouble(0x3FD999999997FA04ULL))   /*  3.999999999940941908e-01 */
-#define Lg3       (asdouble(0x3FD2492494229359ULL))   /*  2.857142874366239149e-01 */
-#define Lg4       (asdouble(0x3FCC71C51D8E78AFULL))   /*  2.222219843214978396e-01 */
-#define Lg5       (asdouble(0x3FC7466496CB03DEULL))   /*  1.818357216161805012e-01 */
-#define Lg6       (asdouble(0x3FC39A09D078C69FULL))   /*  1.531383769920937332e-01 */
-#define Lg7       (asdouble(0x3FC2F112DF3E5244ULL))   /*  1.479819860511658591e-01 */
-#define ivln10    (asdouble(0x3FDBCB7B1526E50EULL))   /*  4.34294481903251816668e-01 */
-#define log10_2hi (asdouble(0x3FD34413509F6000ULL))   /*  3.01029995663611771306e-01 */
-#define log10_2lo (asdouble(0x3D59FEF311F12B36ULL))   /*  3.69423907715893078616e-13 */
+#define L1        (_ullasd(0x3FE3333333333303ULL))   /*  5.99999999999994648725e-01 */
+#define L2        (_ullasd(0x3FDB6DB6DB6FABFFULL))   /*  4.28571428578550184252e-01 */
+#define L3        (_ullasd(0x3FD55555518F264DULL))   /*  3.33333329818377432918e-01 */
+#define L4        (_ullasd(0x3FD17460A91D4101ULL))   /*  2.72728123808534006489e-01 */
+#define L5        (_ullasd(0x3FCD864A93C9DB65ULL))   /*  2.30660745775561754067e-01 */
+#define L6        (_ullasd(0x3FCA7E284A454EEFULL))   /*  2.06975017800338417784e-01 */
+#define P1        (_ullasd(0x3FC555555555553EULL))   /*  1.66666666666666019037e-01 */
+#define P2        (_ullasd(0xBF66C16C16BEBD93ULL))   /* -2.77777777770155933842e-03 */
+#define P3        (_ullasd(0x3F11566AAF25DE2CULL))   /*  6.61375632143793436117e-05 */
+#define P4        (_ullasd(0xBEBBBD41C5D26BF1ULL))   /* -1.65339022054652515390e-06 */
+#define P5        (_ullasd(0x3E66376972BEA4D0ULL))   /*  4.13813679705723846039e-08 */
+#define lg2       (_ullasd(0x3FE62E42FEFA39EFULL))   /*  6.93147180559945286227e-01 */
+#define lg2_h     (_ullasd(0x3FE62E4300000000ULL))   /*  6.93147182464599609375e-01 */
+#define lg2_l     (_ullasd(0xBE205C610CA86C39ULL))   /* -1.90465429995776804525e-09 */
+#define ovt       (_ullasd(0x3C971547652B82FEULL))   /*  8.00856625953729443720e-17 =-(1024-log2(ovfl+.5ulp)) */
+#define cp        (_ullasd(0x3FEEC709DC3A03FDULL))   /*  9.61796693925975554329e-01 =2/(3ln2) */
+#define cp_h      (_ullasd(0x3FEEC709E0000000ULL))   /*  9.61796700954437255859e-01 =(float)cp */
+#define cp_l      (_ullasd(0xBE3E2FE0145B01F5ULL))   /* -7.02846165095275826516e-09 =tail of cp_h */
+#define ivln2     (_ullasd(0x3FF71547652B82FEULL))   /*  1.44269504088896338700e+00 =1/ln2 */
+#define ivln2_h   (_ullasd(0x3FF7154760000000ULL))   /*  1.44269502162933349609e+00 =24b 1/ln2 */
+#define ivln2_l   (_ullasd(0x3E54AE0BF85DDF44ULL))   /*  1.92596299112661746887e-08 =1/ln2 tail */
+#define ln2_hi    (_ullasd(0x3FE62E42FEE00000ULL))   /*  6.93147180369123816490e-01 */
+#define ln2_lo    (_ullasd(0x3DEA39EF35793C76ULL))   /*  1.90821492927058770002e-10 */
+#define Lg1       (_ullasd(0x3FE5555555555593ULL))   /*  6.666666666666735130e-01 */
+#define Lg2       (_ullasd(0x3FD999999997FA04ULL))   /*  3.999999999940941908e-01 */
+#define Lg3       (_ullasd(0x3FD2492494229359ULL))   /*  2.857142874366239149e-01 */
+#define Lg4       (_ullasd(0x3FCC71C51D8E78AFULL))   /*  2.222219843214978396e-01 */
+#define Lg5       (_ullasd(0x3FC7466496CB03DEULL))   /*  1.818357216161805012e-01 */
+#define Lg6       (_ullasd(0x3FC39A09D078C69FULL))   /*  1.531383769920937332e-01 */
+#define Lg7       (_ullasd(0x3FC2F112DF3E5244ULL))   /*  1.479819860511658591e-01 */
+#define ivln10    (_ullasd(0x3FDBCB7B1526E50EULL))   /*  4.34294481903251816668e-01 */
+#define log10_2hi (_ullasd(0x3FD34413509F6000ULL))   /*  3.01029995663611771306e-01 */
+#define log10_2lo (_ullasd(0x3D59FEF311F12B36ULL))   /*  3.69423907715893078616e-13 */
 /* exp constants */
 static const double halF[2] = { 
-  (asdouble(0x3FE0000000000000ULL)), /* 0.5 */ 
-  (asdouble(0xBFE0000000000000ULL))  /* -0.5 */
+  (_ullasd(0x3FE0000000000000ULL)), /* 0.5 */ 
+  (_ullasd(0xBFE0000000000000ULL))  /* -0.5 */
 };
-#define twom1000 (asdouble(0x0170000000000000ULL))  /* 2**-1000= 9.33263618503218878990e-302 */
-#define o_threshold (asdouble(0x40862E42FEFA39EFULL))  /* 7.09782712893383973096e+02 */
-#define u_threshold (asdouble(0xC0874910D52D3051ULL)) /* -7.45133219101941108420e+02 */
+#define twom1000 (_ullasd(0x0170000000000000ULL))  /* 2**-1000= 9.33263618503218878990e-302 */
+#define o_threshold (_ullasd(0x40862E42FEFA39EFULL))  /* 7.09782712893383973096e+02 */
+#define u_threshold (_ullasd(0xC0874910D52D3051ULL)) /* -7.45133219101941108420e+02 */
 static const double ln2HI[2] = { /* ln2_hi, -ln2_hi */
-  (asdouble(0x3FE62E42FEE00000ULL)), /* +6.93147180369123816490e-01 */
-  (asdouble(0xBFE62E42FEE00000ULL))  /* -6.93147180369123816490e-01 */
+  (_ullasd(0x3FE62E42FEE00000ULL)), /* +6.93147180369123816490e-01 */
+  (_ullasd(0xBFE62E42FEE00000ULL))  /* -6.93147180369123816490e-01 */
 };
 static const double ln2LO[2] = { /* ln2_lo, -ln2_lo */
-  (asdouble(0x3DEA39EF35793C76ULL)), /* +1.90821492927058770002e-10 */
-  (asdouble(0xBDEA39EF35793C76ULL))  /* -1.90821492927058770002e-10 */
+  (_ullasd(0x3DEA39EF35793C76ULL)), /* +1.90821492927058770002e-10 */
+  (_ullasd(0xBDEA39EF35793C76ULL))  /* -1.90821492927058770002e-10 */
 };
 /* scaled coefficients related to expm1 */
 static const double Q[] = {
-  (asdouble(0x3FF0000000000000ULL)),   /* 1.0 */
-  (asdouble(0xBFA11111111110F4ULL)),  /* -3.33333333333331316428e-02 */
-  (asdouble(0x3F5A01A019FE5585ULL)),   /* 1.58730158725481460165e-03 */
-  (asdouble(0xBF14CE199EAADBB7ULL)),  /* -7.93650757867487942473e-05 */
-  (asdouble(0x3ED0CFCA86E65239ULL)),   /* 4.00821782732936239552e-06 */
-  (asdouble(0xBE8AFDB76E09C32DULL))   /* -2.01099218183624371326e-07 */
+  (_ullasd(0x3FF0000000000000ULL)),   /* 1.0 */
+  (_ullasd(0xBFA11111111110F4ULL)),  /* -3.33333333333331316428e-02 */
+  (_ullasd(0x3F5A01A019FE5585ULL)),   /* 1.58730158725481460165e-03 */
+  (_ullasd(0xBF14CE199EAADBB7ULL)),  /* -7.93650757867487942473e-05 */
+  (_ullasd(0x3ED0CFCA86E65239ULL)),   /* 4.00821782732936239552e-06 */
+  (_ullasd(0xBE8AFDB76E09C32DULL))   /* -2.01099218183624371326e-07 */
 };
 /* trig constants */
-#define S1        (asdouble(0xBFC5555555555549ULL))   /* -1.66666666666666324348e-01 */
-#define S2        (asdouble(0x3F8111111110F8A6ULL))   /*  8.33333333332248946124e-03 */
-#define S3        (asdouble(0xBF2A01A019C161D5ULL))   /* -1.98412698298579493134e-04 */
-#define S4        (asdouble(0x3EC71DE357B1FE7DULL))   /*  2.75573137070700676789e-06 */
-#define S5        (asdouble(0xBE5AE5E68A2B9CEBULL))   /* -2.50507602534068634195e-08 */
-#define S6        (asdouble(0x3DE5D93A5ACFD57CULL))   /*  1.58969099521155010221e-10 */
-#define C1        (asdouble(0x3FA555555555554CULL))   /*  4.16666666666666019037e-02 */
-#define C2        (asdouble(0xBF56C16C16C15177ULL))   /* -1.38888888888741095749e-03 */
-#define C3        (asdouble(0x3EFA01A019CB1590ULL))   /*  2.48015872894767294178e-05 */
-#define C4        (asdouble(0xBE927E4F809C52ADULL))   /* -2.75573143513906633035e-07 */
-#define C5        (asdouble(0x3E21EE9EBDB4B1C4ULL))   /*  2.08757232129817482790e-09 */
-#define C6        (asdouble(0xBDA8FAE9BE8838D4ULL))   /* -1.13596475577881948265e-11 */
+#define S1        (_ullasd(0xBFC5555555555549ULL))   /* -1.66666666666666324348e-01 */
+#define S2        (_ullasd(0x3F8111111110F8A6ULL))   /*  8.33333333332248946124e-03 */
+#define S3        (_ullasd(0xBF2A01A019C161D5ULL))   /* -1.98412698298579493134e-04 */
+#define S4        (_ullasd(0x3EC71DE357B1FE7DULL))   /*  2.75573137070700676789e-06 */
+#define S5        (_ullasd(0xBE5AE5E68A2B9CEBULL))   /* -2.50507602534068634195e-08 */
+#define S6        (_ullasd(0x3DE5D93A5ACFD57CULL))   /*  1.58969099521155010221e-10 */
+#define C1        (_ullasd(0x3FA555555555554CULL))   /*  4.16666666666666019037e-02 */
+#define C2        (_ullasd(0xBF56C16C16C15177ULL))   /* -1.38888888888741095749e-03 */
+#define C3        (_ullasd(0x3EFA01A019CB1590ULL))   /*  2.48015872894767294178e-05 */
+#define C4        (_ullasd(0xBE927E4F809C52ADULL))   /* -2.75573143513906633035e-07 */
+#define C5        (_ullasd(0x3E21EE9EBDB4B1C4ULL))   /*  2.08757232129817482790e-09 */
+#define C6        (_ullasd(0xBDA8FAE9BE8838D4ULL))   /* -1.13596475577881948265e-11 */
 static const double T[] = {
-  (asdouble(0x3FD5555555555563ULL)),   /* 3.33333333333334091986e-01 */
-  (asdouble(0x3FC111111110FE7AULL)),   /* 1.33333333333201242699e-01 */
-  (asdouble(0x3FABA1BA1BB341FEULL)),   /* 5.39682539762260521377e-02 */
-  (asdouble(0x3F9664F48406D637ULL)),   /* 2.18694882948595424599e-02 */
-  (asdouble(0x3F8226E3E96E8493ULL)),   /* 8.86323982359930005737e-03 */
-  (asdouble(0x3F6D6D22C9560328ULL)),   /* 3.59207910759131235356e-03 */
-  (asdouble(0x3F57DBC8FEE08315ULL)),   /* 1.45620945432529025516e-03 */
-  (asdouble(0x3F4344D8F2F26501ULL)),   /* 5.88041240820264096874e-04 */
-  (asdouble(0x3F3026F71A8D1068ULL)),   /* 2.46463134818469906812e-04 */
-  (asdouble(0x3F147E88A03792A6ULL)),   /* 7.81794442939557092300e-05 */
-  (asdouble(0x3F12B80F32F0A7E9ULL)),   /* 7.14072491382608190305e-05 */
-  (asdouble(0xBEF375CBDB605373ULL)),  /* -1.85586374855275456654e-05 */
-  (asdouble(0x3EFB2A7074BF7AD4ULL))    /* 2.59073051863633712884e-05 */
+  (_ullasd(0x3FD5555555555563ULL)),   /* 3.33333333333334091986e-01 */
+  (_ullasd(0x3FC111111110FE7AULL)),   /* 1.33333333333201242699e-01 */
+  (_ullasd(0x3FABA1BA1BB341FEULL)),   /* 5.39682539762260521377e-02 */
+  (_ullasd(0x3F9664F48406D637ULL)),   /* 2.18694882948595424599e-02 */
+  (_ullasd(0x3F8226E3E96E8493ULL)),   /* 8.86323982359930005737e-03 */
+  (_ullasd(0x3F6D6D22C9560328ULL)),   /* 3.59207910759131235356e-03 */
+  (_ullasd(0x3F57DBC8FEE08315ULL)),   /* 1.45620945432529025516e-03 */
+  (_ullasd(0x3F4344D8F2F26501ULL)),   /* 5.88041240820264096874e-04 */
+  (_ullasd(0x3F3026F71A8D1068ULL)),   /* 2.46463134818469906812e-04 */
+  (_ullasd(0x3F147E88A03792A6ULL)),   /* 7.81794442939557092300e-05 */
+  (_ullasd(0x3F12B80F32F0A7E9ULL)),   /* 7.14072491382608190305e-05 */
+  (_ullasd(0xBEF375CBDB605373ULL)),  /* -1.85586374855275456654e-05 */
+  (_ullasd(0x3EFB2A7074BF7AD4ULL))    /* 2.59073051863633712884e-05 */
 };
-#define pio4      (asdouble(0x3FE921FB54442D18ULL))   /* 7.85398163397448278999e-01 */
-#define pio4lo    (asdouble(0x3C81A62633145C07ULL))   /* 3.06161699786838301793e-17 */
+#define pio4      (_ullasd(0x3FE921FB54442D18ULL))   /* 7.85398163397448278999e-01 */
+#define pio4lo    (_ullasd(0x3C81A62633145C07ULL))   /* 3.06161699786838301793e-17 */
 static const int init_jk[] = { 2, 3, 4, 6 }; /* initial value for jk */
 static const double PIo2[] = {
-  (asdouble(0x3FF921FB40000000ULL)),   /* 1.57079625129699707031e+00 */
-  (asdouble(0x3E74442D00000000ULL)),   /* 7.54978941586159635335e-08 */
-  (asdouble(0x3CF8469880000000ULL)),   /* 5.39030252995776476554e-15 */
-  (asdouble(0x3B78CC5160000000ULL)),   /* 3.28200341580791294123e-22 */
-  (asdouble(0x39F01B8380000000ULL)),   /* 1.27065575308067607349e-29 */
-  (asdouble(0x387A252040000000ULL)),   /* 1.22933308981111328932e-36 */
-  (asdouble(0x36E3822280000000ULL)),   /* 2.73370053816464559624e-44 */
-  (asdouble(0x3569F31D00000000ULL))    /* 2.16741683877804819444e-51 */
+  (_ullasd(0x3FF921FB40000000ULL)),   /* 1.57079625129699707031e+00 */
+  (_ullasd(0x3E74442D00000000ULL)),   /* 7.54978941586159635335e-08 */
+  (_ullasd(0x3CF8469880000000ULL)),   /* 5.39030252995776476554e-15 */
+  (_ullasd(0x3B78CC5160000000ULL)),   /* 3.28200341580791294123e-22 */
+  (_ullasd(0x39F01B8380000000ULL)),   /* 1.27065575308067607349e-29 */
+  (_ullasd(0x387A252040000000ULL)),   /* 1.22933308981111328932e-36 */
+  (_ullasd(0x36E3822280000000ULL)),   /* 2.73370053816464559624e-44 */
+  (_ullasd(0x3569F31D00000000ULL))    /* 2.16741683877804819444e-51 */
 };
 /* Table of constants for 2/pi, 396 Hex digits (476 decimal) of 2/pi */
 static const int32_t two_over_pi[] = {
@@ -205,8 +205,8 @@ static const int32_t two_over_pi[] = {
   IC(0x91615EU), IC(0xE61B08U), IC(0x659985U), IC(0x5F14A0U), IC(0x68408DU), IC(0xFFD880U),
   IC(0x4D7327U), IC(0x310606U), IC(0x1556CAU), IC(0x73A8C9U), IC(0x60E27BU), IC(0xC08C6BU)
 };
-#define two24 (asdouble(0x4170000000000000ULL))  /* 1.67772160000000000000e+07 */
-#define twon24 (asdouble(0x3E70000000000000ULL)) /* 5.96046447753906250000e-08 */
+#define two24 (_ullasd(0x4170000000000000ULL))  /* 1.67772160000000000000e+07 */
+#define twon24 (_ullasd(0x3E70000000000000ULL)) /* 5.96046447753906250000e-08 */
 static const int32_t npio2_hw[] = {
   IC(0x3FF921FBU), IC(0x400921FBU), IC(0x4012D97CU), IC(0x401921FBU), IC(0x401F6A7AU), IC(0x4022D97CU),
   IC(0x4025FDBBU), IC(0x402921FBU), IC(0x402C463AU), IC(0x402F6A7AU), IC(0x4031475CU), IC(0x4032D97CU),
@@ -215,63 +215,63 @@ static const int32_t npio2_hw[] = {
   IC(0x4043A28CU), IC(0x40446B9CU), IC(0x404534ACU), IC(0x4045FDBBU), IC(0x4046C6CBU), IC(0x40478FDBU),
   IC(0x404858EBU), IC(0x404921FBU)
 };
-#define invpio2   (asdouble(0x3FE45F306DC9C883ULL))   /*  6.36619772367581382433e-01 = 53 bits of 2/pi */
-#define pio2_1    (asdouble(0x3FF921FB54400000ULL))   /*  1.57079632673412561417e+00 = first  33 bit of pi/2 */
-#define pio2_1t   (asdouble(0x3DD0B4611A626331ULL))   /*  6.07710050650619224932e-11 = pi/2 - pio2_1 */
-#define pio2_2    (asdouble(0x3DD0B4611A600000ULL))   /*  6.07710050630396597660e-11 = 33 bit of pi/2 */
-#define pio2_2t   (asdouble(0x3BA3198A2E037073ULL))   /*  2.02226624879595063154e-21 = pi/2 - (pio2_1+pio2_2) */
-#define pio2_3    (asdouble(0x3BA3198A2E000000ULL))   /*  2.02226624871116645580e-21 = third  33 bit of pi/2 */
-#define pio2_3t   (asdouble(0x397B839A252049C1ULL))   /*  8.47842766036889956997e-32 = pi/2 - (pio2_1+pio2_2+pio2_3) */
+#define invpio2   (_ullasd(0x3FE45F306DC9C883ULL))   /*  6.36619772367581382433e-01 = 53 bits of 2/pi */
+#define pio2_1    (_ullasd(0x3FF921FB54400000ULL))   /*  1.57079632673412561417e+00 = first  33 bit of pi/2 */
+#define pio2_1t   (_ullasd(0x3DD0B4611A626331ULL))   /*  6.07710050650619224932e-11 = pi/2 - pio2_1 */
+#define pio2_2    (_ullasd(0x3DD0B4611A600000ULL))   /*  6.07710050630396597660e-11 = 33 bit of pi/2 */
+#define pio2_2t   (_ullasd(0x3BA3198A2E037073ULL))   /*  2.02226624879595063154e-21 = pi/2 - (pio2_1+pio2_2) */
+#define pio2_3    (_ullasd(0x3BA3198A2E000000ULL))   /*  2.02226624871116645580e-21 = third  33 bit of pi/2 */
+#define pio2_3t   (_ullasd(0x397B839A252049C1ULL))   /*  8.47842766036889956997e-32 = pi/2 - (pio2_1+pio2_2+pio2_3) */
 
 /* asin/acos constants */
-#define pi        (asdouble(0x400921FB54442D18ULL))   /*  3.14159265358979311600e+00 */
-#define pio2_hi   (asdouble(0x3FF921FB54442D18ULL))   /*  1.57079632679489655800e+00 */
-#define pio2_lo   (asdouble(0x3C91A62633145C07ULL))   /*  6.12323399573676603587e-17 */
-#define pio4_hi   (asdouble(0x3FE921FB54442D18ULL))   /*  7.85398163397448278999e-01 */
+#define pi        (_ullasd(0x400921FB54442D18ULL))   /*  3.14159265358979311600e+00 */
+#define pio2_hi   (_ullasd(0x3FF921FB54442D18ULL))   /*  1.57079632679489655800e+00 */
+#define pio2_lo   (_ullasd(0x3C91A62633145C07ULL))   /*  6.12323399573676603587e-17 */
+#define pio4_hi   (_ullasd(0x3FE921FB54442D18ULL))   /*  7.85398163397448278999e-01 */
 /* coefficient for R(x^2) */
-#define pS0       (asdouble(0x3FC5555555555555ULL))   /*  1.66666666666666657415e-01 */
-#define pS1       (asdouble(0xBFD4D61203EB6F7DULL))   /* -3.25565818622400915405e-01 */
-#define pS2       (asdouble(0x3FC9C1550E884455ULL))   /*  2.01212532134862925881e-01 */
-#define pS3       (asdouble(0xBFA48228B5688F3BULL))   /* -4.00555345006794114027e-02 */
-#define pS4       (asdouble(0x3F49EFE07501B288ULL))   /*  7.91534994289814532176e-04 */
-#define pS5       (asdouble(0x3F023DE10DFDF709ULL))   /*  3.47933107596021167570e-05 */
-#define qS1       (asdouble(0xC0033A271C8A2D4BULL))   /* -2.40339491173441421878e+00 */
-#define qS2       (asdouble(0x40002AE59C598AC8ULL))   /*  2.02094576023350569471e+00 */
-#define qS3       (asdouble(0xBFE6066C1B8D0159ULL))   /* -6.88283971605453293030e-01 */
-#define qS4       (asdouble(0x3FB3B8C5B12E9282ULL))   /*  7.70381505559019352791e-02 */
+#define pS0       (_ullasd(0x3FC5555555555555ULL))   /*  1.66666666666666657415e-01 */
+#define pS1       (_ullasd(0xBFD4D61203EB6F7DULL))   /* -3.25565818622400915405e-01 */
+#define pS2       (_ullasd(0x3FC9C1550E884455ULL))   /*  2.01212532134862925881e-01 */
+#define pS3       (_ullasd(0xBFA48228B5688F3BULL))   /* -4.00555345006794114027e-02 */
+#define pS4       (_ullasd(0x3F49EFE07501B288ULL))   /*  7.91534994289814532176e-04 */
+#define pS5       (_ullasd(0x3F023DE10DFDF709ULL))   /*  3.47933107596021167570e-05 */
+#define qS1       (_ullasd(0xC0033A271C8A2D4BULL))   /* -2.40339491173441421878e+00 */
+#define qS2       (_ullasd(0x40002AE59C598AC8ULL))   /*  2.02094576023350569471e+00 */
+#define qS3       (_ullasd(0xBFE6066C1B8D0159ULL))   /* -6.88283971605453293030e-01 */
+#define qS4       (_ullasd(0x3FB3B8C5B12E9282ULL))   /*  7.70381505559019352791e-02 */
 
 /* atan/atan2 constants */
 static const double atanhi[] = {
-  (asdouble(0x3FDDAC670561BB4FULL)),   /* atan(0.5)hi 4.63647609000806093515e-01 */
-  (asdouble(0x3FE921FB54442D18ULL)),   /* atan(1.0)hi 7.85398163397448278999e-01 */
-  (asdouble(0x3FEF730BD281F69BULL)),   /* atan(1.5)hi 9.82793723247329054082e-01 */
-  (asdouble(0x3FF921FB54442D18ULL))    /* atan(inf)hi 1.57079632679489655800e+00 */
+  (_ullasd(0x3FDDAC670561BB4FULL)),   /* atan(0.5)hi 4.63647609000806093515e-01 */
+  (_ullasd(0x3FE921FB54442D18ULL)),   /* atan(1.0)hi 7.85398163397448278999e-01 */
+  (_ullasd(0x3FEF730BD281F69BULL)),   /* atan(1.5)hi 9.82793723247329054082e-01 */
+  (_ullasd(0x3FF921FB54442D18ULL))    /* atan(inf)hi 1.57079632679489655800e+00 */
 };
 static const double atanlo[] = {
-  (asdouble(0x3C7A2B7F222F65E2ULL)),   /* atan(0.5)lo 2.26987774529616870924e-17 */
-  (asdouble(0x3C81A62633145C07ULL)),   /* atan(1.0)lo 3.06161699786838301793e-17 */
-  (asdouble(0x3C7007887AF0CBBDULL)),   /* atan(1.5)lo 1.39033110312309984516e-17 */
-  (asdouble(0x3C91A62633145C07ULL))    /* atan(inf)lo 6.12323399573676603587e-17 */
+  (_ullasd(0x3C7A2B7F222F65E2ULL)),   /* atan(0.5)lo 2.26987774529616870924e-17 */
+  (_ullasd(0x3C81A62633145C07ULL)),   /* atan(1.0)lo 3.06161699786838301793e-17 */
+  (_ullasd(0x3C7007887AF0CBBDULL)),   /* atan(1.5)lo 1.39033110312309984516e-17 */
+  (_ullasd(0x3C91A62633145C07ULL))    /* atan(inf)lo 6.12323399573676603587e-17 */
 };
 static const double aT[] = {
-  (asdouble(0x3FD555555555550DULL)),   /* 3.33333333333329318027e-01 */
-  (asdouble(0xBFC999999998EBC4ULL)),  /* -1.99999999998764832476e-01 */
-  (asdouble(0x3FC24924920083FFULL)),   /* 1.42857142725034663711e-01 */
-  (asdouble(0xBFBC71C6FE231671ULL)),  /* -1.11111104054623557880e-01 */
-  (asdouble(0x3FB745CDC54C206EULL)),   /* 9.09088713343650656196e-02 */
-  (asdouble(0xBFB3B0F2AF749A6DULL)),  /* -7.69187620504482999495e-02 */
-  (asdouble(0x3FB10D66A0D03D51ULL)),   /* 6.66107313738753120669e-02 */
-  (asdouble(0xBFADDE2D52DEFD9AULL)),  /* -5.83357013379057348645e-02 */
-  (asdouble(0x3FA97B4B24760DEBULL)),   /* 4.97687799461593236017e-02 */
-  (asdouble(0xBFA2B4442C6A6C2FULL)),  /* -3.65315727442169155270e-02 */
-  (asdouble(0x3F90AD3AE322DA11ULL))    /* 1.62858201153657823623e-02 */
+  (_ullasd(0x3FD555555555550DULL)),   /* 3.33333333333329318027e-01 */
+  (_ullasd(0xBFC999999998EBC4ULL)),  /* -1.99999999998764832476e-01 */
+  (_ullasd(0x3FC24924920083FFULL)),   /* 1.42857142725034663711e-01 */
+  (_ullasd(0xBFBC71C6FE231671ULL)),  /* -1.11111104054623557880e-01 */
+  (_ullasd(0x3FB745CDC54C206EULL)),   /* 9.09088713343650656196e-02 */
+  (_ullasd(0xBFB3B0F2AF749A6DULL)),  /* -7.69187620504482999495e-02 */
+  (_ullasd(0x3FB10D66A0D03D51ULL)),   /* 6.66107313738753120669e-02 */
+  (_ullasd(0xBFADDE2D52DEFD9AULL)),  /* -5.83357013379057348645e-02 */
+  (_ullasd(0x3FA97B4B24760DEBULL)),   /* 4.97687799461593236017e-02 */
+  (_ullasd(0xBFA2B4442C6A6C2FULL)),  /* -3.65315727442169155270e-02 */
+  (_ullasd(0x3F90AD3AE322DA11ULL))    /* 1.62858201153657823623e-02 */
 };
-#define pi_o_4    (asdouble(0x3FE921FB54442D18ULL))   /*  7.8539816339744827900E-01 */
-#define pi_o_2    (asdouble(0x3FF921FB54442D18ULL))   /*  1.5707963267948965580E+00 */
-#define pi_lo     (asdouble(0x3CA1A62633145C07ULL))   /*  1.2246467991473531772E-16 */
+#define pi_o_4    (_ullasd(0x3FE921FB54442D18ULL))   /*  7.8539816339744827900E-01 */
+#define pi_o_2    (_ullasd(0x3FF921FB54442D18ULL))   /*  1.5707963267948965580E+00 */
+#define pi_lo     (_ullasd(0x3CA1A62633145C07ULL))   /*  1.2246467991473531772E-16 */
 
 /* hyperbolic trig. constants */
-#define shuge     (asdouble(0x7FAC7B1F3CAC7433ULL))   /*  1.0e307 */
+#define shuge     (_ullasd(0x7FAC7B1F3CAC7433ULL))   /*  1.0e307 */
 
 
 /* classify double */
@@ -293,17 +293,17 @@ int fpclassify(double x)
 
 int isfinite(double x)
 {
-  return (asuint64(x) & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL;  
+  return (_dasull(x) & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL;  
 }
 
 int isinf(double x)
 {
-  return (asuint64(x) & 0x7FFFFFFFFFFFFFFFULL) == 0x7FF0000000000000ULL;  
+  return (_dasull(x) & 0x7FFFFFFFFFFFFFFFULL) == 0x7FF0000000000000ULL;  
 }
 
 int isnan(double x)
 {
-  uint64_t ux = asuint64(x);
+  uint64_t ux = _dasull(x);
   return (ux & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL
       && (ux & 0x000FFFFFFFFFFFFFULL) != 0x0000000000000000ULL;
 }
@@ -331,7 +331,7 @@ static int issignaling(double x)
 
 int signbit(double x)
 {
-  return (asuint64(x) & 0x8000000000000000ULL) != 0ULL;
+  return (_dasull(x) & 0x8000000000000000ULL) != 0ULL;
 }
 
 /* scalbn (double x, int n)

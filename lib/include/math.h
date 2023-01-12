@@ -1,15 +1,12 @@
 /* Mathematics */
 
 #pragma once
+#include <sys/intrs.h>
 
 /* HUGE_VAL is built-in */
-/* uint64_t asuint64(double) is built-in */
-/* double asdouble(uint64_t) is built-in */
-/* uint32_t asuint32(float) is built-in */
-/* double asfloat(uint32_t) is built-in */
 
-#define NAN (asfloat(0x7FC00000U))
-#define INFINITY (asfloat(0x7F800000U))
+#define NAN (_uasf(0x7FC00000U))
+#define INFINITY (_uasf(0x7F800000U))
 
 extern double acos(double x);
 extern double asin(double x);

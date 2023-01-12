@@ -761,12 +761,12 @@ typedef struct seval {
 /* evaluate pn expression statically, putting result into pr */
 bool static_eval(node_t *pn, buf_t *prib, seval_t *pr)
 {
+  pr->id = 0;
   switch (pn->nt) {
     case NT_LITERAL: {
       if (ts_numerical(pn->ts)) {
         pr->ts = pn->ts;
         pr->val = pn->val;
-        pr->id = 0;
         return true;
       } else if (pn->ts == TS_STRING || pn->ts == TS_LSTRING) {
         sym_t id = pn->name;
@@ -810,10 +810,14 @@ bool static_eval(node_t *pn, buf_t *prib, seval_t *pr)
         pr->val.i = (int)offset;
         return true;
       } else if (pn->intr == INTR_GENERIC) {
-        size_t i; const node_t *ptn = NULL;
+        size_t i; node_t *psn; const node_t *ptn = NULL;
         assert(ndlen(pn) >= 1);
-        if (ndref(pn, 0)->nt == NT_TYPE) ptn = ndref(pn, 0);
-        else ptn = type_eval(ndref(pn, 0), prib);
+        psn = ndref(pn, 0);
+        if (psn->nt == NT_TYPE) ptn = psn;
+        else ptn = type_eval(psn, prib);
+        if (!ptn && static_eval(psn, prib, pr) && !pr->id) {
+          ptn = ndsettype(npalloc(), pr->ts);
+        }
         if (!ptn) return false; /* can't get type */
         for (i = 1; i+1 < ndlen(pn); i += 2) {
           node_t *ptni = ndref(pn, i), *pxni = ndref(pn, i+1);
@@ -1467,6 +1471,19 @@ static bool arithmetic_constant_expr(node_t *pn)
         case INTR_ASU64: case INTR_ASDBL:
           assert(ndlen(pn) == 1); 
           return arithmetic_constant_expr(ndref(pn, 0));
+        case INTR_GENERIC: {
+          size_t i; assert(ndlen(pn) >= 1);
+          for (i = 1; i+1 < ndlen(pn); i += 2)
+            if (!arithmetic_constant_expr(ndref(pn, i+1))) return false;
+          return true;
+        } break;
+        case INTR_ACODE: {
+          instr_t in = IN_UNREACHABLE; node_t *pan;
+          if (ndlen(pn) > 0 && (pan = ndref(pn, 0))->nt == NT_ACODE && icblen(&pan->data) == 1)
+            in = icbref(&pan->data, 0)->in;
+          if (IN_I32_CONST <= in && in <= IN_I64_EXTEND32_S) return true;
+          if (IN_I32_TRUNC_SAT_F32_S <= in && in <= IN_I64_TRUNC_SAT_F64_U) return true;
+        } break;
         default:;
       }
       return false;
@@ -3588,7 +3605,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
               break;
             }
           }
-          if (!pcn) n2eprintf(ndref(pn, 0), pn, "generic() failed to find matching variant");
+          if (!pcn) n2eprintf(ndref(pn, 0), pn, "generic dispatch failed to find variant with matching type");
         } break;
         case INTR_VAETC: 
         case INTR_VAARG: assert(false); /* wasmified */

@@ -431,12 +431,12 @@ void init_symbols(void)
   intern_symbol("alignof", TT_INTR_NAME, INTR_ALIGNOF);
   intern_symbol("offsetof", TT_INTR_NAME, INTR_OFFSETOF);
   intern_symbol("alloca", TT_INTR_NAME, INTR_ALLOCA);
-  intern_symbol("asuint32", TT_INTR_NAME, INTR_ASU32);
-  intern_symbol("asfloat", TT_INTR_NAME, INTR_ASFLT);
-  intern_symbol("asuint64", TT_INTR_NAME, INTR_ASU64);
-  intern_symbol("asdouble", TT_INTR_NAME, INTR_ASDBL);
+  //intern_symbol("asuint32", TT_INTR_NAME, INTR_ASU32);
+  //intern_symbol("asfloat", TT_INTR_NAME, INTR_ASFLT);
+  //intern_symbol("asuint64", TT_INTR_NAME, INTR_ASU64);
+  //intern_symbol("asdouble", TT_INTR_NAME, INTR_ASDBL);
   intern_symbol("_Generic", TT_INTR_NAME, INTR_GENERIC); /* C11 */
-  intern_symbol("generic", TT_INTR_NAME, INTR_GENERIC);
+  intern_symbol("generic", TT_INTR_NAME, INTR_GENERIC); /* WCPL */
   intern_symbol("va_etc", TT_INTR_NAME, INTR_VAETC);
   intern_symbol("va_arg", TT_INTR_NAME, INTR_VAARG);
   intern_symbol("static_assert", TT_INTR_NAME, INTR_SASSERT);
