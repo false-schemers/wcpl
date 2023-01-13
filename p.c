@@ -2526,6 +2526,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           expect(pw, TT_RPAR, ")"); 
         } break;
         case INTR_GENERIC: { /* (expr/type, type: expr, ..., default: expr) */
+          tt_t vse = TT_RPAR;
           expect(pw, TT_LPAR, "(");
           if (type_specifier_ahead(pw)) {
             node_t *ptn = ndnewbk(pn);
@@ -2535,24 +2536,30 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           } else {
             parse_assignment_expr(pw, ndnewbk(pn));
           }
-          while (peekt(pw) != TT_RPAR) {
+          if (peekt(pw) == TT_RPAR) {
+            dropt(pw); expect(pw, TT_LBRC, "{");
+            vse = TT_RBRC;
+          }
+          while (peekt(pw) != vse) {
             node_t *ptn = ndnewbk(pn);
             int defpos = 0;
-            expect(pw, TT_COMMA, ",");
+            if (vse == TT_RPAR) expect(pw, TT_COMMA, ",");
             if (peekt(pw) == TT_DEFAULT_KW) {
               defpos = peekpos(pw);
               dropt(pw); ptn->nt = NT_NULL;
             } else {
+              if (vse != TT_RPAR) expect(pw, TT_CASE_KW, "case");
               parse_base_type(pw, ptn);
               if (parse_declarator(pw, ptn)) 
                 reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
             }
             expect(pw, TT_COLON, ":");
             parse_assignment_expr(pw, ndnewbk(pn));
-            if (defpos && peekt(pw) != TT_RPAR)
+            if (vse != TT_RPAR) expect(pw, TT_SEMICOLON, ";");
+            if (defpos && peekt(pw) != vse)
               reprintf(pw, defpos, "generic default: variant should be last");
           }          
-          expect(pw, TT_RPAR, ")"); 
+          expect(pw, vse, vse == TT_RPAR ? ")" : "}"); 
         } break;
         case INTR_ALLOCA: case INTR_SASSERT: { /* (expr ...) */
           size_t n = 0;
