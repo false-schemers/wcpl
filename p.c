@@ -2260,33 +2260,80 @@ static sym_t parse_declarator(pws_t *pw, node_t *ptn);
 static sc_t parse_decl(pws_t *pw, ndbuf_t *pnb);
 static void parse_stmt(pws_t *pw, node_t *pn);
 
+static bool node_is_etc(const node_t *pn)
+{
+  return pn->nt == NT_INTRCALL && pn->intr == INTR_VAETC && ndlen(pn) == 0;
+}
+
+static bool node_is_countofetc(const node_t *pn)
+{
+  if (pn && pn->nt == NT_INTRCALL && pn->intr == INTR_COUNTOF && ndlen(pn) == 1) {
+    return node_is_etc(ndcref(pn, 0));
+  }
+  return false;
+}
+
+static bool node_is_generic(const node_t *pn)
+{
+  return pn->nt == NT_INTRCALL && pn->intr == INTR_GENERIC && ndlen(pn) >= 1;
+}
+
+static bool no_etcpars(ndbuf_t *ppars)
+{
+  size_t i; 
+  for (i = 0; i < ndblen(ppars); ++i) {
+    if (node_is_etc(ndbref(ppars, i))) return false; 
+  }
+  return true;
+}
+
 static void patch_macro_template(buf_t *pids, ndbuf_t *ppars, node_t *pn)
 {
+  size_t n = buflen(pids), i; sym_t *pi = bufdata(pids); 
+  bool etcbound = n > 0 && pi[n-1] == 0; /* ... is macro-bound */
   if (pn->nt == NT_IDENTIFIER) {
-    size_t n = buflen(pids), i; sym_t *pi = bufdata(pids); 
     for (i = 0; i < n; ++i) { /* linear search is ok here */
       if (i+1 == n && !pi[i]) break; /* ... */
       if (pi[i] != pn->name) continue;
       ndcpy(pn, ndbref(ppars, i)); break; 
     }
-  } else if (pn->nt == NT_INTRCALL && pn->intr == INTR_VAETC) {
-    size_t n = buflen(pids); sym_t *pi = bufdata(pids);
-    if (n > 0 && pi[n-1] == 0) /* ... is bound */
-      neprintf(pn, "... or __VA_ARGS__ outside of function call argument list");
+  } else if (node_is_etc(pn) && no_etcpars(ppars)) {
+    if (etcbound) neprintf(pn, "... or __VA_ARGS__ outside of function call argument list");
+  } else if (node_is_countofetc(pn) && no_etcpars(ppars)) {
+    size_t pcnt = ndblen(ppars), ecnt = pcnt-(n-1); 
+    node_t nd = mknd(); assert(pcnt >= n-1);
+    ndset(&nd, NT_LITERAL, pn->pwsid, pn->startpos);
+    nd.ts = TS_INT; nd.val.i = (int)ecnt;
+    ndswap(pn, &nd); ndfini(&nd);
+  } else if (node_is_generic(pn)) {
+    if (etcbound && node_is_countofetc(ndcref(pn, 0)) && no_etcpars(ppars)) {
+      size_t i, pcnt = ndblen(ppars), ecnt = pcnt-(n-1); node_t *presn = NULL;
+      assert(pcnt >= n-1);
+      for (i = 1; i+1 < ndlen(pn); i += 2) {
+        node_t *pcn = ndref(pn, i), *pen = ndref(pn, i+1);
+        if (pcn->nt == NT_NULL || pcn->nt == NT_LITERAL && pcn->ts == TS_INT && pcn->val.i == (int)pcnt) {
+          patch_macro_template(pids, ppars, pen);
+          presn = pen; break;
+        }
+      }
+      if (presn) { node_t nd = mknd(); ndswap(&nd, presn);  ndswap(&nd, pn); ndfini(&nd); } 
+      else neprintf(pn, "generic dispatch on countof(...): no case for %d params", (int)ecnt);
+    } else { /* can't be reduced */
+      size_t i;
+      patch_macro_template(pids, ppars, ndref(pn, 0));
+      for (i = 1; i+1 < ndlen(pn); i += 2) {
+        patch_macro_template(pids, ppars, ndref(pn, i+1));
+      }
+    }
   } else {
     size_t i, j;
     for (i = 0; i < ndlen(pn); /* ins or bump */) {
       node_t *pni = ndref(pn, i);
-      if (pni->nt == NT_INTRCALL && pni->intr == INTR_VAETC && pn->nt == NT_CALL) {
-        size_t n = buflen(pids); sym_t *pi = bufdata(pids);
-        if (n > 0 && pi[n-1] == 0) { /* ... is bound */
-          assert(ndblen(ppars) >= n-1);
-          ndrem(pn, i); /* remove va_etc() */
-          for (j = n-1; j < ndblen(ppars); ++j) {
-            ndins(pn, i, ndbref(ppars, j));
-            ++i;
-          }
-        } else {
+      if (etcbound && node_is_etc(pni) && pn->nt == NT_CALL) {
+        assert(ndblen(ppars) >= n-1);
+        ndrem(pn, i); /* remove va_etc() */
+        for (j = n-1; j < ndblen(ppars); ++j) {
+          ndins(pn, i, ndbref(ppars, j));
           ++i;
         }
       } else {
@@ -2537,11 +2584,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           } else {
             parse_assignment_expr(pw, pgn);
           }
-          if (pgn->nt == NT_INTRCALL && pgn->intr == INTR_COUNTOF) {
-            node_t *psn; assert(ndlen(pgn) == 1);
-            if (ndlen(pgn) == 1 && (psn = ndref(pgn, 0))->nt == NT_INTRCALL && psn->intr == INTR_VAETC)
-              bytype = false;
-          }
+          if (node_is_countofetc(pgn)) bytype = false;
           if (peekt(pw) == TT_RPAR) {
             dropt(pw); expect(pw, TT_LBRC, "{");
             vse = TT_RBRC;
