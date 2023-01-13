@@ -2131,7 +2131,7 @@ extern node_t *set_to_int(node_t *pn, int n)
 }
 
 /* wrap expr node into NT_CAST type node */
-node_t *wrap_cast(node_t *pcn, node_t *pn)
+node_t *wrap_cast_expr(node_t *pcn, node_t *pn)
 {
   node_t nd = mknd();
   ndset(&nd, NT_CAST, pcn->pwsid, pcn->startpos);
@@ -2140,6 +2140,18 @@ node_t *wrap_cast(node_t *pcn, node_t *pn)
   ndswap(pcn, &nd);
   ndfini(&nd);
   return pcn;
+}
+
+/* wrap expr node into NT_CAST type node */
+node_t *wrap_expr_cast(node_t *pn, node_t *pcn)
+{
+  node_t nd = mknd();
+  ndset(&nd, NT_CAST, pcn->pwsid, pcn->startpos);
+  ndswap(pcn, ndnewbk(&nd));
+  ndswap(pn, ndnewbk(&nd));
+  ndswap(pn, &nd);
+  ndfini(&nd);
+  return pn;
 }
 
 /* wrap expr node into NT_INFIX with second expr */
@@ -2260,12 +2272,12 @@ static sym_t parse_declarator(pws_t *pw, node_t *ptn);
 static sc_t parse_decl(pws_t *pw, ndbuf_t *pnb);
 static void parse_stmt(pws_t *pw, node_t *pn);
 
-static bool node_is_etc(const node_t *pn)
+bool node_is_etc(const node_t *pn)
 {
   return pn->nt == NT_INTRCALL && pn->intr == INTR_VAETC && ndlen(pn) == 0;
 }
 
-static bool node_is_countofetc(const node_t *pn)
+bool node_is_countofetc(const node_t *pn)
 {
   if (pn && pn->nt == NT_INTRCALL && pn->intr == INTR_COUNTOF && ndlen(pn) == 1) {
     return node_is_etc(ndcref(pn, 0));
@@ -2273,7 +2285,7 @@ static bool node_is_countofetc(const node_t *pn)
   return false;
 }
 
-static bool node_is_generic(const node_t *pn)
+bool node_is_generic(const node_t *pn)
 {
   return pn->nt == NT_INTRCALL && pn->intr == INTR_GENERIC && ndlen(pn) >= 1;
 }
@@ -2995,7 +3007,7 @@ static void parse_cast_expr(pws_t *pw, node_t *pn)
       } break;
       default: {
         parse_cast_expr(pw, &nd);
-        wrap_cast(pn, &nd);
+        wrap_cast_expr(pn, &nd);
       } break;
     }
     ndfini(&nd);
@@ -3440,7 +3452,7 @@ static void parse_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t
   patch_type_array_sizes(psn, (node_t*)ptn);
   /* wrap string literals intitializing arrays in casts */
   if (psn->nt == NT_LITERAL && ptn->ts == TS_ARRAY) {
-    wrap_cast(ndcpy(&tn, ptn), psn); ndswap(&tn, psn);
+    wrap_expr_cast(psn, ndcpy(&tn, ptn)); 
   }
   ndfini(&tn);
 }

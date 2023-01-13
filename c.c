@@ -1689,25 +1689,29 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
         }
         if (pvi->cast != TS_VOID) { /* add narrowing cast */
           node_t cn = mknd(); ndset(&cn, NT_TYPE, -1, -1); cn.ts = pvi->cast;
-          ndswap(&cn, pn); wrap_cast(pn, &cn); ndfini(&cn);
+          wrap_expr_cast(pn, &cn); ndfini(&cn);
         }
       } else { /* global */
         const node_t *ptn = lookup_global(pn->name);
         if (ptn && ptn->nt == NT_IMPORT && ndlen(ptn) == 1) ptn = ndcref(ptn, 0);
         if (ptn && ptn->nt == NT_TYPE && ptn->ts >= TS_BOOL && ptn->ts < TS_INT) { /* add narrowing cast */
           node_t cn = mknd(); ndset(&cn, NT_TYPE, -1, -1); cn.ts = ptn->ts;
-          ndswap(&cn, pn); wrap_cast(pn, &cn); ndfini(&cn);
+          wrap_expr_cast(pn, &cn); ndfini(&cn);
         }
       }
     } break;
     case NT_INTRCALL: {
       switch (pn->intr) {
-        case INTR_VAETC: { /* () => ap$ */
-          sym_t ap = intern("ap$");
+        case INTR_VAETC: { /* () => (va_arg_t*)ap$ */
+          sym_t ap = intern("ap$"); node_t tn;
           vi_t *pvi = bufbsearch(pvib, &ap, &sym_cmp);
           if (!pvi) neprintf(pn, "access to ... in non-vararg function");
           assert(pvi->sc == SC_REGISTER && !pvi->fld);
           pn->nt = NT_IDENTIFIER; pn->name = pvi->reg;
+          tn = mknd(); ndset(&tn, NT_TYPE, pn->pwsid, pn->startpos);
+          tn.ts = TS_ULLONG; /* va_arg_t */
+          wrap_expr_cast(pn, wrap_type_pointer(&tn)); 
+          ndfini(&tn);
         } break;
         case INTR_VAARG: { /* (id, type) => *(type*)id++ */
           node_t *pin, *ptn; assert(ndlen(pn) == 2);
@@ -1718,10 +1722,26 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           ndswap(pin, ptn); pn->nt = NT_CAST;
           wrap_unary_operator(pn, pn->startpos, TT_STAR);
         } break;
-        case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF: case INTR_COUNTOF: {
+        case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF: {
           node_t *pan; assert(ndlen(pn) >= 1);
           pan = ndref(pn, 0);
           if (pan->nt != NT_TYPE) expr_wasmify(pan, pvib, plib);
+        } break;
+        case INTR_COUNTOF: {
+          node_t *pan; assert(ndlen(pn) == 1);
+          pan = ndref(pn, 0);
+          if (node_is_etc(pan)) { /* countof(...) => (size_t)((va_arg_t*)ap$[-1]) */
+            node_t nd = mknd();
+            expr_wasmify(pan, pvib, plib);
+            ndset(&nd, NT_LITERAL, pn->pwsid, pn->startpos); 
+            nd.ts = TS_INT; nd.val.i = -1; wrap_subscript(pan, &nd);
+            ndswap(&nd, pan); ndswap(&nd, pn); 
+            ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos); 
+            nd.ts = TS_ULONG; wrap_expr_cast(pn, &nd); 
+            ndfini(&nd);          
+          } else {
+            if (pan->nt != NT_TYPE) expr_wasmify(pan, pvib, plib);
+          }
         } break;
         case INTR_GENERIC: {
           size_t i;
@@ -3187,7 +3207,8 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     sym_t pname = rpalloc(VT_I32); /* arg frame ptr (wasm32) */
     node_t tn = mknd(); /* for temporary type conversions */
     /* frame is an array of uint64s (va_arg_t), aligned to 16 */
-    size_t asz = 8, nargs = buflen(pab)-i, framesz = (size_t)((nargs*asz + 15) & ~0xFULL), basei;
+    size_t asz = 8, nargs = buflen(pab)-i, nframe = 1/*count*/+nargs;
+    size_t framesz = (size_t)((nframe*asz + 15) & ~0xFULL), basei;
     inscode_t *pic = icbnewfr(&pcn->data); pic->in = IN_REGDECL;
     pic->id = pname; pic->arg.u = VT_I32; /* wasm32 pointer */
     acode_pushin_id_mod(pcn, IN_GLOBAL_GET, g_sp_id, g_crt_mod);
@@ -3195,7 +3216,10 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     acode_pushin(pcn, IN_I32_SUB);
     acode_pushin_id(pcn, IN_LOCAL_TEE, pname);
     acode_pushin_id_mod(pcn, IN_GLOBAL_SET, g_sp_id, g_crt_mod); 
-    /* start of va_arg_t[nargs] array is now in pname, fill it */
+    /* start of va_arg_t[1+nargs] array is now in pname, fill it */
+    acode_pushin_id(pcn, IN_LOCAL_GET, pname);
+    acode_pushin_uarg(pcn, IN_I32_CONST, nargs); /* arg count is */
+    asm_store(TS_INT, TS_INT, 0, &pcn->data); /* stored at ...[-1] */
     for (basei = i; i < buflen(pab); ++i) {
       node_t **ppani = bufref(pab, i), *pani = *ppani;
       node_t *ptni = acode_type(pani); size_t size, align;
@@ -3219,9 +3243,11 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
       }
       acode_pushin_id(pcn, IN_LOCAL_GET, pname);
       acode_swapin(pcn, pani); /* arg on stack */
-      asm_store(ptni->ts, ptni->ts, (unsigned)((i-basei)*asz), &pcn->data);
+      asm_store(ptni->ts, ptni->ts, (unsigned)((1/*count*/+i-basei)*asz), &pcn->data);
     }
-    acode_pushin_id(pcn, IN_LOCAL_GET, pname); 
+    acode_pushin_id(pcn, IN_LOCAL_GET, pname);
+    acode_pushin_uarg(pcn, IN_I32_CONST, asz); /* count */
+    acode_pushin(pcn, IN_I32_ADD); /* points to first arg */
     /* put the call instruction followed by sp restore */
     if (cic.in == IN_CALL_INDIRECT) acode_swapin(pcn, pfn); /* func on stack */ 
     asm_pushbk(&pcn->data, &cic);

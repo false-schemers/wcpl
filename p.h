@@ -190,6 +190,11 @@ extern sym_t rpalloc_label(void);
 /* compare NT_TYPE nodes for 'deep' equivalence */
 extern bool same_type(const node_t *pctn1, const node_t *pctn2);
 
+/* some node predicates */
+extern bool node_is_etc(const node_t *pn);
+extern bool node_is_countofetc(const node_t *pn);
+extern bool node_is_generic(const node_t *pn);
+
 /* node builders; modify pn in place and return it */
 /* wrap node into nt node as a subnode */
 extern node_t *wrap_node(node_t *pn, nt_t nt);
@@ -199,8 +204,10 @@ extern node_t *wrap_subscript(node_t *pn, node_t *psn);
 extern node_t *wrap_postfix_operator(node_t *pn, tt_t op, sym_t id);
 /* wrap expr node into NT_PREFIX type node */
 extern node_t *wrap_unary_operator(node_t *pn, int startpos, tt_t op);
+/* wrap type node into NT_CAST type node */
+extern node_t *wrap_cast_expr(node_t *pcn, node_t *pn);
 /* wrap expr node into NT_CAST type node */
-extern node_t *wrap_cast(node_t *pcn, node_t *pn);
+extern node_t *wrap_expr_cast(node_t *pn, node_t *pcn);
 /* wrap expr node into NT_INFIX with second expr */
 extern node_t *wrap_binary(node_t *pn, tt_t op, node_t *pn2);
 /* wrap expr node into NT_COND with second/third exprs */
