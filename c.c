@@ -4429,7 +4429,7 @@ int main(int argc, char **argv)
       case 'L':  eoarg = eoptarg; dsbpushbk(&libv, &eoarg); break;
       case 's':  s_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'a':  a_arg = strtoul(eoptarg, NULL, 0); break; 
-      case 'h':  eusage("WCPL 1.01 built on " __DATE__);
+      case 'h':  eusage("WCPL 1.02 built on " __DATE__);
     }
   }
 

@@ -156,6 +156,7 @@ extern void ndbclear(ndbuf_t* pb);
 #define ndblen(pb) (buflen(pb))
 #define ndbref(pb, i) ((node_t*)bufref(pb, i))
 #define ndbnewbk(pb) (ndinit(bufnewbk(pb)))
+#define ndbins(pb, i, pn) (ndicpy(bufins(pb, i), pn))
 #define ndbinsnew(pb, i) (ndinit(bufins(pb, i)))
 #define ndbpushbk(pb, pn) (ndicpy(bufnewbk(pb), pn))
 #define ndbrem(pb, i) do { ndbuf_t *_pb = pb; size_t _i = i; ndfini(bufref(_pb, _i)); bufrem(_pb, _i); } while(0)
@@ -165,6 +166,7 @@ extern void ndbclear(ndbuf_t* pb);
 #define ndnewfr(pn) (ndbinsnew(&(pn)->body, 0))
 #define ndnewbk(pn) (ndbnewbk(&(pn)->body))
 #define ndpushbk(pn, psn) (ndbpushbk(&(pn)->body, psn))
+#define ndins(pn, i, psn) (ndbins(&(pn)->body, i, psn))
 #define ndinsnew(pn, i) (ndbinsnew(&(pn)->body, i))
 extern node_t *ndinsfr(node_t *pn, nt_t nt);
 extern node_t *ndinsbk(node_t *pn, nt_t nt);

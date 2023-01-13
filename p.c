@@ -436,6 +436,9 @@ void init_symbols(void)
   intern_symbol("va_etc", TT_INTR_NAME, INTR_VAETC);
   intern_symbol("va_arg", TT_INTR_NAME, INTR_VAARG);
   intern_symbol("static_assert", TT_INTR_NAME, INTR_SASSERT);
+  intern_symbol("__VA_ARGS__", TT_MACRO_NAME, (int)ndblen(&g_nodes)); /* C99 */
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_INTRCALL, -1, -1); pn->intr = INTR_VAETC;
+  wrap_node(pn, NT_MACRODEF); pn->name = intern("__VA_ARGS__");
   intern_symbol("__DATE__", TT_MACRO_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
   pn->ts = TS_STRING; chbputtime("%b %d %Y", gmtime(&now), &pn->data);
@@ -2261,13 +2264,35 @@ static void patch_macro_template(buf_t *pids, ndbuf_t *ppars, node_t *pn)
   if (pn->nt == NT_IDENTIFIER) {
     size_t n = buflen(pids), i; sym_t *pi = bufdata(pids); 
     for (i = 0; i < n; ++i) { /* linear search is ok here */
+      if (i+1 == n && !pi[i]) break; /* ... */
       if (pi[i] != pn->name) continue;
       ndcpy(pn, ndbref(ppars, i)); break; 
     }
+  } else if (pn->nt == NT_INTRCALL && pn->intr == INTR_VAETC) {
+    size_t n = buflen(pids); sym_t *pi = bufdata(pids);
+    if (n > 0 && pi[n-1] == 0) /* ... is bound */
+      neprintf(pn, "... or __VA_ARGS__ outside of function call argument list");
   } else {
-    size_t i;
-    for (i = 0; i < ndlen(pn); ++i) 
-      patch_macro_template(pids, ppars, ndref(pn, i));
+    size_t i, j;
+    for (i = 0; i < ndlen(pn); /* ins or bump */) {
+      node_t *pni = ndref(pn, i);
+      if (pni->nt == NT_INTRCALL && pni->intr == INTR_VAETC && pn->nt == NT_CALL) {
+        size_t n = buflen(pids); sym_t *pi = bufdata(pids);
+        if (n > 0 && pi[n-1] == 0) { /* ... is bound */
+          assert(ndblen(ppars) >= n-1);
+          ndrem(pn, i); /* remove va_etc() */
+          for (j = n-1; j < ndblen(ppars); ++j) {
+            ndins(pn, i, ndbref(ppars, j));
+            ++i;
+          }
+        } else {
+          ++i;
+        }
+      } else {
+        patch_macro_template(pids, ppars, pni);
+        ++i;
+      }
+    }
   } 
 }
 
@@ -2389,6 +2414,11 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       ndset(pn, NT_IDENTIFIER, pw->id, startpos); 
       pn->name = getid(pw);
     } break;
+    case TT_ELLIPSIS: { /* same as va_etc() */
+      dropt(pw);
+      ndset(pn, NT_INTRCALL, pw->id, startpos);
+      pn->intr = INTR_VAETC;
+    } break;
     case TT_ENUM_NAME: {
       /* todo: cast to enum type for extra type checking */
       int info = 42; lookup_symbol(pw->tokstr, &info);
@@ -2411,6 +2441,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
         /* parameterized macro */
         node_t *pfn = ndref(pdn, 0); 
         buf_t ids; ndbuf_t pars; size_t i;
+        bool variadic = false;
         bufinit(&ids, sizeof(sym_t)); ndbinit(&pars); 
         assert(pfn->nt == NT_TYPE && pfn->ts == TS_FUNCTION); 
         expect(pw, TT_LPAR, "(");
@@ -2419,12 +2450,17 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           if (peekt(pw) == TT_COMMA) dropt(pw);
           else break;
         }
-        expect(pw, TT_RPAR, ")"); 
-        if (ndlen(pfn) != ndblen(&pars)+1)
+        expect(pw, TT_RPAR, ")");
+        if (ndlen(pfn) > 1 && ndref(pfn, ndlen(pfn)-1)->name == 0) 
+          variadic = true; 
+        if (!variadic && ndlen(pfn) != ndblen(&pars)+1)
           reprintf(pw, startpos, "invalid number of parameters to macro");
+        if (variadic && ndlen(pfn) > ndblen(&pars)+2) 
+          reprintf(pw, startpos, "not enough parameters to variadic macro");
         for (i = 1/* skip null type */; i < ndlen(pfn); ++i) {
           node_t *pin = ndref(pfn, i);
-          assert(pin->nt == NT_VARDECL && pin->name != 0);
+          assert(pin->nt == NT_VARDECL);
+          assert(pin->name != 0 || i+1 == ndlen(pfn)); /* ... is last */
           *(sym_t*)bufnewbk(&ids) = pin->name;
         }
         ndcpy(pn, ndref(pdn, 1));
@@ -3202,22 +3238,18 @@ static void parse_postfix_declarator(pws_t *pw, node_t *pn)
         ndbuf_t ndb; ndbinit(&ndb); 
         dropt(pw);
         while (peekt(pw) != TT_RPAR) {
-          node_t *pdn = ndbnewbk(&ndb), *pti;
-          ndset(pdn, NT_VARDECL, pw->id, peekpos(pw));
-          pti = ndnewbk(pdn);
-          parse_base_type(pw, pti);
-          pdn->name = parse_declarator(pw, pti); /* 0 if id is missing */
-          if (peekt(pw) != TT_COMMA) break;
-          dropt(pw);
-          if (peekt(pw) == TT_ELLIPSIS) {
-            pdn = ndbnewbk(&ndb);
-            ndset(pdn, NT_VARDECL, pw->id, peekpos(pw));
-            pti = ndnewbk(pdn);
-            ndset(pti, NT_TYPE, pw->id, peekpos(pw));
-            pti->ts = TS_ETC;  
+          node_t *pdn = ndset(ndbnewbk(&ndb), NT_VARDECL, pw->id, peekpos(pw));
+          node_t *pti = ndset(ndnewbk(pdn), NT_TYPE, pw->id, peekpos(pw)); 
+          if (peekt(pw) == TT_ELLIPSIS) { /* starting with ellipsis is ok */
+            pti->ts = TS_ETC;
             dropt(pw);
             break;
-          }  
+          } else {
+            parse_base_type(pw, pti);
+            pdn->name = parse_declarator(pw, pti); /* 0 if id is missing */
+            if (peekt(pw) != TT_COMMA) break;
+            dropt(pw);
+          }
         }
         expect(pw, TT_RPAR, ")");
         wrap_type_function(pn, &ndb);
@@ -3599,12 +3631,14 @@ static bool parse_pragma_directive(pws_t *pw, int startpos)
 static void parse_define_directive(pws_t *pw, int startpos)
 {
   if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "define")) {
-    int info = (int)ndblen(&g_nodes); node_t *pn = ndbnewbk(&g_nodes);
+    int *pi, info = (int)ndblen(&g_nodes); node_t *pn = ndbnewbk(&g_nodes);
     dropt(pw);
     ndset(pn, NT_MACRODEF, pw->id, startpos);
     if (peekt(pw) == TT_MACRO_NAME)
       reprintf(pw, peekpos(pw), "macro already defined; use #undef before redefinition");
     pn->name = getid(pw);
+    if ((pi = bufbsearch(&g_syminfo, &pn->name, &int_cmp)) != NULL)
+      reprintf(pw, peekpos(pw), "macro can't redefine globally defined symbol");
     /* do manual char-level lookahead */
     if (peekc(pw) == '(') {
       /* macro with parameters */
@@ -3616,9 +3650,15 @@ static void parse_define_directive(pws_t *pw, int startpos)
       while (peekt(pw) != TT_RPAR) {
         node_t *pti = ndnewbk(ptn);
         ndset(pti, NT_VARDECL, pw->id, peekpos(pw));
-        pti->name = getid(pw);
-        if (peekt(pw) == TT_COMMA) dropt(pw);
-        else break;
+        if (peekt(pw) == TT_ELLIPSIS) {
+          pti->name = 0;
+          dropt(pw);
+          break;
+        } else {
+          pti->name = getid(pw);
+          if (peekt(pw) == TT_COMMA) dropt(pw);
+          else break;
+        }
       }
       expect(pw, TT_RPAR, ")");
     }  
@@ -3638,6 +3678,9 @@ static void parse_define_directive(pws_t *pw, int startpos)
       reprintf(pw, startpos, "macro name is already in use");
     } else { 
       intern_symbol(symname(pn->name), TT_MACRO_NAME, info);
+    }
+    if (getverbosity() > 0) {
+      dump_node(pn, stderr);
     }
   } else if (peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "undef")) {  
     dropt(pw);
@@ -4072,7 +4115,13 @@ static void dump(node_t *pn, FILE* fp, int indent)
       fprintf(fp, "(call");
     } break;
     case NT_INTRCALL: {
-      fprintf(fp, "(intrcall %s", intr_name(pn->intr));
+      if (pn->intr == INTR_VAETC) {
+        fputs("...", fp);
+        if (!indent) fputc('\n', fp);
+        return;
+      } else {
+        fprintf(fp, "(intrcall %s", intr_name(pn->intr));
+      }
     } break;
     case NT_CAST: {
       fprintf(fp, "(cast");
@@ -4190,6 +4239,22 @@ static void dump(node_t *pn, FILE* fp, int indent)
     } break;
     case NT_MACRODEF: {
       fprintf(fp, "(macrodef %s", symname(pn->name));
+      if (ndlen(pn) == 2 && ndref(pn, 0)->nt == NT_TYPE) {
+        node_t *pfn = ndref(pn, 0), *pvn = ndref(pn, 1);
+        assert(pfn->ts == TS_FUNCTION && ndlen(pfn) >= 1);
+        fputs(" (", fp);
+        for (i = 1; i < ndlen(pfn); ++i) {
+          node_t *pin = ndref(pfn, i);
+          assert(pin->nt == NT_VARDECL);
+          if (i > 1) fputc(' ', fp);
+          fputs(pin->name ? symname(pin->name) : "...", fp);
+        }
+        fputs(")\n", fp);
+        dump(pvn, fp, indent+2);
+        fputc(')', fp);
+        if (!indent) fputc('\n', fp);
+        return;
+      }
     } break;
     case NT_INCLUDE: {
       char *it = (pn->op == TT_STRING) ? "user" : "system";
