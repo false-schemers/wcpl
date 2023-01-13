@@ -430,6 +430,7 @@ void init_symbols(void)
   intern_symbol("sizeof", TT_INTR_NAME, INTR_SIZEOF);
   intern_symbol("alignof", TT_INTR_NAME, INTR_ALIGNOF);
   intern_symbol("offsetof", TT_INTR_NAME, INTR_OFFSETOF);
+  intern_symbol("countof", TT_INTR_NAME, INTR_COUNTOF);
   intern_symbol("alloca", TT_INTR_NAME, INTR_ALLOCA);
   intern_symbol("_Generic", TT_INTR_NAME, INTR_GENERIC); /* C11 */
   intern_symbol("generic", TT_INTR_NAME, INTR_GENERIC); /* WCPL */
@@ -2479,7 +2480,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       dropt(pw);
       pn->intr = (intr_t)intr;
       switch (intr) {
-        case INTR_SIZEOF: case INTR_ALIGNOF: { /* (type) */
+        case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_COUNTOF: { /* (type/expr) */
           node_t *ptn = ndnewbk(pn);
           expect(pw, TT_LPAR, "(");
           if (type_specifier_ahead(pw)) {
@@ -2526,15 +2527,20 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           expect(pw, TT_RPAR, ")"); 
         } break;
         case INTR_GENERIC: { /* (expr/type, type: expr, ..., default: expr) */
+          node_t *pgn = ndnewbk(pn); bool bytype = true;
           tt_t vse = TT_RPAR;
           expect(pw, TT_LPAR, "(");
           if (type_specifier_ahead(pw)) {
-            node_t *ptn = ndnewbk(pn);
-            parse_base_type(pw, ptn);
-            if (parse_declarator(pw, ptn)) 
+            parse_base_type(pw, pgn);
+            if (parse_declarator(pw, pgn)) 
               reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
           } else {
-            parse_assignment_expr(pw, ndnewbk(pn));
+            parse_assignment_expr(pw, pgn);
+          }
+          if (pgn->nt == NT_INTRCALL && pgn->intr == INTR_COUNTOF) {
+            node_t *psn; assert(ndlen(pgn) == 1);
+            if (ndlen(pgn) == 1 && (psn = ndref(pgn, 0))->nt == NT_INTRCALL && psn->intr == INTR_VAETC)
+              bytype = false;
           }
           if (peekt(pw) == TT_RPAR) {
             dropt(pw); expect(pw, TT_LBRC, "{");
@@ -2549,9 +2555,17 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
               dropt(pw); ptn->nt = NT_NULL;
             } else {
               if (vse != TT_RPAR) expect(pw, TT_CASE_KW, "case");
-              parse_base_type(pw, ptn);
-              if (parse_declarator(pw, ptn)) 
-                reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+              if (bytype) {
+                parse_base_type(pw, ptn);
+                if (parse_declarator(pw, ptn)) 
+                  reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
+              } else {
+                long n; errno = 0;
+                if (peekt(pw) == TT_INT && (n = atol(pw->tokstr)) >= 0 && (n <= INT_MAX) && !errno) {
+                  ptn->nt = NT_LITERAL; ptn->ts = TS_INT; ptn->val.i = n;
+                  dropt(pw);
+                } else expect(pw, TT_INT, "nonnegative integer literal");
+              } 
             }
             expect(pw, TT_COLON, ":");
             parse_assignment_expr(pw, ndnewbk(pn));
@@ -4014,6 +4028,7 @@ const char *intr_name(intr_t intr)
     case INTR_SIZEOF: s = "sizeof"; break; 
     case INTR_ALIGNOF: s = "alignof"; break; 
     case INTR_OFFSETOF: s = "offsetof"; break;
+    case INTR_COUNTOF: s = "countof"; break; 
     case INTR_GENERIC: s = "generic"; break; 
     case INTR_VAETC: s = "va_etc"; break; 
     case INTR_VAARG: s = "va_arg"; break; 

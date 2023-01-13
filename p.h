@@ -83,8 +83,8 @@ typedef enum ts {
 typedef enum intr {
   INTR_NONE,    INTR_ALLOCA,  INTR_ACODE,
   INTR_SIZEOF,  INTR_ALIGNOF, INTR_OFFSETOF,
-  INTR_GENERIC, INTR_VAETC,   INTR_VAARG,   
-  INTR_SASSERT
+  INTR_COUNTOF, INTR_GENERIC, INTR_SASSERT,
+  INTR_VAETC,   INTR_VAARG
 } intr_t;
 
 /* grammar node data type */

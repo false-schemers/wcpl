@@ -809,6 +809,22 @@ bool static_eval(node_t *pn, buf_t *prib, seval_t *pr)
         pr->ts = TS_INT; 
         pr->val.i = (int)offset;
         return true;
+      } else if (pn->intr == INTR_COUNTOF) {
+        const node_t *ptn = NULL; assert(ndlen(pn) == 1);
+        if (ndref(pn, 0)->nt == NT_TYPE) ptn = ndref(pn, 0);
+        else ptn = type_eval(ndref(pn, 0), prib);
+        if (ptn && ptn->ts == TS_ARRAY && ndlen(ptn) == 2) {
+          size_t asize, esize, align;
+          /* make sure array size is filled properly */
+          measure_type(ptn, pn, &asize, &align, 0);
+          measure_type(ndcref(ptn, 0), pn, &esize, &align, 0);
+          if (esize != 0) {
+            pr->ts = TS_INT;
+            pr->val.i = (int)(asize/esize);
+            return true;
+          }
+        }
+        return false; /* can't get sized array type */
       } else if (pn->intr == INTR_GENERIC) {
         size_t i; node_t *psn; const node_t *ptn = NULL;
         assert(ndlen(pn) >= 1);
@@ -1447,7 +1463,7 @@ static bool arithmetic_constant_expr(node_t *pn)
       return ts_numerical(pn->ts);
     case NT_INTRCALL:
       switch (pn->intr) {
-        case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF:
+        case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF: case INTR_COUNTOF:
           return true;
         case INTR_GENERIC: {
           size_t i; assert(ndlen(pn) >= 1);
@@ -1702,7 +1718,7 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           ndswap(pin, ptn); pn->nt = NT_CAST;
           wrap_unary_operator(pn, pn->startpos, TT_STAR);
         } break;
-        case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF: {
+        case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_OFFSETOF: case INTR_COUNTOF: {
           node_t *pan; assert(ndlen(pn) >= 1);
           pan = ndref(pn, 0);
           if (pan->nt != NT_TYPE) expr_wasmify(pan, pvib, plib);
@@ -3522,6 +3538,21 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
           v.i = (int)offset;
           pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_INT);
           asm_numerical_const(TS_INT, &v, icbnewbk(&pcn->data));
+        } break;
+        case INTR_COUNTOF: {
+          size_t asize, esize, align; numval_t v;
+          node_t *ptni = ndref(pn, 0);
+          if (ptni->nt != NT_TYPE) ptni = acode_type(expr_compile(ptni, prib, NULL));
+          if (ptni->ts == TS_ARRAY && ndlen(ptni) == 2) {
+            measure_type(ptni, pn, &asize, &align, 0);
+            measure_type(ndref(ptni, 0), pn, &esize, &align, 0);
+            if (esize > 0) {
+              v.i = (int)(asize/esize);
+              pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_INT);
+              asm_numerical_const(TS_INT, &v, icbnewbk(&pcn->data));
+            }
+          }
+          if (!pcn) neprintf(pn, "countof() expects proper array or array type");
         } break;
         case INTR_GENERIC: {
           size_t i; node_t *ptn = ndref(pn, 0);
