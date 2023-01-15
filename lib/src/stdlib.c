@@ -12,6 +12,77 @@
 #include <sys/crt.h>
 #include <sys/intrs.h>
 
+static void panic(const char *s, size_t n)
+{
+  ciovec_t iov; size_t ret;
+  fd_t fd = 2; /* stderr */
+  iov.buf = (uint8_t*)s; iov.buf_len = n;
+  fd_write(fd, &iov, 1, &ret);
+}
+
+void _panicf(const char *fmt, ...)
+{
+  va_arg_t *ap = va_etc();
+  while (*fmt) {
+    if (*fmt != '%' || *++fmt == '%') {
+      panic(fmt++, 1);
+    } else if (fmt[0] == 's') {
+      char *s = va_arg(ap, char*);
+      if (s) panic(s, strlen(s)); 
+      else panic("(NULL)", 6);
+      fmt += 1;
+    } else if (fmt[0] == 'd') {
+      int val = va_arg(ap, int);
+      char buf[39+1]; /* enough up to 128 bits (w/sign) */
+      char *e = &buf[40], *p = e;
+      if (val) {
+        unsigned m; 
+        if (val == (-1-0x7fffffff)) m = (0x7fffffff) + (unsigned)1;
+        else if (val < 0) m = -val;
+        else m = val;
+        do *--p = (int)(m%10) + '0';
+          while ((m /= 10) > 0);
+        if (val < 0) *--p = '-';
+      } else *--p = '0';
+      panic(p, e-p);
+      fmt += 1;
+    } else if (fmt[0] == 'u') {
+      unsigned val = va_arg(ap, unsigned);
+      char buf[39+1]; /* enough up to 128 bits */
+      char *e = &buf[40], *p = e;
+      if (val) {
+        unsigned m = val; 
+        do *--p = (int)(m%10) + '0';
+          while ((m /= 10) > 0);
+      } else *--p = '0';
+      panic(p, e-p);
+      fmt += 1;
+    } else if (fmt[0] == 'o') {
+      unsigned val = va_arg(ap, unsigned);
+      char buf[39+1]; /* enough up to 128 bits */
+      char *e = &buf[40], *p = e;
+      if (val) {
+        unsigned m = val; 
+        do *--p = (int)(m%8) + '0';
+          while ((m /= 8) > 0);
+      } else *--p = '0';
+      panic(p, e-p);
+      fmt += 1;
+    } else if (fmt[0] == 'p' || fmt[0] == 'x') {
+      unsigned val = va_arg(ap, unsigned);
+      char buf[39+1]; /* enough up to 128 bits */
+      char *e = &buf[40], *p = e;
+      if (val) {
+        unsigned m = val, d; 
+        do *--p = (int)(d = (m%16), d < 10 ? d + '0' : d-10 + 'a');
+          while ((m /= 16) > 0);
+      } else *--p = '0';
+      panic(p, e-p);
+      fmt += 1;
+    }
+  }
+}
+
 double atof(const char *s)
 {
   return strtod(s, NULL);
@@ -472,21 +543,23 @@ void qsort(void *base, size_t nmemb, size_t size, int (*cmp)(const void *, const
 
 /* 'binary buddies' memory allocator */
 
-#define WASMPAGESIZE 65536
-#define NBUCKETS       28            /* 2^4 .. 2^31 */
-#define SBRKBUCKET     12            /* BI2BLKSZ(12) = WASMPAGESIZE */
+#define WASMPAGESIZE   65536
+#define BUCKET0P2      5U            /* smallest block is 2^5 = 32 bytes */
+#define NBUCKETS       27            /* 2^5 .. 2^31 */
+#define SBRKBUCKET     11            /* BI2BLKSZ(11) = WASMPAGESIZE */
 #define MAXBLOCKSZ     0x80000000UL  /* 2^31 */
-#define MAXPAYLOAD     0x7FFFFFF8UL  /* 2^31-sizeof(header) */
-#define HDRPTRMASK     0x00000007UL  /* lower 3 bits must be 0 */
-#define BI2BLKSZ(bi)   (1U << ((bi) + 4))
+#define MAXPAYLOAD     0x7FFFFFF0UL  /* 2^31-sizeof(header) */
+#define HDRPTRMASK     0x0000000FUL  /* lower 4 bits must be 0 */
+#define BI2BLKSZ(bi)   (1U << ((bi) + BUCKET0P2))
 #define CHECKHDRPTR(p) (assert(!((uintptr_t)(p) & HDRPTRMASK)))
 
 /* in WASM 'ff' overlaps w/ ls quad of 'next' */
 typedef union header {
   struct { union header *next, *prev; } free;
   struct { uint8_t ff, bi; size_t plsz; } used;
+  char align16[16]; /* for 16-byte alignment */
 } header_t;
-static_assert(sizeof(header_t) == 8);
+static_assert(sizeof(header_t) == 16);
 
 static header_t* buckets[NBUCKETS];
 
@@ -566,80 +639,9 @@ static size_t findbktidx(size_t payload)
   if (payload <= MAXPAYLOAD) {
     size_t blkmin = payload + sizeof(header_t) - 1;
     size_t p2 = 32U - _clz((unsigned)blkmin);
-    return p2 < 4U ? 0 : p2 - 4U;
+    return p2 < BUCKET0P2 ? 0 : p2 - BUCKET0P2;
   }
   return NBUCKETS;
-}
-
-static void panic(const char *s, size_t n)
-{
-  ciovec_t iov; size_t ret;
-  fd_t fd = 2; /* stderr */
-  iov.buf = (uint8_t*)s; iov.buf_len = n;
-  fd_write(fd, &iov, 1, &ret);
-}
-
-static void panicf(const char *fmt, ...)
-{
-  va_arg_t *ap = va_etc();
-  while (*fmt) {
-    if (*fmt != '%' || *++fmt == '%') {
-      panic(fmt++, 1);
-    } else if (fmt[0] == 's') {
-      char *s = va_arg(ap, char*);
-      if (s) panic(s, strlen(s)); 
-      else panic("(NULL)", 6);
-      fmt += 1;
-    } else if (fmt[0] == 'd') {
-      int val = va_arg(ap, int);
-      char buf[39+1]; /* enough up to 128 bits (w/sign) */
-      char *e = &buf[40], *p = e;
-      if (val) {
-        unsigned m; 
-        if (val == (-1-0x7fffffff)) m = (0x7fffffff) + (unsigned)1;
-        else if (val < 0) m = -val;
-        else m = val;
-        do *--p = (int)(m%10) + '0';
-          while ((m /= 10) > 0);
-        if (val < 0) *--p = '-';
-      } else *--p = '0';
-      panic(p, e-p);
-      fmt += 1;
-    } else if (fmt[0] == 'u') {
-      unsigned val = va_arg(ap, unsigned);
-      char buf[39+1]; /* enough up to 128 bits */
-      char *e = &buf[40], *p = e;
-      if (val) {
-        unsigned m = val; 
-        do *--p = (int)(m%10) + '0';
-          while ((m /= 10) > 0);
-      } else *--p = '0';
-      panic(p, e-p);
-      fmt += 1;
-    } else if (fmt[0] == 'o') {
-      unsigned val = va_arg(ap, unsigned);
-      char buf[39+1]; /* enough up to 128 bits */
-      char *e = &buf[40], *p = e;
-      if (val) {
-        unsigned m = val; 
-        do *--p = (int)(m%8) + '0';
-          while ((m /= 8) > 0);
-      } else *--p = '0';
-      panic(p, e-p);
-      fmt += 1;
-    } else if (fmt[0] == 'p' || fmt[0] == 'x') {
-      unsigned val = va_arg(ap, unsigned);
-      char buf[39+1]; /* enough up to 128 bits */
-      char *e = &buf[40], *p = e;
-      if (val) {
-        unsigned m = val, d; 
-        do *--p = (int)(d = (m%16), d < 10 ? d + '0' : d-10 + 'a');
-          while ((m /= 16) > 0);
-      } else *--p = '0';
-      panic(p, e-p);
-      fmt += 1;
-    }
-  }
 }
 
 void *realloc(void *p, size_t n)
