@@ -71,7 +71,7 @@ typedef enum sc {
 
 /* base type specifier */
 typedef enum ts {
-  TS_VOID,     TS_ETC,                    TS_BOOL, 
+  TS_VOID,     TS_ETC,       TS_V128,     TS_BOOL, 
   TS_CHAR,     TS_UCHAR,     TS_SHORT,    TS_USHORT,
   TS_INT,      TS_UINT,      TS_LONG,     TS_ULONG,
   TS_LLONG,    TS_ULLONG,    TS_FLOAT,    TS_DOUBLE,
@@ -196,6 +196,8 @@ extern bool node_is_countofetc(const node_t *pn);
 extern bool node_is_generic(const node_t *pn);
 
 /* node builders; modify pn in place and return it */
+extern void make_vararg_union_type(node_t *ptn);
+extern size_t sizeof_vararg_union;
 /* wrap node into nt node as a subnode */
 extern node_t *wrap_node(node_t *pn, nt_t nt);
 /* wrap node into NT_SUBSCRIPT node */

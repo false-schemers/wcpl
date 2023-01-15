@@ -1165,7 +1165,7 @@
     i32.const 26
     ref.data $time:ds63$
     global.get $crt:sp$
-    i32.const 64
+    i32.const 128
     i32.sub
     local.tee $i1$
     global.set $crt:sp$
@@ -1180,7 +1180,7 @@
     i32.mul
     i32.add
     i32.load offset=0 align=4
-    i32.store offset=8 align=4
+    i32.store offset=16 align=4
     local.get $i1$
     ref.data $time:mon_name
     local.get $ptm
@@ -1189,35 +1189,35 @@
     i32.mul
     i32.add
     i32.load offset=0 align=4
-    i32.store offset=16 align=4
-    local.get $i1$
-    local.get $ptm
-    i32.load offset=12 align=4
-    i32.store offset=24 align=4
-    local.get $i1$
-    local.get $ptm
-    i32.load offset=8 align=4
     i32.store offset=32 align=4
     local.get $i1$
     local.get $ptm
+    i32.load offset=12 align=4
+    i32.store offset=48 align=4
+    local.get $i1$
+    local.get $ptm
+    i32.load offset=8 align=4
+    i32.store offset=64 align=4
+    local.get $i1$
+    local.get $ptm
     i32.load offset=4 align=4
-    i32.store offset=40 align=4
+    i32.store offset=80 align=4
     local.get $i1$
     local.get $ptm
     i32.load offset=0 align=4
-    i32.store offset=48 align=4
+    i32.store offset=96 align=4
     local.get $i1$
     i32.const 1900
     local.get $ptm
     i32.load offset=20 align=4
     i32.add
-    i32.store offset=56 align=4
+    i32.store offset=112 align=4
     local.get $i1$
-    i32.const 8
+    i32.const 16
     i32.add
     call $stdio:snprintf
     local.get $i1$
-    i32.const 64
+    i32.const 128
     i32.add
     global.set $crt:sp$
     drop

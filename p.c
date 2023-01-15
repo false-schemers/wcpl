@@ -325,6 +325,34 @@ static void unintern_symbol(const char *name)
   if (pi) bufrem(&g_syminfo, bufoff(&g_syminfo, pi));
 }
 
+size_t sizeof_vararg_union = 16;
+void make_vararg_union_type(node_t *ptn)
+{
+  node_t *pfn;
+  assert(ptn->nt == NT_NULL);
+  ptn->nt = NT_TYPE; ptn->ts = TS_UNION; ptn->name = intern("va_arg");
+  ndset(pfn = ndnewbk(ptn), NT_VARDECL, -1, -1)->name = intern("va_int"); 
+  ndsettype(ndnewbk(pfn), TS_INT);
+  ndset(pfn = ndnewbk(ptn), NT_VARDECL, -1, -1)->name = intern("va_uint"); 
+  ndsettype(ndnewbk(pfn), TS_UINT);
+  ndset(pfn = ndnewbk(ptn), NT_VARDECL, -1, -1)->name = intern("va_long"); 
+  ndsettype(ndnewbk(pfn), TS_LONG);
+  ndset(pfn = ndnewbk(ptn), NT_VARDECL, -1, -1)->name = intern("va_ulong"); 
+  ndsettype(ndnewbk(pfn), TS_ULONG);
+  ndset(pfn = ndnewbk(ptn), NT_VARDECL, -1, -1)->name = intern("va_llong"); 
+  ndsettype(ndnewbk(pfn), TS_LLONG);
+  ndset(pfn = ndnewbk(ptn), NT_VARDECL, -1, -1)->name = intern("va_ullong"); 
+  ndsettype(ndnewbk(pfn), TS_ULLONG);
+  ndset(pfn = ndnewbk(ptn), NT_VARDECL, -1, -1)->name = intern("va_double"); 
+  ndsettype(ndnewbk(pfn), TS_DOUBLE);
+  ndset(pfn = ndnewbk(ptn), NT_VARDECL, -1, -1)->name = intern("va_size"); 
+  ndsettype(ndnewbk(pfn), TS_ULONG);
+  ndset(pfn = ndnewbk(ptn), NT_VARDECL, -1, -1)->name = intern("va_v128"); 
+  ndsettype(ndnewbk(pfn), TS_V128);
+  ndset(pfn = ndnewbk(ptn), NT_VARDECL, -1, -1)->name = intern("va_voidptr"); 
+  ndsettype(ndnewbk(ndsettype(ndnewbk(pfn), TS_PTR)), TS_VOID);
+}
+
 void init_symbols(void)
 {
   node_t *pn, *psn; time_t now;
@@ -402,8 +430,10 @@ void init_symbols(void)
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
   intern_symbol("intptr_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
+  intern_symbol("v128_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
+  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_V128;
   intern_symbol("va_arg_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_ULLONG;
+  pn = ndbnewbk(&g_nodes); make_vararg_union_type(pn);
   intern_symbol("INTPTR_MIN", TT_MACRO_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
   pn->ts = TS_LONG; pn->val.i = LONG_MIN; /* wasm32 */
@@ -4033,6 +4063,7 @@ const char *ts_name(ts_t ts)
   switch (ts) {
     case TS_VOID: s = "void"; break;
     case TS_ETC: s = "etc"; break;  
+    case TS_V128: s = "v128"; break; 
     case TS_BOOL: s = "bool"; break; 
     case TS_CHAR: s = "char"; break; 
     case TS_UCHAR: s = "uchar"; break; 

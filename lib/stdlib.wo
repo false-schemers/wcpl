@@ -2529,7 +2529,7 @@
     if
     local.get $ap
     local.get $ap
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $ap
     i32.load offset=0 align=4
@@ -2558,7 +2558,7 @@
     if
     local.get $ap
     local.get $ap
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $ap
     i32.load offset=0 align=4
@@ -2652,7 +2652,7 @@
     if
     local.get $ap
     local.get $ap
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $ap
     i32.load offset=0 align=4
@@ -2718,7 +2718,7 @@
     if
     local.get $ap
     local.get $ap
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $ap
     i32.load offset=0 align=4
@@ -2792,7 +2792,7 @@
     if
     local.get $ap
     local.get $ap
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $ap
     i32.load offset=0 align=4

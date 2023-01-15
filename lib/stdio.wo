@@ -4678,7 +4678,7 @@
     else
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -8181,7 +8181,7 @@
     if
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -8251,7 +8251,7 @@
     if
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -8625,7 +8625,7 @@
     if
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i64.load offset=0 align=8
@@ -8664,7 +8664,7 @@
     if
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -8699,7 +8699,7 @@
     if (result i32)
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -8711,7 +8711,7 @@
     if (result i32)
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -8719,7 +8719,7 @@
     else
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -8762,7 +8762,7 @@
     local.get $maxlen
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i64.load offset=0 align=8
@@ -8785,7 +8785,7 @@
     local.get $maxlen
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -8803,7 +8803,7 @@
     if (result i32)
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -8816,7 +8816,7 @@
     if (result i32)
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -8825,7 +8825,7 @@
     else
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -8874,7 +8874,7 @@
     local.get $maxlen
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     f64.load offset=0 align=8
@@ -8910,7 +8910,7 @@
     local.get $maxlen
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     f64.load offset=0 align=8
@@ -8977,7 +8977,7 @@
     local.get $maxlen
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     f64.load offset=0 align=8
@@ -9029,7 +9029,7 @@
     end
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -9083,7 +9083,7 @@
     end $41$
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -9238,7 +9238,7 @@
     local.get $maxlen
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4
@@ -9258,7 +9258,7 @@
     local.get $maxlen
     local.get $va
     local.get $va
-    i32.const 8
+    i32.const 16
     i32.add
     local.set $va
     i32.load offset=0 align=4

@@ -113,7 +113,9 @@ static valtype_t ts2vt(ts_t ts)
     case TS_FLOAT: 
       return VT_F32;
     case TS_DOUBLE:
-      return VT_F64; 
+      return VT_F64;
+    case TS_V128:
+      return VT_V128; 
     default:; 
   }
   return VT_UNKN;
@@ -600,6 +602,9 @@ void measure_type(const node_t *ptn, node_t *prn, size_t *psize, size_t *palign,
       break;
     case TS_ETC: 
       n2eprintf(ptn, prn, "can't allocate data for ... yet");
+      break;
+    case TS_V128:
+      *psize = *palign = 16; 
       break;
     case TS_BOOL:
     case TS_CHAR: case TS_UCHAR: 
@@ -1708,8 +1713,8 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
           if (!pvi) neprintf(pn, "access to ... in non-vararg function");
           assert(pvi->sc == SC_REGISTER && !pvi->fld);
           pn->nt = NT_IDENTIFIER; pn->name = pvi->reg;
-          tn = mknd(); ndset(&tn, NT_TYPE, pn->pwsid, pn->startpos);
-          tn.ts = TS_ULLONG; /* va_arg_t */
+          tn = mknd(); make_vararg_union_type(&tn); /* va_arg_t */
+          tn.pwsid = pn->pwsid; tn.startpos = pn->startpos;
           wrap_expr_cast(pn, wrap_type_pointer(&tn)); 
           ndfini(&tn);
         } break;
@@ -1730,14 +1735,13 @@ static void expr_wasmify(node_t *pn, buf_t *pvib, buf_t *plib)
         case INTR_COUNTOF: {
           node_t *pan; assert(ndlen(pn) == 1);
           pan = ndref(pn, 0);
-          if (node_is_etc(pan)) { /* countof(...) => (size_t)((va_arg_t*)ap$[-1]) */
+          if (node_is_etc(pan)) { /* countof(...) => ((va_arg_t*)ap$[-1]).va_size */
             node_t nd = mknd();
             expr_wasmify(pan, pvib, plib);
             ndset(&nd, NT_LITERAL, pn->pwsid, pn->startpos); 
             nd.ts = TS_INT; nd.val.i = -1; wrap_subscript(pan, &nd);
             ndswap(&nd, pan); ndswap(&nd, pn); 
-            ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos); 
-            nd.ts = TS_ULONG; wrap_expr_cast(pn, &nd); 
+            wrap_postfix_operator(pn, TT_DOT, intern("va_size"));
             ndfini(&nd);          
           } else {
             if (pan->nt != NT_TYPE) expr_wasmify(pan, pvib, plib);
@@ -3206,10 +3210,12 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     /* collect remaining arguments into a stack array of va_arg_t */
     sym_t pname = rpalloc(VT_I32); /* arg frame ptr (wasm32) */
     node_t tn = mknd(); /* for temporary type conversions */
-    /* frame is an array of uint64s (va_arg_t), aligned to 16 */
-    size_t asz = 8, nargs = buflen(pab)-i, nframe = 1/*count*/+nargs;
+    /* frame is an array of va_arg_t, aligned to 16 */
+    size_t asz = sizeof_vararg_union; /* va_arg_t union */
+    size_t nargs = buflen(pab)-i, nframe = 1/*count*/+nargs;
     size_t framesz = (size_t)((nframe*asz + 15) & ~0xFULL), basei;
     inscode_t *pic = icbnewfr(&pcn->data); pic->in = IN_REGDECL;
+    assert(asz <= 16); /* make sure our alignment is legit */
     pic->id = pname; pic->arg.u = VT_I32; /* wasm32 pointer */
     acode_pushin_id_mod(pcn, IN_GLOBAL_GET, g_sp_id, g_crt_mod);
     acode_pushin_uarg(pcn, IN_I32_CONST, framesz);
