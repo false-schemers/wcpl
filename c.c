@@ -162,6 +162,7 @@ static valtype_t ts_to_blocktype(ts_t ts)
     case TS_LLONG: case TS_ULLONG:  return VT_I64;
     case TS_FLOAT:                  return VT_F32;
     case TS_DOUBLE:                 return VT_F64;
+    case TS_V128:                   return VT_V128;
     default:; 
   }
   return VT_UNKN;
@@ -1063,6 +1064,7 @@ static void fundef_check_type(node_t *ptn)
         if (i == 0) break; /* return type can be void */
         neprintf(ptni, "unexpected void function argument type");
       case TS_ENUM: /* ok, treated as int */
+      case TS_V128: /* ok, but requires SIMD support */
       case TS_BOOL: /* ok but widened to int */
       case TS_CHAR: case TS_UCHAR:   /* ok but widened to int */
       case TS_SHORT: case TS_USHORT: /* ok but widened to int */
@@ -2010,7 +2012,9 @@ static void fundef_wasmify(node_t *pdn)
       case TS_CHAR:  case TS_UCHAR:  case TS_SHORT: case TS_USHORT: 
         cast = ptni->ts; ptni->ts = TS_INT;
       case TS_INT:   case TS_UINT:   case TS_LONG:  case TS_ULONG:  
-      case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: case TS_PTR: {
+      case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: 
+      case TS_V128: /* ok, but requires SIMD support */
+      case TS_PTR: {
         if (i != 0 && name != 0) {
           vi_t *pvi = bufnewbk(&vib);
           if (pdni->nt == NT_VARDECL && pdni->sc == SC_AUTO) {
@@ -2638,10 +2642,10 @@ static ts_t acode_const(node_t *pan, numval_t **ppnv)
   if (pan->nt == NT_ACODE && ndlen(pan) == 1 && icblen(&pan->data) == 1) {
     inscode_t *pic = icbref(&pan->data, 0); instr_t in = pic->in;
     switch (in) {
-      case IN_I32_CONST: if (ppnv) *ppnv = &pic->arg; return TS_INT;
-      case IN_I64_CONST: if (ppnv) *ppnv = &pic->arg; return TS_LLONG;
-      case IN_F32_CONST: if (ppnv) *ppnv = &pic->arg; return TS_FLOAT;
-      case IN_F64_CONST: if (ppnv) *ppnv = &pic->arg; return TS_DOUBLE;
+      case IN_I32_CONST: if (ppnv) *ppnv = (numval_t*)&pic->arg; return TS_INT;
+      case IN_I64_CONST: if (ppnv) *ppnv = (numval_t*)&pic->arg; return TS_LLONG;
+      case IN_F32_CONST: if (ppnv) *ppnv = (numval_t*)&pic->arg; return TS_FLOAT;
+      case IN_F64_CONST: if (ppnv) *ppnv = (numval_t*)&pic->arg; return TS_DOUBLE;
       default:;
     }
   }  
@@ -3897,7 +3901,7 @@ static node_t *fundef_flatten(node_t *pdn)
       inscode_t *pic = icbnewbk(&icb); 
       pic->in = IN_REGDECL; pic->id = pn->name;
       pic->arg.u = ts_to_blocktype(ndref(pn, 0)->ts);      
-      assert(VT_F64 <= pic->arg.u && pic->arg.u <= VT_I32);
+      assert(VT_V128 <= pic->arg.u && pic->arg.u <= VT_I32);
       lift_arg0(pn); /* vardecl => type */
     }
   }
@@ -3907,7 +3911,7 @@ static node_t *fundef_flatten(node_t *pdn)
       inscode_t *pic = icbnewbk(&icb); 
       pic->in = IN_REGDECL; pic->id = pn->name;
       pic->arg.u = ts_to_blocktype(ndref(pn, 0)->ts);      
-      assert(VT_F64 <= pic->arg.u && pic->arg.u <= VT_I32);
+      assert(VT_V128 <= pic->arg.u && pic->arg.u <= VT_I32);
     } else if (pn->nt == NT_ACODE) {
       expr_flatten(pn, pcn, &icb);
     } else assert(false);

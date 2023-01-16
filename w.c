@@ -186,6 +186,10 @@ static void wasm_in(instr_t in)
   } else if (((int)in & 0xffff) == (int)in) { /* 2-byte */
     wasm_byte(((unsigned)in >> 8) & 0xff);
     wasm_byte(((unsigned)in) & 0xff);
+  } else if (((int)in & 0xffffff) == (int)in) { /* 3-byte */
+    wasm_byte(((unsigned)in >> 16) & 0xff);
+    wasm_byte(((unsigned)in >> 8) & 0xff);
+    wasm_byte(((unsigned)in) & 0xff);
   } else assert(false);
 }
 
@@ -1042,7 +1046,12 @@ static const char *g_innames[256] = {
 const char *instr_name(instr_t in)
 {
   const char *s = "?";
-  switch (in) {
+  if (0 <= in && in <= 0xFF) {
+    /* single byte, core-1 */
+    size_t i = (size_t)in;
+    if (in <= 0xff && g_innames[i] != NULL) s = g_innames[i];
+  } else switch (in) {
+    /* extended multibyte, not in core-1 */
     case IN_I32_TRUNC_SAT_F32_S: s = "i32.trunc_sat_f32_s"; break;
     case IN_I32_TRUNC_SAT_F32_U: s = "i32.trunc_sat_f32_u"; break;
     case IN_I32_TRUNC_SAT_F64_S: s = "i32.trunc_sat_f64_s"; break;
@@ -1061,12 +1070,247 @@ const char *instr_name(instr_t in)
     case IN_TABLE_GROW: s = "table.grow"; break;
     case IN_TABLE_SIZE: s = "table.size"; break;
     case IN_TABLE_FILL: s = "table.fill"; break;
-    case IN_REF_DATA: s = "ref.data"; break; /* not in WASM! */
-    case IN_DATA_PUT_REF: s = "data.put_ref"; break; /* not in WASM! */
-    default: {
-      size_t i = (size_t)in;
-      if (in <= 0xff && g_innames[i] != NULL) s = g_innames[i];
-    }
+    /* simd-128 multibyte, not in core-1 */
+    case IN_V128_LOAD: s = "v128.load"; break;
+    case IN_V128_LOAD8X8_S: s = "v128.load8x8_s"; break;
+    case IN_V128_LOAD8X8_U: s = "v128.load8x8_u"; break;
+    case IN_V128_LOAD16X4_S: s = "v128.load16x4_s"; break;
+    case IN_V128_LOAD16X4_U: s = "v128.load16x4_u"; break;
+    case IN_V128_LOAD32X2_S: s = "v128.load32x2_s"; break;
+    case IN_V128_LOAD32X2_U: s = "v128.load32x2_u"; break;
+    case IN_V128_LOAD8_SPLAT: s = "v128.load8_splat"; break;
+    case IN_V128_LOAD16_SPLAT: s = "v128.load16_splat"; break;
+    case IN_V128_LOAD32_SPLAT: s = "v128.load32_splat"; break;
+    case IN_V128_LOAD64_SPLAT: s = "v128.load64_splat"; break;
+    case IN_V128_STORE: s = "v128.store"; break;
+    case IN_V128_CONST: s = "v128.const"; break;
+    case IN_I8X16_SHUFFLE: s = "i8x16.shuffle"; break;
+    case IN_I8X16_SWIZZLE: s = "i8x16.swizzle"; break;
+    case IN_I8X16_SPLAT: s = "i8x16.splat"; break;
+    case IN_I16X8_SPLAT: s = "i16x8.splat"; break;
+    case IN_I32X4_SPLAT: s = "i32x4.splat"; break;
+    case IN_I64X2_SPLAT: s = "i64x2.splat"; break;
+    case IN_F32X4_SPLAT: s = "f32x4.splat"; break;
+    case IN_F64X2_SPLAT: s = "f64x2.splat"; break;
+    case IN_I8X16_EXTRACT_LANE_S: s = "i8x16.extract_lane_s"; break;
+    case IN_I8X16_EXTRACT_LANE_U: s = "i8x16.extract_lane_u"; break;
+    case IN_I8X16_REPLACE_LANE: s = "i8x16.replace_lane"; break;
+    case IN_I16X8_EXTRACT_LANE_S: s = "i16x8.extract_lane_s"; break;
+    case IN_I16X8_EXTRACT_LANE_U: s = "i16x8.extract_lane_u"; break;
+    case IN_I16X8_REPLACE_LANE: s = "i16x8.replace_lane"; break;
+    case IN_I32X4_EXTRACT_LANE: s = "i32x4.extract_lane"; break;
+    case IN_I32X4_REPLACE_LANE: s = "i32x4.replace_lane"; break;
+    case IN_I64X2_EXTRACT_LANE: s = "i64x2.extract_lane"; break;
+    case IN_I64X2_REPLACE_LANE: s = "i64x2.replace_lane"; break;
+    case IN_F32X4_EXTRACT_LANE: s = "f32x4.extract_lane"; break;
+    case IN_F32X4_REPLACE_LANE: s = "f32x4.replace_lane"; break;
+    case IN_F64X2_EXTRACT_LANE: s = "f64x2.extract_lane"; break;
+    case IN_F64X2_REPLACE_LANE: s = "f64x2.replace_lane"; break;
+    case IN_I8X16_EQ: s = "i8x16.eq"; break;
+    case IN_I8X16_NE: s = "i8x16.ne"; break;
+    case IN_I8X16_LT_S: s = "i8x16.lt_s"; break;
+    case IN_I8X16_LT_U: s = "i8x16.lt_u"; break;
+    case IN_I8X16_GT_S: s = "i8x16.gt_s"; break;
+    case IN_I8X16_GT_U: s = "i8x16.gt_u"; break;
+    case IN_I8X16_LE_S: s = "i8x16.le_s"; break;
+    case IN_I8X16_LE_U: s = "i8x16.le_u"; break;
+    case IN_I8X16_GE_S: s = "i8x16.ge_s"; break;
+    case IN_I8X16_GE_U: s = "i8x16.ge_u"; break;
+    case IN_I16X8_EQ: s = "i16x8.eq"; break;
+    case IN_I16X8_NE: s = "i16x8.ne"; break;
+    case IN_I16X8_LT_S: s = "i16x8.lt_s"; break;
+    case IN_I16X8_LT_U: s = "i16x8.lt_u"; break;
+    case IN_I16X8_GT_S: s = "i16x8.gt_s"; break;
+    case IN_I16X8_GT_U: s = "i16x8.gt_u"; break;
+    case IN_I16X8_LE_S: s = "i16x8.le_s"; break;
+    case IN_I16X8_LE_U: s = "i16x8.le_u"; break;
+    case IN_I16X8_GE_S: s = "i16x8.ge_s"; break;
+    case IN_I16X8_GE_U: s = "i16x8.ge_u"; break;
+    case IN_I32X4_EQ: s = "i32x4.eq"; break;
+    case IN_I32X4_NE: s = "i32x4.ne"; break;
+    case IN_I32X4_LT_S: s = "i32x4.lt_s"; break;
+    case IN_I32X4_LT_U: s = "i32x4.lt_u"; break;
+    case IN_I32X4_GT_S: s = "i32x4.gt_s"; break;
+    case IN_I32X4_GT_U: s = "i32x4.gt_u"; break;
+    case IN_I32X4_LE_S: s = "i32x4.le_s"; break;
+    case IN_I32X4_LE_U: s = "i32x4.le_u"; break;
+    case IN_I32X4_GE_S: s = "i32x4.ge_s"; break;
+    case IN_I32X4_GE_U: s = "i32x4.ge_u"; break;
+    case IN_F32X4_EQ: s = "f32x4.eq"; break;
+    case IN_F32X4_NE: s = "f32x4.ne"; break;
+    case IN_F32X4_LT: s = "f32x4.lt"; break;
+    case IN_F32X4_GT: s = "f32x4.gt"; break;
+    case IN_F32X4_LE: s = "f32x4.le"; break;
+    case IN_F32X4_GE: s = "f32x4.ge"; break;
+    case IN_F64X2_EQ: s = "f64x2.eq"; break;
+    case IN_F64X2_NE: s = "f64x2.ne"; break;
+    case IN_F64X2_LT: s = "f64x2.lt"; break;
+    case IN_F64X2_GT: s = "f64x2.gt"; break;
+    case IN_F64X2_LE: s = "f64x2.le"; break;
+    case IN_F64X2_GE: s = "f64x2.ge"; break;
+    case IN_V128_NOT: s = "v128.not"; break;
+    case IN_V128_AND: s = "v128.and"; break;
+    case IN_V128_ANDNOT: s = "v128.andnot"; break;
+    case IN_V128_OR: s = "v128.or"; break;
+    case IN_V128_XOR: s = "v128.xor"; break;
+    case IN_V128_BITSELECT: s = "v128.bitselect"; break;
+    case IN_V128_ANY_TRUE: s = "v128.any_true"; break;
+    case IN_V128_LOAD8_LANE: s = "v128.load8_lane"; break;
+    case IN_V128_LOAD16_LANE: s = "v128.load16_lane"; break;
+    case IN_V128_LOAD32_LANE: s = "v128.load32_lane"; break;
+    case IN_V128_LOAD64_LANE: s = "v128.load64_lane"; break;
+    case IN_V128_STORE8_LANE: s = "v128.store8_lane"; break;
+    case IN_V128_STORE16_LANE: s = "v128.store16_lane"; break;
+    case IN_V128_STORE32_LANE: s = "v128.store32_lane"; break;
+    case IN_V128_STORE64_LANE: s = "v128.store64_lane"; break;
+    case IN_V128_LOAD32_ZERO: s = "v128.load32_zero"; break;
+    case IN_V128_LOAD64_ZERO: s = "v128.load64_zero"; break;
+    case IN_F32X4_DEMOTE_F64X2_ZERO: s = "f32x4.demote_f64x2_zero"; break;
+    case IN_F64X2_PROMOTE_LOW_F32X4: s = "f64x2.promote_low_f32x4"; break;
+    case IN_I8X16_ABS: s = "i8x16.abs"; break;
+    case IN_I8X16_NEG: s = "i8x16.neg"; break;
+    case IN_I8X16_POPCNT: s = "i8x16.popcnt"; break;
+    case IN_I8X16_ALL_TRUE: s = "i8x16.all_true"; break;
+    case IN_I8X16_BITMASK: s = "i8x16.bitmask"; break;
+    case IN_I8X16_NARROW_I16X8_S: s = "i8x16.narrow_i16x8_s"; break;
+    case IN_I8X16_NARROW_I16X8_U: s = "i8x16.narrow_i16x8_u"; break;
+    case IN_F32X4_CEIL: s = "f32x4.ceil"; break;
+    case IN_F32X4_FLOOR: s = "f32x4.floor"; break;
+    case IN_F32X4_TRUNC: s = "f32x4.trunc"; break;
+    case IN_F32X4_NEAREST: s = "f32x4.nearest"; break;
+    case IN_I8X16_SHL: s = "i8x16.shl"; break;
+    case IN_I8X16_SHR_S: s = "i8x16.shr_s"; break;
+    case IN_I8X16_SHR_U: s = "i8x16.shr_u"; break;
+    case IN_I8X16_ADD: s = "i8x16.add"; break;
+    case IN_I8X16_ADD_SAT_S: s = "i8x16.add_sat_s"; break;
+    case IN_I8X16_ADD_SAT_U: s = "i8x16.add_sat_u"; break;
+    case IN_I8X16_SUB: s = "i8x16.sub"; break;
+    case IN_I8X16_SUB_SAT_S: s = "i8x16.sub_sat_s"; break;
+    case IN_I8X16_SUB_SAT_U: s = "i8x16.sub_sat_u"; break;
+    case IN_F64X2_CEIL: s = "f64x2.ceil"; break;
+    case IN_F64X2_FLOOR: s = "f64x2.floor"; break;
+    case IN_I8X16_MIN_S: s = "i8x16.min_s"; break;
+    case IN_I8X16_MIN_U: s = "i8x16.min_u"; break;
+    case IN_I8X16_MAX_S: s = "i8x16.max_s"; break;
+    case IN_I8X16_MAX_U: s = "i8x16.max_u"; break;
+    case IN_F64X2_TRUNC: s = "f64x2.trunc"; break;
+    case IN_I8X16_AVGR_U: s = "i8x16.avgr_u"; break;
+    case IN_I16X8_EXTADD_PAIRWISE_I8X16_S: s = "i16x8.extadd_pairwise_i8x16_s"; break;
+    case IN_I16X8_EXTADD_PAIRWISE_I8X16_U: s = "i16x8.extadd_pairwise_i8x16_u"; break;
+    case IN_I32X4_EXTADD_PAIRWISE_I16X8_S: s = "i32x4.extadd_pairwise_i16x8_s"; break;
+    case IN_I32X4_EXTADD_PAIRWISE_I16X8_U: s = "i32x4.extadd_pairwise_i16x8_u"; break;
+    case IN_I16X8_ABS: s = "i16x8.abs"; break;
+    case IN_I16X8_NEG: s = "i16x8.neg"; break;
+    case IN_I16X8_Q15MULR_SAT_S: s = "i16x8.q15mulr_sat_s"; break;
+    case IN_I16X8_ALL_TRUE: s = "i16x8.all_true"; break;
+    case IN_I16X8_BITMASK: s = "i16x8.bitmask"; break;
+    case IN_I16X8_NARROW_I32X4_S: s = "i16x8.narrow_i32x4_s"; break;
+    case IN_I16X8_NARROW_I32X4_U: s = "i16x8.narrow_i32x4_u"; break;
+    case IN_I16X8_EXTEND_LOW_I8X16_S: s = "i16x8.extend_low_i8x16_s"; break;
+    case IN_I16X8_EXTEND_HIGH_I8X16_S: s = "i16x8.extend_high_i8x16_s"; break;
+    case IN_I16X8_EXTEND_LOW_I8X16_U: s = "i16x8.extend_low_i8x16_u"; break;
+    case IN_I16X8_EXTEND_HIGH_I8X16_U: s = "i16x8.extend_high_i8x16_u"; break;
+    case IN_I16X8_SHL: s = "i16x8.shl"; break;
+    case IN_I16X8_SHR_S: s = "i16x8.shr_s"; break;
+    case IN_I16X8_SHR_U: s = "i16x8.shr_u"; break;
+    case IN_I16X8_ADD: s = "i16x8.add"; break;
+    case IN_I16X8_ADD_SAT_S: s = "i16x8.add_sat_s"; break;
+    case IN_I16X8_ADD_SAT_U: s = "i16x8.add_sat_u"; break;
+    case IN_I16X8_SUB: s = "i16x8.sub"; break;
+    case IN_I16X8_SUB_SAT_S: s = "i16x8.sub_sat_s"; break;
+    case IN_I16X8_SUB_SAT_U: s = "i16x8.sub_sat_u"; break;
+    case IN_F64X2_NEAREST: s = "f64x2.nearest"; break;
+    case IN_I16X8_MUL: s = "i16x8.mul"; break;
+    case IN_I16X8_MIN_S: s = "i16x8.min_s"; break;
+    case IN_I16X8_MIN_U: s = "i16x8.min_u"; break;
+    case IN_I16X8_MAX_S: s = "i16x8.max_s"; break;
+    case IN_I16X8_MAX_U: s = "i16x8.max_u"; break;
+    case IN_I16X8_AVGR_U: s = "i16x8.avgr_u"; break;
+    case IN_I16X8_EXTMUL_LOW_I8X16_S: s = "i16x8.extmul_low_i8x16_s"; break;
+    case IN_I16X8_EXTMUL_HIGH_I8X16_S: s = "i16x8.extmul_high_i8x16_s"; break;
+    case IN_I16X8_EXTMUL_LOW_I8X16_U: s = "i16x8.extmul_low_i8x16_u"; break;
+    case IN_I16X8_EXTMUL_HIGH_I8X16_U: s = "i16x8.extmul_high_i8x16_u"; break;
+    case IN_I32X4_ABS: s = "i32x4.abs"; break;
+    case IN_I32X4_NEG: s = "i32x4.neg"; break;
+    case IN_I32X4_ALL_TRUE: s = "i32x4.all_true"; break;
+    case IN_I32X4_BITMASK: s = "i32x4.bitmask"; break;
+    case IN_I32X4_EXTEND_LOW_I16X8_S: s = "i32x4.extend_low_i16x8_s"; break;
+    case IN_I32X4_EXTEND_HIGH_I16X8_S: s = "i32x4.extend_high_i16x8_s"; break;
+    case IN_I32X4_EXTEND_LOW_I16X8_U: s = "i32x4.extend_low_i16x8_u"; break;
+    case IN_I32X4_EXTEND_HIGH_I16X8_U: s = "i32x4.extend_high_i16x8_u"; break;
+    case IN_I32X4_SHL: s = "i32x4.shl"; break;
+    case IN_I32X4_SHR_S: s = "i32x4.shr_s"; break;
+    case IN_I32X4_SHR_U: s = "i32x4.shr_u"; break;
+    case IN_I32X4_ADD: s = "i32x4.add"; break;
+    case IN_I32X4_SUB: s = "i32x4.sub"; break;
+    case IN_I32X4_MUL: s = "i32x4.mul"; break;
+    case IN_I32X4_MIN_S: s = "i32x4.min_s"; break;
+    case IN_I32X4_MIN_U: s = "i32x4.min_u"; break;
+    case IN_I32X4_MAX_S: s = "i32x4.max_s"; break;
+    case IN_I32X4_MAX_U: s = "i32x4.max_u"; break;
+    case IN_I32X4_DOT_I16X8_S: s = "i32x4.dot_i16x8_s"; break;
+    case IN_I32X4_EXTMUL_LOW_I16X8_S: s = "i32x4.extmul_low_i16x8_s"; break;
+    case IN_I32X4_EXTMUL_HIGH_I16X8_S: s = "i32x4.extmul_high_i16x8_s"; break;
+    case IN_I32X4_EXTMUL_LOW_I16X8_U: s = "i32x4.extmul_low_i16x8_u"; break;
+    case IN_I32X4_EXTMUL_HIGH_I16X8_U: s = "i32x4.extmul_high_i16x8_u"; break;
+    case IN_I64X2_ABS: s = "i64x2.abs"; break;
+    case IN_I64X2_NEG: s = "i64x2.neg"; break;
+    case IN_I64X2_ALL_TRUE: s = "i64x2.all_true"; break;
+    case IN_I64X2_BITMASK: s = "i64x2.bitmask"; break;
+    case IN_I64X2_EXTEND_LOW_I32X4_S: s = "i64x2.extend_low_i32x4_s"; break;
+    case IN_I64X2_EXTEND_HIGH_I32X4_S: s = "i64x2.extend_high_i32x4_s"; break;
+    case IN_I64X2_EXTEND_LOW_I32X4_U: s = "i64x2.extend_low_i32x4_u"; break;
+    case IN_I64X2_EXTEND_HIGH_I32X4_U: s = "i64x2.extend_high_i32x4_u"; break;
+    case IN_I64X2_SHL: s = "i64x2.shl"; break;
+    case IN_I64X2_SHR_S: s = "i64x2.shr_s"; break;
+    case IN_I64X2_SHR_U: s = "i64x2.shr_u"; break;
+    case IN_I64X2_ADD: s = "i64x2.add"; break;
+    case IN_I64X2_SUB: s = "i64x2.sub"; break;
+    case IN_I64X2_MUL: s = "i64x2.mul"; break;
+    case IN_I64X2_EQ: s = "i64x2.eq"; break;
+    case IN_I64X2_NE: s = "i64x2.ne"; break;
+    case IN_I64X2_LT_S: s = "i64x2.lt_s"; break;
+    case IN_I64X2_GT_S: s = "i64x2.gt_s"; break;
+    case IN_I64X2_LE_S: s = "i64x2.le_s"; break;
+    case IN_I64X2_GE_S: s = "i64x2.ge_s"; break;
+    case IN_I64X2_EXTMUL_LOW_I32X4_S: s = "i64x2.extmul_low_i32x4_s"; break;
+    case IN_I64X2_EXTMUL_HIGH_I32X4_S: s = "i64x2.extmul_high_i32x4_s"; break;
+    case IN_I64X2_EXTMUL_LOW_I32X4_U: s = "i64x2.extmul_low_i32x4_u"; break;
+    case IN_I64X2_EXTMUL_HIGH_I32X4_U: s = "i64x2.extmul_high_i32x4_u"; break;
+    case IN_F32X4_ABS: s = "f32x4.abs"; break;
+    case IN_F32X4_NEG: s = "f32x4.neg"; break;
+    case IN_F32X4_SQRT: s = "f32x4.sqrt"; break;
+    case IN_F32X4_ADD: s = "f32x4.add"; break;
+    case IN_F32X4_SUB: s = "f32x4.sub"; break;
+    case IN_F32X4_MUL: s = "f32x4.mul"; break;
+    case IN_F32X4_DIV: s = "f32x4.div"; break;
+    case IN_F32X4_MIN: s = "f32x4.min"; break;
+    case IN_F32X4_MAX: s = "f32x4.max"; break;
+    case IN_F32X4_PMIN: s = "f32x4.pmin"; break;
+    case IN_F32X4_PMAX: s = "f32x4.pmax"; break;
+    case IN_F64X2_ABS: s = "f64x2.abs"; break;
+    case IN_F64X2_NEG: s = "f64x2.neg"; break;
+    case IN_F64X2_SQRT: s = "f64x2.sqrt"; break;
+    case IN_F64X2_ADD: s = "f64x2.add"; break;
+    case IN_F64X2_SUB: s = "f64x2.sub"; break;
+    case IN_F64X2_MUL: s = "f64x2.mul"; break;
+    case IN_F64X2_DIV: s = "f64x2.div"; break;
+    case IN_F64X2_MIN: s = "f64x2.min"; break;
+    case IN_F64X2_MAX: s = "f64x2.max"; break;
+    case IN_F64X2_PMIN: s = "f64x2.pmin"; break;
+    case IN_F64X2_PMAX: s = "f64x2.pmax"; break;
+    case IN_I32X4_TRUNC_SAT_F32X4_S: s = "i32x4.trunc_sat_f32x4_s"; break;
+    case IN_I32X4_TRUNC_SAT_F32X4_U: s = "i32x4.trunc_sat_f32x4_u"; break;
+    case IN_F32X4_CONVERT_I32X4_S: s = "f32x4.convert_i32x4_s"; break;
+    case IN_F32X4_CONVERT_I32X4_U: s = "f32x4.convert_i32x4_u"; break;
+    case IN_I32X4_TRUNC_SAT_F64X2_S_ZERO: s = "i32x4.trunc_sat_f64x2_s_zero"; break;
+    case IN_I32X4_TRUNC_SAT_F64X2_U_ZERO: s = "i32x4.trunc_sat_f64x2_u_zero"; break;
+    case IN_F64X2_CONVERT_LOW_I32X4_S: s = "f64x2.convert_low_i32x4_s"; break;
+    case IN_F64X2_CONVERT_LOW_I32X4_U: s = "f64x2.convert_low_i32x4_u"; break;
+    /* internal use */
+    case IN_REF_DATA: s = "ref.data"; break;
+    case IN_DATA_PUT_REF: s = "data.put_ref"; break;
+    default: assert(false);
   }
   return s;
 }
@@ -1090,35 +1334,281 @@ const char *valtype_name(valtype_t vt)
 
 static buf_t g_nimap;
 
+static void nimap_intern(const char *name, instr_t in)
+{
+  int *pi = bufnewbk(&g_nimap); 
+  pi[0] = intern(name); pi[1] = (int)in;
+}
+
 instr_t name_instr(const char *name)
 { 
   sym_t sym; int *pi;
   if (!g_nimap.esz) {
     size_t i; bufinit(&g_nimap, sizeof(int)*2);
+    /* single byte, core-1 */
     for (i = 0; i <= 0xff; ++i) {
       const char *s = g_innames[i];
-      if (s) { pi = bufnewbk(&g_nimap); pi[0] = intern(s), pi[1] = (int)i; }
+      if (s) nimap_intern(s, (instr_t)i);
     }
-    pi = bufnewbk(&g_nimap); pi[0] = intern("i32.trunc_sat_f32_s"), pi[1] = IN_I32_TRUNC_SAT_F32_S;
-    pi = bufnewbk(&g_nimap); pi[0] = intern("i32.trunc_sat_f32_u"), pi[1] = IN_I32_TRUNC_SAT_F32_U; 
-    pi = bufnewbk(&g_nimap); pi[0] = intern("i32.trunc_sat_f64_s"), pi[1] = IN_I32_TRUNC_SAT_F64_S; 
-    pi = bufnewbk(&g_nimap); pi[0] = intern("i32.trunc_sat_f64_u"), pi[1] = IN_I32_TRUNC_SAT_F64_U; 
-    pi = bufnewbk(&g_nimap); pi[0] = intern("i64.trunc_sat_f32_s"), pi[1] = IN_I64_TRUNC_SAT_F32_S; 
-    pi = bufnewbk(&g_nimap); pi[0] = intern("i64.trunc_sat_f32_u"), pi[1] = IN_I64_TRUNC_SAT_F32_U; 
-    pi = bufnewbk(&g_nimap); pi[0] = intern("i64.trunc_sat_f64_s"), pi[1] = IN_I64_TRUNC_SAT_F64_S; 
-    pi = bufnewbk(&g_nimap); pi[0] = intern("i64.trunc_sat_f64_u"), pi[1] = IN_I64_TRUNC_SAT_F64_U; 
-    pi = bufnewbk(&g_nimap); pi[0] = intern("memory.init"), pi[1] = IN_MEMORY_INIT;
-    pi = bufnewbk(&g_nimap); pi[0] = intern("data.drop"), pi[1] = IN_DATA_DROP;           
-    pi = bufnewbk(&g_nimap); pi[0] = intern("memory.copy"), pi[1] = IN_MEMORY_COPY;         
-    pi = bufnewbk(&g_nimap); pi[0] = intern("memory.fill"), pi[1] = IN_MEMORY_FILL;         
-    pi = bufnewbk(&g_nimap); pi[0] = intern("table.init"), pi[1] = IN_TABLE_INIT;          
-    pi = bufnewbk(&g_nimap); pi[0] = intern("elem.drop"), pi[1] = IN_ELEM_DROP;           
-    pi = bufnewbk(&g_nimap); pi[0] = intern("table.copy"), pi[1] = IN_TABLE_COPY;          
-    pi = bufnewbk(&g_nimap); pi[0] = intern("table.grow"), pi[1] = IN_TABLE_GROW;          
-    pi = bufnewbk(&g_nimap); pi[0] = intern("table.size"), pi[1] = IN_TABLE_SIZE;          
-    pi = bufnewbk(&g_nimap); pi[0] = intern("table.fill"), pi[1] = IN_TABLE_FILL;
-    pi = bufnewbk(&g_nimap); pi[0] = intern("ref.data"), pi[1] = IN_REF_DATA; /* not in WASM! */
-    pi = bufnewbk(&g_nimap); pi[0] = intern("data.put_ref"), pi[1] = IN_DATA_PUT_REF; /* not in WASM! */
+    /* extended multibyte, not in core-1 */
+    nimap_intern("i32.trunc_sat_f32_s", IN_I32_TRUNC_SAT_F32_S);
+    nimap_intern("i32.trunc_sat_f32_u", IN_I32_TRUNC_SAT_F32_U);
+    nimap_intern("i32.trunc_sat_f64_s", IN_I32_TRUNC_SAT_F64_S);
+    nimap_intern("i32.trunc_sat_f64_u", IN_I32_TRUNC_SAT_F64_U);
+    nimap_intern("i64.trunc_sat_f32_s", IN_I64_TRUNC_SAT_F32_S);
+    nimap_intern("i64.trunc_sat_f32_u", IN_I64_TRUNC_SAT_F32_U);
+    nimap_intern("i64.trunc_sat_f64_s", IN_I64_TRUNC_SAT_F64_S);
+    nimap_intern("i64.trunc_sat_f64_u", IN_I64_TRUNC_SAT_F64_U);
+    nimap_intern("memory.init", IN_MEMORY_INIT);
+    nimap_intern("data.drop", IN_DATA_DROP);
+    nimap_intern("memory.copy", IN_MEMORY_COPY);
+    nimap_intern("memory.fill", IN_MEMORY_FILL);
+    nimap_intern("table.init", IN_TABLE_INIT);
+    nimap_intern("elem.drop", IN_ELEM_DROP);
+    nimap_intern("table.copy", IN_TABLE_COPY);
+    nimap_intern("table.grow", IN_TABLE_GROW);
+    nimap_intern("table.size", IN_TABLE_SIZE);
+    nimap_intern("table.fill", IN_TABLE_FILL);
+    /* simd-128 multibyte, not in core-1 */
+    nimap_intern("v128.load", IN_V128_LOAD);
+    nimap_intern("v128.load8x8_s", IN_V128_LOAD8X8_S);
+    nimap_intern("v128.load8x8_u", IN_V128_LOAD8X8_U);
+    nimap_intern("v128.load16x4_s", IN_V128_LOAD16X4_S);
+    nimap_intern("v128.load16x4_u", IN_V128_LOAD16X4_U);
+    nimap_intern("v128.load32x2_s", IN_V128_LOAD32X2_S);
+    nimap_intern("v128.load32x2_u", IN_V128_LOAD32X2_U);
+    nimap_intern("v128.load8_splat", IN_V128_LOAD8_SPLAT);
+    nimap_intern("v128.load16_splat", IN_V128_LOAD16_SPLAT);
+    nimap_intern("v128.load32_splat", IN_V128_LOAD32_SPLAT);
+    nimap_intern("v128.load64_splat", IN_V128_LOAD64_SPLAT);
+    nimap_intern("v128.store", IN_V128_STORE);
+    nimap_intern("v128.const", IN_V128_CONST);
+    nimap_intern("i8x16.shuffle", IN_I8X16_SHUFFLE);
+    nimap_intern("i8x16.swizzle", IN_I8X16_SWIZZLE);
+    nimap_intern("i8x16.splat", IN_I8X16_SPLAT);
+    nimap_intern("i16x8.splat", IN_I16X8_SPLAT);
+    nimap_intern("i32x4.splat", IN_I32X4_SPLAT);
+    nimap_intern("i64x2.splat", IN_I64X2_SPLAT);
+    nimap_intern("f32x4.splat", IN_F32X4_SPLAT);
+    nimap_intern("f64x2.splat", IN_F64X2_SPLAT);
+    nimap_intern("i8x16.extract_lane_s", IN_I8X16_EXTRACT_LANE_S);
+    nimap_intern("i8x16.extract_lane_u", IN_I8X16_EXTRACT_LANE_U);
+    nimap_intern("i8x16.replace_lane", IN_I8X16_REPLACE_LANE);
+    nimap_intern("i16x8.extract_lane_s", IN_I16X8_EXTRACT_LANE_S);
+    nimap_intern("i16x8.extract_lane_u", IN_I16X8_EXTRACT_LANE_U);
+    nimap_intern("i16x8.replace_lane", IN_I16X8_REPLACE_LANE);
+    nimap_intern("i32x4.extract_lane", IN_I32X4_EXTRACT_LANE);
+    nimap_intern("i32x4.replace_lane", IN_I32X4_REPLACE_LANE);
+    nimap_intern("i64x2.extract_lane", IN_I64X2_EXTRACT_LANE);
+    nimap_intern("i64x2.replace_lane", IN_I64X2_REPLACE_LANE);
+    nimap_intern("f32x4.extract_lane", IN_F32X4_EXTRACT_LANE);
+    nimap_intern("f32x4.replace_lane", IN_F32X4_REPLACE_LANE);
+    nimap_intern("f64x2.extract_lane", IN_F64X2_EXTRACT_LANE);
+    nimap_intern("f64x2.replace_lane", IN_F64X2_REPLACE_LANE);
+    nimap_intern("i8x16.eq", IN_I8X16_EQ);
+    nimap_intern("i8x16.ne", IN_I8X16_NE);
+    nimap_intern("i8x16.lt_s", IN_I8X16_LT_S);
+    nimap_intern("i8x16.lt_u", IN_I8X16_LT_U);
+    nimap_intern("i8x16.gt_s", IN_I8X16_GT_S);
+    nimap_intern("i8x16.gt_u", IN_I8X16_GT_U);
+    nimap_intern("i8x16.le_s", IN_I8X16_LE_S);
+    nimap_intern("i8x16.le_u", IN_I8X16_LE_U);
+    nimap_intern("i8x16.ge_s", IN_I8X16_GE_S);
+    nimap_intern("i8x16.ge_u", IN_I8X16_GE_U);
+    nimap_intern("i16x8.eq", IN_I16X8_EQ);
+    nimap_intern("i16x8.ne", IN_I16X8_NE);
+    nimap_intern("i16x8.lt_s", IN_I16X8_LT_S);
+    nimap_intern("i16x8.lt_u", IN_I16X8_LT_U);
+    nimap_intern("i16x8.gt_s", IN_I16X8_GT_S);
+    nimap_intern("i16x8.gt_u", IN_I16X8_GT_U);
+    nimap_intern("i16x8.le_s", IN_I16X8_LE_S);
+    nimap_intern("i16x8.le_u", IN_I16X8_LE_U);
+    nimap_intern("i16x8.ge_s", IN_I16X8_GE_S);
+    nimap_intern("i16x8.ge_u", IN_I16X8_GE_U);
+    nimap_intern("i32x4.eq", IN_I32X4_EQ);
+    nimap_intern("i32x4.ne", IN_I32X4_NE);
+    nimap_intern("i32x4.lt_s", IN_I32X4_LT_S);
+    nimap_intern("i32x4.lt_u", IN_I32X4_LT_U);
+    nimap_intern("i32x4.gt_s", IN_I32X4_GT_S);
+    nimap_intern("i32x4.gt_u", IN_I32X4_GT_U);
+    nimap_intern("i32x4.le_s", IN_I32X4_LE_S);
+    nimap_intern("i32x4.le_u", IN_I32X4_LE_U);
+    nimap_intern("i32x4.ge_s", IN_I32X4_GE_S);
+    nimap_intern("i32x4.ge_u", IN_I32X4_GE_U);
+    nimap_intern("f32x4.eq", IN_F32X4_EQ);
+    nimap_intern("f32x4.ne", IN_F32X4_NE);
+    nimap_intern("f32x4.lt", IN_F32X4_LT);
+    nimap_intern("f32x4.gt", IN_F32X4_GT);
+    nimap_intern("f32x4.le", IN_F32X4_LE);
+    nimap_intern("f32x4.ge", IN_F32X4_GE);
+    nimap_intern("f64x2.eq", IN_F64X2_EQ);
+    nimap_intern("f64x2.ne", IN_F64X2_NE);
+    nimap_intern("f64x2.lt", IN_F64X2_LT);
+    nimap_intern("f64x2.gt", IN_F64X2_GT);
+    nimap_intern("f64x2.le", IN_F64X2_LE);
+    nimap_intern("f64x2.ge", IN_F64X2_GE);
+    nimap_intern("v128.not", IN_V128_NOT);
+    nimap_intern("v128.and", IN_V128_AND);
+    nimap_intern("v128.andnot", IN_V128_ANDNOT);
+    nimap_intern("v128.or", IN_V128_OR);
+    nimap_intern("v128.xor", IN_V128_XOR);
+    nimap_intern("v128.bitselect", IN_V128_BITSELECT);
+    nimap_intern("v128.any_true", IN_V128_ANY_TRUE);
+    nimap_intern("v128.load8_lane", IN_V128_LOAD8_LANE);
+    nimap_intern("v128.load16_lane", IN_V128_LOAD16_LANE);
+    nimap_intern("v128.load32_lane", IN_V128_LOAD32_LANE);
+    nimap_intern("v128.load64_lane", IN_V128_LOAD64_LANE);
+    nimap_intern("v128.store8_lane", IN_V128_STORE8_LANE);
+    nimap_intern("v128.store16_lane", IN_V128_STORE16_LANE);
+    nimap_intern("v128.store32_lane", IN_V128_STORE32_LANE);
+    nimap_intern("v128.store64_lane", IN_V128_STORE64_LANE);
+    nimap_intern("v128.load32_zero", IN_V128_LOAD32_ZERO);
+    nimap_intern("v128.load64_zero", IN_V128_LOAD64_ZERO);
+    nimap_intern("f32x4.demote_f64x2_zero", IN_F32X4_DEMOTE_F64X2_ZERO);
+    nimap_intern("f64x2.promote_low_f32x4", IN_F64X2_PROMOTE_LOW_F32X4);
+    nimap_intern("i8x16.abs", IN_I8X16_ABS);
+    nimap_intern("i8x16.neg", IN_I8X16_NEG);
+    nimap_intern("i8x16.popcnt", IN_I8X16_POPCNT);
+    nimap_intern("i8x16.all_true", IN_I8X16_ALL_TRUE);
+    nimap_intern("i8x16.bitmask", IN_I8X16_BITMASK);
+    nimap_intern("i8x16.narrow_i16x8_s", IN_I8X16_NARROW_I16X8_S);
+    nimap_intern("i8x16.narrow_i16x8_u", IN_I8X16_NARROW_I16X8_U);
+    nimap_intern("f32x4.ceil", IN_F32X4_CEIL);
+    nimap_intern("f32x4.floor", IN_F32X4_FLOOR);
+    nimap_intern("f32x4.trunc", IN_F32X4_TRUNC);
+    nimap_intern("f32x4.nearest", IN_F32X4_NEAREST);
+    nimap_intern("i8x16.shl", IN_I8X16_SHL);
+    nimap_intern("i8x16.shr_s", IN_I8X16_SHR_S);
+    nimap_intern("i8x16.shr_u", IN_I8X16_SHR_U);
+    nimap_intern("i8x16.add", IN_I8X16_ADD);
+    nimap_intern("i8x16.add_sat_s", IN_I8X16_ADD_SAT_S);
+    nimap_intern("i8x16.add_sat_u", IN_I8X16_ADD_SAT_U);
+    nimap_intern("i8x16.sub", IN_I8X16_SUB);
+    nimap_intern("i8x16.sub_sat_s", IN_I8X16_SUB_SAT_S);
+    nimap_intern("i8x16.sub_sat_u", IN_I8X16_SUB_SAT_U);
+    nimap_intern("f64x2.ceil", IN_F64X2_CEIL);
+    nimap_intern("f64x2.floor", IN_F64X2_FLOOR);
+    nimap_intern("i8x16.min_s", IN_I8X16_MIN_S);
+    nimap_intern("i8x16.min_u", IN_I8X16_MIN_U);
+    nimap_intern("i8x16.max_s", IN_I8X16_MAX_S);
+    nimap_intern("i8x16.max_u", IN_I8X16_MAX_U);
+    nimap_intern("f64x2.trunc", IN_F64X2_TRUNC);
+    nimap_intern("i8x16.avgr_u", IN_I8X16_AVGR_U);
+    nimap_intern("i16x8.extadd_pairwise_i8x16_s", IN_I16X8_EXTADD_PAIRWISE_I8X16_S);
+    nimap_intern("i16x8.extadd_pairwise_i8x16_u", IN_I16X8_EXTADD_PAIRWISE_I8X16_U);
+    nimap_intern("i32x4.extadd_pairwise_i16x8_s", IN_I32X4_EXTADD_PAIRWISE_I16X8_S);
+    nimap_intern("i32x4.extadd_pairwise_i16x8_u", IN_I32X4_EXTADD_PAIRWISE_I16X8_U);
+    nimap_intern("i16x8.abs", IN_I16X8_ABS);
+    nimap_intern("i16x8.neg", IN_I16X8_NEG);
+    nimap_intern("i16x8.q15mulr_sat_s", IN_I16X8_Q15MULR_SAT_S);
+    nimap_intern("i16x8.all_true", IN_I16X8_ALL_TRUE);
+    nimap_intern("i16x8.bitmask", IN_I16X8_BITMASK);
+    nimap_intern("i16x8.narrow_i32x4_s", IN_I16X8_NARROW_I32X4_S);
+    nimap_intern("i16x8.narrow_i32x4_u", IN_I16X8_NARROW_I32X4_U);
+    nimap_intern("i16x8.extend_low_i8x16_s", IN_I16X8_EXTEND_LOW_I8X16_S);
+    nimap_intern("i16x8.extend_high_i8x16_s", IN_I16X8_EXTEND_HIGH_I8X16_S);
+    nimap_intern("i16x8.extend_low_i8x16_u", IN_I16X8_EXTEND_LOW_I8X16_U);
+    nimap_intern("i16x8.extend_high_i8x16_u", IN_I16X8_EXTEND_HIGH_I8X16_U);
+    nimap_intern("i16x8.shl", IN_I16X8_SHL);
+    nimap_intern("i16x8.shr_s", IN_I16X8_SHR_S);
+    nimap_intern("i16x8.shr_u", IN_I16X8_SHR_U);
+    nimap_intern("i16x8.add", IN_I16X8_ADD);
+    nimap_intern("i16x8.add_sat_s", IN_I16X8_ADD_SAT_S);
+    nimap_intern("i16x8.add_sat_u", IN_I16X8_ADD_SAT_U);
+    nimap_intern("i16x8.sub", IN_I16X8_SUB);
+    nimap_intern("i16x8.sub_sat_s", IN_I16X8_SUB_SAT_S);
+    nimap_intern("i16x8.sub_sat_u", IN_I16X8_SUB_SAT_U);
+    nimap_intern("f64x2.nearest", IN_F64X2_NEAREST);
+    nimap_intern("i16x8.mul", IN_I16X8_MUL);
+    nimap_intern("i16x8.min_s", IN_I16X8_MIN_S);
+    nimap_intern("i16x8.min_u", IN_I16X8_MIN_U);
+    nimap_intern("i16x8.max_s", IN_I16X8_MAX_S);
+    nimap_intern("i16x8.max_u", IN_I16X8_MAX_U);
+    nimap_intern("i16x8.avgr_u", IN_I16X8_AVGR_U);
+    nimap_intern("i16x8.extmul_low_i8x16_s", IN_I16X8_EXTMUL_LOW_I8X16_S);
+    nimap_intern("i16x8.extmul_high_i8x16_s", IN_I16X8_EXTMUL_HIGH_I8X16_S);
+    nimap_intern("i16x8.extmul_low_i8x16_u", IN_I16X8_EXTMUL_LOW_I8X16_U);
+    nimap_intern("i16x8.extmul_high_i8x16_u", IN_I16X8_EXTMUL_HIGH_I8X16_U);
+    nimap_intern("i32x4.abs", IN_I32X4_ABS);
+    nimap_intern("i32x4.neg", IN_I32X4_NEG);
+    nimap_intern("i32x4.all_true", IN_I32X4_ALL_TRUE);
+    nimap_intern("i32x4.bitmask", IN_I32X4_BITMASK);
+    nimap_intern("i32x4.extend_low_i16x8_s", IN_I32X4_EXTEND_LOW_I16X8_S);
+    nimap_intern("i32x4.extend_high_i16x8_s", IN_I32X4_EXTEND_HIGH_I16X8_S);
+    nimap_intern("i32x4.extend_low_i16x8_u", IN_I32X4_EXTEND_LOW_I16X8_U);
+    nimap_intern("i32x4.extend_high_i16x8_u", IN_I32X4_EXTEND_HIGH_I16X8_U);
+    nimap_intern("i32x4.shl", IN_I32X4_SHL);
+    nimap_intern("i32x4.shr_s", IN_I32X4_SHR_S);
+    nimap_intern("i32x4.shr_u", IN_I32X4_SHR_U);
+    nimap_intern("i32x4.add", IN_I32X4_ADD);
+    nimap_intern("i32x4.sub", IN_I32X4_SUB);
+    nimap_intern("i32x4.mul", IN_I32X4_MUL);
+    nimap_intern("i32x4.min_s", IN_I32X4_MIN_S);
+    nimap_intern("i32x4.min_u", IN_I32X4_MIN_U);
+    nimap_intern("i32x4.max_s", IN_I32X4_MAX_S);
+    nimap_intern("i32x4.max_u", IN_I32X4_MAX_U);
+    nimap_intern("i32x4.dot_i16x8_s", IN_I32X4_DOT_I16X8_S);
+    nimap_intern("i32x4.extmul_low_i16x8_s", IN_I32X4_EXTMUL_LOW_I16X8_S);
+    nimap_intern("i32x4.extmul_high_i16x8_s", IN_I32X4_EXTMUL_HIGH_I16X8_S);
+    nimap_intern("i32x4.extmul_low_i16x8_u", IN_I32X4_EXTMUL_LOW_I16X8_U);
+    nimap_intern("i32x4.extmul_high_i16x8_u", IN_I32X4_EXTMUL_HIGH_I16X8_U);
+    nimap_intern("i64x2.abs", IN_I64X2_ABS);
+    nimap_intern("i64x2.neg", IN_I64X2_NEG);
+    nimap_intern("i64x2.all_true", IN_I64X2_ALL_TRUE);
+    nimap_intern("i64x2.bitmask", IN_I64X2_BITMASK);
+    nimap_intern("i64x2.extend_low_i32x4_s", IN_I64X2_EXTEND_LOW_I32X4_S);
+    nimap_intern("i64x2.extend_high_i32x4_s", IN_I64X2_EXTEND_HIGH_I32X4_S);
+    nimap_intern("i64x2.extend_low_i32x4_u", IN_I64X2_EXTEND_LOW_I32X4_U);
+    nimap_intern("i64x2.extend_high_i32x4_u", IN_I64X2_EXTEND_HIGH_I32X4_U);
+    nimap_intern("i64x2.shl", IN_I64X2_SHL);
+    nimap_intern("i64x2.shr_s", IN_I64X2_SHR_S);
+    nimap_intern("i64x2.shr_u", IN_I64X2_SHR_U);
+    nimap_intern("i64x2.add", IN_I64X2_ADD);
+    nimap_intern("i64x2.sub", IN_I64X2_SUB);
+    nimap_intern("i64x2.mul", IN_I64X2_MUL);
+    nimap_intern("i64x2.eq", IN_I64X2_EQ);
+    nimap_intern("i64x2.ne", IN_I64X2_NE);
+    nimap_intern("i64x2.lt_s", IN_I64X2_LT_S);
+    nimap_intern("i64x2.gt_s", IN_I64X2_GT_S);
+    nimap_intern("i64x2.le_s", IN_I64X2_LE_S);
+    nimap_intern("i64x2.ge_s", IN_I64X2_GE_S);
+    nimap_intern("i64x2.extmul_low_i32x4_s", IN_I64X2_EXTMUL_LOW_I32X4_S);
+    nimap_intern("i64x2.extmul_high_i32x4_s", IN_I64X2_EXTMUL_HIGH_I32X4_S);
+    nimap_intern("i64x2.extmul_low_i32x4_u", IN_I64X2_EXTMUL_LOW_I32X4_U);
+    nimap_intern("i64x2.extmul_high_i32x4_u", IN_I64X2_EXTMUL_HIGH_I32X4_U);
+    nimap_intern("f32x4.abs", IN_F32X4_ABS);
+    nimap_intern("f32x4.neg", IN_F32X4_NEG);
+    nimap_intern("f32x4.sqrt", IN_F32X4_SQRT);
+    nimap_intern("f32x4.add", IN_F32X4_ADD);
+    nimap_intern("f32x4.sub", IN_F32X4_SUB);
+    nimap_intern("f32x4.mul", IN_F32X4_MUL);
+    nimap_intern("f32x4.div", IN_F32X4_DIV);
+    nimap_intern("f32x4.min", IN_F32X4_MIN);
+    nimap_intern("f32x4.max", IN_F32X4_MAX);
+    nimap_intern("f32x4.pmin", IN_F32X4_PMIN);
+    nimap_intern("f32x4.pmax", IN_F32X4_PMAX);
+    nimap_intern("f64x2.abs", IN_F64X2_ABS);
+    nimap_intern("f64x2.neg", IN_F64X2_NEG);
+    nimap_intern("f64x2.sqrt", IN_F64X2_SQRT);
+    nimap_intern("f64x2.add", IN_F64X2_ADD);
+    nimap_intern("f64x2.sub", IN_F64X2_SUB);
+    nimap_intern("f64x2.mul", IN_F64X2_MUL);
+    nimap_intern("f64x2.div", IN_F64X2_DIV);
+    nimap_intern("f64x2.min", IN_F64X2_MIN);
+    nimap_intern("f64x2.max", IN_F64X2_MAX);
+    nimap_intern("f64x2.pmin", IN_F64X2_PMIN);
+    nimap_intern("f64x2.pmax", IN_F64X2_PMAX);
+    nimap_intern("i32x4.trunc_sat_f32x4_s", IN_I32X4_TRUNC_SAT_F32X4_S);
+    nimap_intern("i32x4.trunc_sat_f32x4_u", IN_I32X4_TRUNC_SAT_F32X4_U);
+    nimap_intern("f32x4.convert_i32x4_s", IN_F32X4_CONVERT_I32X4_S);
+    nimap_intern("f32x4.convert_i32x4_u", IN_F32X4_CONVERT_I32X4_U);
+    nimap_intern("i32x4.trunc_sat_f64x2_s_zero", IN_I32X4_TRUNC_SAT_F64X2_S_ZERO);
+    nimap_intern("i32x4.trunc_sat_f64x2_u_zero", IN_I32X4_TRUNC_SAT_F64X2_U_ZERO);
+    nimap_intern("f64x2.convert_low_i32x4_s", IN_F64X2_CONVERT_LOW_I32X4_S);
+    nimap_intern("f64x2.convert_low_i32x4_u", IN_F64X2_CONVERT_LOW_I32X4_U);
+    /* internal use */
+    nimap_intern("ref.data", IN_REF_DATA);
+    nimap_intern("data.put_ref", IN_DATA_PUT_REF);
     bufqsort(&g_nimap, &sym_cmp);
   }
   sym = intern(name);
@@ -1173,9 +1663,35 @@ insig_t instr_sig(instr_t in)
       return INSIG_X_Y;
     case IN_REF_FUNC:
       return INSIG_RF;
-    case IN_REF_DATA: /* not in WASM! */
+    /* simd-128 */
+    case IN_V128_LOAD:  
+    case IN_V128_LOAD8X8_S:      case IN_V128_LOAD8X8_U:
+    case IN_V128_LOAD16X4_S:     case IN_V128_LOAD16X4_U:
+    case IN_V128_LOAD32X2_S:     case IN_V128_LOAD32X2_U:
+    case IN_V128_LOAD8_SPLAT:    case IN_V128_LOAD16_SPLAT:
+    case IN_V128_LOAD32_SPLAT:   case IN_V128_LOAD64_SPLAT:
+    case IN_V128_STORE:      
+      return INSIG_MEMARG;
+    case IN_V128_CONST:
+      return INSIG_I128;
+    case IN_I8X16_SHUFFLE:       case IN_I8X16_EXTRACT_LANE_S: case IN_I8X16_EXTRACT_LANE_U:
+    case IN_I8X16_REPLACE_LANE:  case IN_I16X8_EXTRACT_LANE_S: case IN_I16X8_EXTRACT_LANE_U:
+    case IN_I16X8_REPLACE_LANE:  case IN_I32X4_EXTRACT_LANE:
+    case IN_I32X4_REPLACE_LANE:  case IN_I64X2_EXTRACT_LANE:
+    case IN_I64X2_REPLACE_LANE:  case IN_F32X4_EXTRACT_LANE:
+    case IN_F32X4_REPLACE_LANE:  case IN_F64X2_EXTRACT_LANE:
+    case IN_F64X2_REPLACE_LANE:      
+      return INSIG_LANEIDX;
+    case IN_V128_LOAD8_LANE:     case IN_V128_LOAD16_LANE:
+    case IN_V128_LOAD32_LANE:    case IN_V128_LOAD64_LANE:
+    case IN_V128_STORE8_LANE:    case IN_V128_STORE16_LANE:
+    case IN_V128_STORE32_LANE:   case IN_V128_STORE64_LANE:
+    case IN_V128_LOAD32_ZERO:    case IN_V128_LOAD64_ZERO:
+      return INSIG_MEMARG_LANEIDX;
+    /* internal use */
+    case IN_REF_DATA:
       return INSIG_RD; 
-    case IN_DATA_PUT_REF: /* not in WASM! */
+    case IN_DATA_PUT_REF:
       return INSIG_PR; 
     default:;
   }
@@ -2766,7 +3282,7 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
         numval_t v;
         if (peekt(pw) == WT_INT) {
           scan_integer(pw, pw->tokstr, &v); dropt(pw);
-          pic->arg = v; 
+          *(numval_t*)&pic->arg = v; 
           if (is == INSIG_I32 && (v.i < INT32_MIN || v.i > INT32_MAX))
             seprintf(pw, "i32 literal is out of range %s", pw->tokstr);
         } else {
