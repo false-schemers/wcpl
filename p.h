@@ -9,31 +9,32 @@ extern struct pws *pws_from_modname(bool sys, sym_t mod);
 
 /* lexical token types (NB: order is significant!) */
 typedef enum tt {
-  TT_WHITESPACE,  TT_IDENTIFIER,  TT_INT,         TT_UINT,
-  TT_LONG,        TT_ULONG,       TT_LLONG,       TT_ULLONG,
+  TT_WHITESPACE,  TT_IDENTIFIER,  TT_INT,          TT_UINT,
+  TT_LONG,        TT_ULONG,       TT_LLONG,        TT_ULLONG,
   TT_FLOAT,       TT_DOUBLE,      /* no LDOUBLE / VEC128 */
-  TT_CHAR,        TT_LCHAR,       TT_STRING,      TT_LSTRING,      
-  TT_LPAR,        TT_RPAR,        TT_LBRK,        TT_RBRK,        
-  TT_LBRC,        TT_RBRC,        TT_COMMA,       TT_SEMICOLON,   
-  TT_ELLIPSIS,    TT_AND_AND,     TT_OR_OR,       TT_NOT,
-  TT_PLUS_PLUS,   TT_MINUS_MINUS, TT_HASH,        TT_HASHHASH,    
-  TT_PLUS,        TT_PLUS_ASN,    TT_MINUS,       TT_MINUS_ASN,
-  TT_AND,         TT_AND_ASN,     TT_OR,          TT_OR_ASN,
-  TT_XOR,         TT_XOR_ASN,     TT_REM,         TT_REM_ASN,
-  TT_SLASH,       TT_SLASH_ASN,   TT_STAR,        TT_STAR_ASN, 
-  TT_SHL,         TT_SHL_ASN,     TT_SHR,         TT_SHR_ASN,
-  TT_LT,          TT_LE,          TT_GT,          TT_GE,
-  TT_EQ,          TT_NE,          TT_DOT,         TT_ARROW,
-  TT_ASN,         TT_QMARK,       TT_COLON,       TT_TILDE,
-  TT_ASM_KW,      TT_AUTO_KW,     TT_BREAK_KW,    TT_CASE_KW,   
-  TT_CHAR_KW,     TT_CONST_KW,    TT_CONTINUE_KW, TT_DEFAULT_KW,
-  TT_DO_KW,       TT_DOUBLE_KW,   TT_ELSE_KW,     TT_ENUM_KW,
-  TT_EXTERN_KW,   TT_FLOAT_KW,    TT_FOR_KW,      TT_GOTO_KW,
-  TT_IF_KW,       TT_INT_KW,      TT_LONG_KW,     TT_REGISTER_KW,
-  TT_RETURN_KW,   TT_SHORT_KW,    TT_SIGNED_KW,   TT_STATIC_KW,
-  TT_STRUCT_KW,   TT_SWITCH_KW,   TT_TYPEDEF_KW,  TT_UNION_KW,
-  TT_UNSIGNED_KW, TT_VOID_KW,     TT_VOLATILE_KW, TT_WHILE_KW,    
-  TT_TYPE_NAME,   TT_MACRO_NAME,  TT_ENUM_NAME,   TT_INTR_NAME,   
+  TT_CHAR,        TT_LCHAR,       TT_STRING,       TT_LSTRING,      
+  TT_LPAR,        TT_RPAR,        TT_LBRK,         TT_RBRK,        
+  TT_LBRC,        TT_RBRC,        TT_COMMA,        TT_SEMICOLON,   
+  TT_ELLIPSIS,    TT_AND_AND,     TT_OR_OR,        TT_NOT,
+  TT_PLUS_PLUS,   TT_MINUS_MINUS, TT_HASH,         TT_HASHHASH,    
+  TT_PLUS,        TT_PLUS_ASN,    TT_MINUS,        TT_MINUS_ASN,
+  TT_AND,         TT_AND_ASN,     TT_OR,           TT_OR_ASN,
+  TT_XOR,         TT_XOR_ASN,     TT_REM,          TT_REM_ASN,
+  TT_SLASH,       TT_SLASH_ASN,   TT_STAR,         TT_STAR_ASN, 
+  TT_SHL,         TT_SHL_ASN,     TT_SHR,          TT_SHR_ASN,
+  TT_LT,          TT_LE,          TT_GT,           TT_GE,
+  TT_EQ,          TT_NE,          TT_DOT,          TT_ARROW,
+  TT_ASN,         TT_QMARK,       TT_COLON,        TT_TILDE,
+  TT_ASM_KW,      TT_AUTO_KW,     TT_BREAK_KW,     TT_CASE_KW,   
+  TT_CHAR_KW,     TT_CONST_KW,    TT_CONSTEXPR_KW, TT_CONTINUE_KW, 
+  TT_DEFAULT_KW,  TT_DO_KW,       TT_DOUBLE_KW,    TT_ELSE_KW,      
+  TT_ENUM_KW,     TT_EXTERN_KW,   TT_FLOAT_KW,     TT_FOR_KW,
+  TT_GOTO_KW,     TT_IF_KW,       TT_INLINE_KW,    TT_INT_KW,      
+  TT_LONG_KW,     TT_REGISTER_KW, TT_RESTRICT_KW,  TT_RETURN_KW,
+  TT_SHORT_KW,    TT_SIGNED_KW,   TT_SIMD_KW,      TT_STATIC_KW,
+  TT_STRUCT_KW,   TT_SWITCH_KW,   TT_TYPEDEF_KW,   TT_UNION_KW,
+  TT_UNSIGNED_KW, TT_VOID_KW,     TT_VOLATILE_KW,  TT_WHILE_KW,    
+  TT_TYPE_NAME,   TT_MACRO_NAME,  TT_ENUM_NAME,    TT_INTR_NAME,   
   TT_EOF = -1
 } tt_t;
 
@@ -95,7 +96,7 @@ typedef enum nt {
   NT_SUBSCRIPT,   /* x[i] */
   NT_CALL,        /* x(...) */
   NT_INTRCALL,    /* a(...) */
-  NT_CAST,        /* (t)x*/  
+  NT_CAST,        /* (t)x */  
   NT_POSTFIX,     /* x op */
   NT_PREFIX,      /* op x */
   NT_INFIX,       /* x op y */
@@ -146,6 +147,8 @@ extern void ndfini(node_t* pn);
 extern node_t *ndcpy(node_t* pn, const node_t* pr);
 extern node_t *ndset(node_t *dst, nt_t nt, int pwsid, int startpos);
 extern node_t *ndsettype(node_t *dst, ts_t ts);
+extern node_t *ndsetilit(node_t *dst, ts_t ts, long long i);
+extern node_t *ndsetulit(node_t *dst, ts_t ts, unsigned long long u);
 extern void ndclear(node_t* pn);
 extern void ndrem(node_t* pn, size_t i);
 #define ndswap(pn1, pn2) (memswap(pn1, pn2, sizeof(node_t)))
@@ -251,6 +254,10 @@ extern const node_t *lookup_global(sym_t name);
 extern void mark_global_referenced(const node_t *pgn);
 /* return ptr to NT_TYPE node or NULL if name is not declared */
 extern const node_t *lookup_eus_type(ts_t ts, sym_t name); /* enum/union/struct */
+/* return ptr to NT_MACRODEF node or NULL if name is not #defined */
+extern const node_t *lookup_macro(sym_t name);
+/* replace ids with pars in macro template copy pn (works in-place) */
+extern void patch_macro_template(buf_t *pids, ndbuf_t *ppars, node_t *pn);
 
 /* simple comparison of NT_TYPE nodes for equivalence */
 extern bool same_type(const node_t *ptn1, const node_t *ptn2);

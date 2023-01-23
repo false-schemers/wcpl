@@ -1664,29 +1664,32 @@ insig_t instr_sig(instr_t in)
     case IN_REF_FUNC:
       return INSIG_RF;
     /* simd-128 */
-    case IN_V128_LOAD:  
-    case IN_V128_LOAD8X8_S:      case IN_V128_LOAD8X8_U:
-    case IN_V128_LOAD16X4_S:     case IN_V128_LOAD16X4_U:
-    case IN_V128_LOAD32X2_S:     case IN_V128_LOAD32X2_U:
-    case IN_V128_LOAD8_SPLAT:    case IN_V128_LOAD16_SPLAT:
-    case IN_V128_LOAD32_SPLAT:   case IN_V128_LOAD64_SPLAT:
-    case IN_V128_STORE:      
-      return INSIG_MEMARG;
     case IN_V128_CONST:
       return INSIG_I128;
-    case IN_I8X16_SHUFFLE:       case IN_I8X16_EXTRACT_LANE_S: case IN_I8X16_EXTRACT_LANE_U:
-    case IN_I8X16_REPLACE_LANE:  case IN_I16X8_EXTRACT_LANE_S: case IN_I16X8_EXTRACT_LANE_U:
-    case IN_I16X8_REPLACE_LANE:  case IN_I32X4_EXTRACT_LANE:
-    case IN_I32X4_REPLACE_LANE:  case IN_I64X2_EXTRACT_LANE:
-    case IN_I64X2_REPLACE_LANE:  case IN_F32X4_EXTRACT_LANE:
-    case IN_F32X4_REPLACE_LANE:  case IN_F64X2_EXTRACT_LANE:
+    case IN_V128_LOAD:  
+    case IN_V128_LOAD8X8_S:       case IN_V128_LOAD8X8_U:
+    case IN_V128_LOAD16X4_S:      case IN_V128_LOAD16X4_U:
+    case IN_V128_LOAD32X2_S:      case IN_V128_LOAD32X2_U:
+    case IN_V128_LOAD8_SPLAT:     case IN_V128_LOAD16_SPLAT:
+    case IN_V128_LOAD32_SPLAT:    case IN_V128_LOAD64_SPLAT:
+    case IN_V128_STORE:      
+      return INSIG_MEMARG;
+    case IN_I8X16_SHUFFLE:       
+      return INSIG_LANEIDX16;
+    case IN_I8X16_EXTRACT_LANE_S: case IN_I8X16_EXTRACT_LANE_U:
+    case IN_I8X16_REPLACE_LANE:   
+    case IN_I16X8_EXTRACT_LANE_S: case IN_I16X8_EXTRACT_LANE_U:
+    case IN_I16X8_REPLACE_LANE:   case IN_I32X4_EXTRACT_LANE:
+    case IN_I32X4_REPLACE_LANE:   case IN_I64X2_EXTRACT_LANE:
+    case IN_I64X2_REPLACE_LANE:   case IN_F32X4_EXTRACT_LANE:
+    case IN_F32X4_REPLACE_LANE:   case IN_F64X2_EXTRACT_LANE:
     case IN_F64X2_REPLACE_LANE:      
       return INSIG_LANEIDX;
-    case IN_V128_LOAD8_LANE:     case IN_V128_LOAD16_LANE:
-    case IN_V128_LOAD32_LANE:    case IN_V128_LOAD64_LANE:
-    case IN_V128_STORE8_LANE:    case IN_V128_STORE16_LANE:
-    case IN_V128_STORE32_LANE:   case IN_V128_STORE64_LANE:
-    case IN_V128_LOAD32_ZERO:    case IN_V128_LOAD64_ZERO:
+    case IN_V128_LOAD8_LANE:      case IN_V128_LOAD16_LANE:
+    case IN_V128_LOAD32_LANE:     case IN_V128_LOAD64_LANE:
+    case IN_V128_STORE8_LANE:     case IN_V128_STORE16_LANE:
+    case IN_V128_STORE32_LANE:    case IN_V128_STORE64_LANE:
+    case IN_V128_LOAD32_ZERO:     case IN_V128_LOAD64_ZERO:
       return INSIG_MEMARG_LANEIDX;
     /* internal use */
     case IN_REF_DATA:
@@ -1700,6 +1703,7 @@ insig_t instr_sig(instr_t in)
 
 char *format_inscode(inscode_t *pic, chbuf_t *pcb)
 {
+  insig_t is;
   chbclear(pcb);
   if (pic->in == IN_REGDECL) {
     const char *ts = valtype_name((valtype_t)pic->arg.u);
@@ -1712,7 +1716,7 @@ char *format_inscode(inscode_t *pic, chbuf_t *pcb)
     return chbdata(pcb);
   }
   chbputs(instr_name(pic->in), pcb);
-  switch (instr_sig(pic->in)) {
+  switch (is = instr_sig(pic->in)) {
     case INSIG_NONE:
       break;
     case INSIG_BT: {
@@ -1726,7 +1730,7 @@ char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       else if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
       else chbputf(pcb, " %lld", pic->arg.i); 
       break;
-    case INSIG_L: case INSIG_T:
+    case INSIG_L: case INSIG_T: case INSIG_LANEIDX:
       if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
       else chbputf(pcb, " %lld", pic->arg.i); 
       break;
@@ -1757,10 +1761,6 @@ char *format_inscode(inscode_t *pic, chbuf_t *pcb)
       if (pic->id) chbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
       else chbputf(pcb, " %lld %u", pic->arg.i, pic->arg2.u); 
       break;
-    case INSIG_MEMARG:
-      if (pic->id) chbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
-      else chbputf(pcb, " offset=%llu align=%u", pic->arg.u, 1<<pic->arg2.u); 
-      break;
     case INSIG_F32: {
       char buf[32]; float f = pic->arg.f;
       char *s = uftohex(as_uint32(f), buf);
@@ -1777,6 +1777,32 @@ char *format_inscode(inscode_t *pic, chbuf_t *pcb)
         sprintf(buf, "%.9g", d); chbputf(pcb, " (; %s ;)", &buf[0]);
       } 
     } break;
+    case INSIG_I128: {
+      /* todo: negative pic->id as an element type hint in as set in asm_simd128_const() */
+      if (pic->id > 0) chbputf(pcb, " $%s", symname(pic->id)); 
+      else {
+        chbputf(pcb, " i64x2");
+        chbputf(pcb, " %lld", pic->arg.i); 
+        chbputf(pcb, " %lld", pic->arg2.i); 
+      }
+    } break;
+    case INSIG_MEMARG:
+      if (pic->id) chbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
+      else chbputf(pcb, " offset=%llu align=%u", pic->arg.u, 1<<(int)pic->arg2.u); 
+      break;
+    case INSIG_MEMARG_LANEIDX: {
+      chbputf(pcb, " offset=%llu align=%u", pic->arg2.ux2[0], 1<<(int)pic->arg2.ux2[1]); 
+      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
+      else chbputf(pcb, " %llu", pic->arg.u); 
+    } break;      
+    case INSIG_LANEIDX16: {
+      int i; unsigned long long lidxv;
+      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
+      else for (lidxv = pic->arg.u, i = 16-1; i >= 0; --i) {
+        unsigned off = i*4, lidx = (unsigned)((lidxv >> off) & 0xFULL);
+        chbputf(pcb, " %u", lidx); 
+      } 
+    } break;      
     case INSIG_LS_L:
       chbputf(pcb, " (; see next %llu+1 branches ;)", pic->arg.u);
       break; /* takes multiple inscodes, should be taken care of by caller */
@@ -3194,7 +3220,7 @@ static unsigned parse_uint(sws_t *pw)
   return (unsigned)v.u;
 }
 
-static unsigned long parse_offset(sws_t *pw)
+static unsigned parse_offset(sws_t *pw)
 {
   char *s;
   if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "offset=")) != NULL) {
@@ -3202,14 +3228,14 @@ static unsigned long parse_offset(sws_t *pw)
     if (errno || *e != 0 || offset > UINT_MAX) 
       seprintf(pw, "invalid offset= argument");
     dropt(pw);
-    return offset;
+    return (unsigned)offset;
   } else {
     seprintf(pw, "missing offset= argument");
   }
   return 0; /* won't happen */
 }
 
-static unsigned long parse_size(sws_t *pw)
+static unsigned parse_size(sws_t *pw)
 {
   char *s;
   if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "size=")) != NULL) {
@@ -3217,14 +3243,14 @@ static unsigned long parse_size(sws_t *pw)
     if (errno || *e != 0 || size > UINT_MAX) 
       seprintf(pw, "invalid size= argument");
     dropt(pw);
-    return size;
+    return (unsigned)size;
   } else {
     seprintf(pw, "missing size= argument");
   }
   return 0; /* won't happen */
 }
 
-static unsigned long parse_align(sws_t *pw)
+static unsigned parse_align(sws_t *pw)
 {
   char *s;
   if (peekt(pw) == WT_KEYWORD && (s = strprf(pw->tokstr, "align=")) != NULL) {
@@ -3232,13 +3258,19 @@ static unsigned long parse_align(sws_t *pw)
     if (errno || *e != 0 || (align != 1 && align != 2 && align != 4 && align != 8 && align != 16)) 
       seprintf(pw, "invalid align= argument");
     dropt(pw);
-    return align;
+    return (unsigned)align;
   } else {
     seprintf(pw, "missing align= argument");
   }
   return 0; /* won't happen */
 }
 
+static unsigned parse_laneidx(sws_t *pw)
+{
+  unsigned ui = parse_uint(pw);
+  if (ui > 16) seprintf(pw, "lineidx arg is out of range: %u", ui);
+  return ui;
+}
 
 static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
 {
@@ -3289,18 +3321,6 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
           seprintf(pw, "invalid integer literal %s", pw->tokstr);
         }
       } break;
-      case INSIG_MEMARG: {
-        unsigned long offset = parse_offset(pw), align = parse_align(pw);
-        pic->arg.u = offset;
-        switch ((int)align) { /* fixme: use ntz? */
-          case 1:  pic->arg2.u = 0; break;
-          case 2:  pic->arg2.u = 1; break;
-          case 4:  pic->arg2.u = 2; break;
-          case 8:  pic->arg2.u = 3; break;
-          case 16: pic->arg2.u = 4; break;
-          default: assert(false);
-        }
-      } break;
       case INSIG_F32: {
         if (peekt(pw) == WT_FLOAT || peekt(pw) == WT_INT) {
           pic->arg.f = scan_float(pw, pw->tokstr);
@@ -3316,6 +3336,46 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
         } else {
           seprintf(pw, "invalid double literal %s", pw->tokstr);
         } 
+      } break;
+      case INSIG_MEMARG: {
+        unsigned offset = parse_offset(pw), align = parse_align(pw);
+        unsigned a = 0;
+        pic->arg.u = offset;
+        switch ((int)align) { /* fixme: use ntz? */
+          case 1:  a = 0; break;
+          case 2:  a = 1; break;
+          case 4:  a = 2; break;
+          case 8:  a = 3; break;
+          case 16: a = 4; break;
+          default: assert(false);
+        }
+        pic->arg2.u = a;
+      } break;
+      case INSIG_LANEIDX: {
+        pic->arg.u = parse_laneidx(pw);
+      } break;
+      case INSIG_MEMARG_LANEIDX: {
+        unsigned offset = parse_offset(pw), align = parse_align(pw);
+        unsigned a = 0; unsigned long long lidxv = 0;
+        pic->arg2.ux2[0] = offset;
+        switch ((int)align) { /* fixme: use ntz? */
+          case 1:  a = 0; break;
+          case 2:  a = 1; break;
+          case 4:  a = 2; break;
+          case 8:  a = 3; break;
+          case 16: a = 4; break;
+          default: assert(false);
+        }
+        pic->arg2.ux2[1] = a;
+        pic->arg.u = parse_laneidx(pw);
+      } break;
+      case INSIG_LANEIDX16: {
+        size_t i; unsigned long long lidxv = 0ULL;
+        for (i = 0; i < 16; ++i) {
+          unsigned long long lidx = parse_laneidx(pw);
+          lidxv = (lidxv << 4) | (lidx & 0xFULL);
+        }
+        pic->arg.u = lidxv;
       } break;
       case INSIG_RF: { /* ref.func */
         sym_t mod, id; parse_mod_id(pw, &mod, &id);

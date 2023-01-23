@@ -30,7 +30,7 @@ size_t  g_sdbaddr;  /* static data allocation start */
 size_t  g_stacksz;  /* stack size in bytes */
 size_t  g_argvbsz;  /* argv buf size in bytes */
 
-
+/* initialize wcpl environment */
 void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl, size_t sarg, size_t aarg)
 {
   size_t i;
@@ -59,6 +59,7 @@ void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl, size_t sarg, size_t 
   g_argvbsz = aarg; /* 4K default */
 } 
 
+/* finalize wcpl environment */
 void fini_wcpl(void)
 {
   freebuf(g_ibases);
@@ -73,6 +74,7 @@ void fini_wcpl(void)
 static sym_t g_curmod; 
 static wat_module_t *g_curpwm;
 
+/* initialize single compiler run */
 void init_compiler(void)
 {
   init_workspaces();
@@ -83,6 +85,7 @@ void init_compiler(void)
   g_curpwm = NULL;
 }
 
+/* finalize single compiler run */
 void fini_compiler(void)
 {
   fini_workspaces();
@@ -489,6 +492,20 @@ static void asm_numerical_const(ts_t ts, numval_t *pval, inscode_t *pic)
   }
 }
 
+/* produce simd128 constant instruction from literal */
+static void asm_simd128_const(ts_t ts, chbuf_t *pb, inscode_t *pic)
+{
+  int i; unsigned char *p = (unsigned char *)chbdata(pb); 
+  assert(chblen(pb) == 16);
+  pic->in = IN_V128_CONST; 
+  pic->id = -(sym_t)ts; /* WAT hint fot format_inscode() &c. */
+  pic->arg.u = pic->arg2.u = 0ULL; 
+  for (i = 15; i >= 0; --i) {
+    unsigned long long u = p[i];
+    if (i > 7) pic->arg2.u = (pic->arg2.u << 8) | u;
+    else pic->arg.u = (pic->arg.u << 8) | u;
+  }
+}
 
 /* 'register' (wasm local var) info for typecheck */
 typedef struct ri {
@@ -967,7 +984,21 @@ bool arithmetic_eval_to_int(node_t *pn, buf_t *prib, int *pri)
   return ok;
 }
 
-/* evaluate pn expression statically, putting result into prn (numbers only) */
+/* calculate effective ts for v128's boolean */
+static ts_t v128_int_ts_for_bool(int cnt)
+{
+  ts_t ts = TS_VOID;
+  switch (cnt) {
+    case 16: ts = TS_CHAR;  break;
+    case  8: ts = TS_SHORT; break;
+    case  4: ts = TS_INT;   break;
+    case  2: ts = TS_LLONG; break;
+    default: assert(false);
+  }
+  return ts;
+}
+
+/* evaluate pn expression statically, putting result into prn (numbers/simd only) */
 bool arithmetic_eval(node_t *pn, buf_t *prib, node_t *prn)
 {
   seval_t r; bool ok = false;
@@ -1026,6 +1057,7 @@ static node_t *vardef_check_type(node_t *ptn)
     case TS_LONG: case TS_ULONG:  
     case TS_LLONG: case TS_ULLONG:  
     case TS_FLOAT: case TS_DOUBLE:
+    case TS_V128: /* ok */
     case TS_PTR: 
       break;
     case TS_ARRAY: {
@@ -1095,6 +1127,9 @@ static void fundef_check_type(node_t *ptn)
     }
   }
 }
+
+/* try to replace simd display expression with equivalent literal (see below) */
+static bool fold_simd_display(node_t *pn, buf_t *prib);
 
 /* initialize preallocated bulk data with display initializer */
 static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node_t *ptn, node_t *pdn)
@@ -1184,6 +1219,12 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
     }
     memcpy(chbdata(&pd->data) + off, chbdata(&cb), chblen(&cb));
     chbfini(&cb);
+  } else if (ptn->ts == TS_V128) {
+    fold_simd_display(pdn, NULL);
+    if (pdn->nt == NT_LITERAL && pdn->ts == TS_V128) {
+      assert(chblen(&pdn->data) == 16);
+      memcpy(chbdata(&pd->data) + off, chbdata(&pdn->data), chblen(&pdn->data));
+    } else neprintf(pdn, "invalid constant initializer");
   } else if (ptn->ts == TS_PTR) {
     seval_t r;
     if (!static_eval(pdn, NULL, &r) || !ts_init_ptr_compatible(r.ts, &r.val)) {
@@ -1266,9 +1307,14 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
       pg->mod = mmod; pg->id = pdn->name;
       pg->exported = !hide;
       if (pin) {
-        seval_t r; assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
+        seval_t r; node_t *pvn; assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
         assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
-        if (!static_eval(ndref(pin, 1), NULL, &r)) {
+        pvn = ndref(pin, 1);
+        if (fold_simd_display(pvn, NULL)) {
+          assert(pvn->nt == NT_LITERAL && pvn->ts == TS_V128);
+          assert(chblen(&pvn->data) == 16);
+          asm_simd128_const((ts_t)pvn->val.i, &pvn->data, &pg->ic);
+        } else if (!static_eval(pvn, NULL, &r)) {
           neprintf(pin, "non-constant initializer");
         } else if (!(ts_numerical(r.ts) || (r.ts == TS_PTR && r.val.i == 0))) {
           neprintf(pin, "unsupported type of global initializer"); /* NYI: non-0 offset (fixme) */
@@ -1564,6 +1610,51 @@ static bool static_display(node_t *pn, buf_t *prib)
   return false;
 }
 
+/* try to replace simd display expression with equivalent literal */
+static bool fold_simd_display(node_t *pn, buf_t *prib)
+{
+  bool ok = false;
+  if (pn->nt == NT_DISPLAY && ndlen(pn) > 0 && ndref(pn, 0)->ts == TS_V128) {
+    node_t nd = mknd(), rn = mknd(), *ptn = ndref(pn, 0), *prn = &rn;
+    size_t n = ndlen(pn), i; int cnt;
+    if (ndlen(ptn) == 2 && arithmetic_eval_to_int(ndref(ptn, 1), prib, &cnt) && (int)n == cnt+1) { 
+      ts_t vets = ndref(ptn, 0)->ts; assert(ts_numerical_or_enum(vets));
+      ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos);
+      prn->ts = TS_V128; assert(prn->data.esz == sizeof(char));
+      prn->val.i = vets; /* kluge: val.i is used as type hint  */
+      chbclear(&prn->data); ok = true;
+      for (i = 1; i < n; ++i) {
+        ok = arithmetic_eval(ndref(pn, i), prib, &nd) && ts_numerical(nd.ts) 
+          && ts_arith_init_compatible(vets, nd.ts, &nd.val); 
+        if (ok) {
+          ts_t effvets = (vets == TS_BOOL) ? v128_int_ts_for_bool(cnt) : vets;
+          numval_convert(vets, nd.ts, &nd.val);
+          if (vets == TS_BOOL) nd.val.i = -!!nd.val.i; /* 0=>0, 1=>-1 */
+          switch (effvets) {
+            case TS_CHAR:   binchar((int)nd.val.i, &prn->data); break;
+            case TS_UCHAR:  binuchar((unsigned)nd.val.u, &prn->data); break; 
+            case TS_SHORT:  binshort((int)nd.val.i, &prn->data); break;
+            case TS_USHORT: binushort((unsigned)nd.val.u, &prn->data); break;
+            case TS_LONG:   /* wasm32: longs are 32-bit */
+            case TS_INT:    binint((int)nd.val.i, &prn->data); break;
+            case TS_ULONG:  /* wasm32: longs are 32-bit */
+            case TS_UINT:   binuint((unsigned)nd.val.u, &prn->data); break;  
+            case TS_LLONG:  binllong(nd.val.i, &prn->data); break;
+            case TS_ULLONG: binullong(nd.val.u, &prn->data); break;
+            case TS_FLOAT:  binfloat(nd.val.f, &prn->data); break;
+            case TS_DOUBLE: bindouble(nd.val.d, &prn->data); break;
+            default:        assert(false);
+          }
+        } else break;
+      }
+    }
+    assert(!ok || chblen(&prn->data) == 16);
+    if (ok) ndswap(pn, prn);
+    ndfini(&nd), ndfini(&rn);
+  }
+  return ok;
+}
+
 /* replace arithmetic constant expressions in pn with literals */
 static void expr_fold_constants(node_t *pn, buf_t *prib)
 {
@@ -1572,11 +1663,11 @@ static void expr_fold_constants(node_t *pn, buf_t *prib)
     case NT_LITERAL: 
     case NT_IDENTIFIER:
       /* can't be folded */
-      break;
+      return;
     case NT_TYPE:
-      /* no expressions inside */
-      break;
     case NT_VARDECL:
+      /* no expressions inside */
+      return;
     case NT_FUNDEF:
     case NT_TYPEDEF:
     case NT_MACRODEF:
@@ -1584,23 +1675,52 @@ static void expr_fold_constants(node_t *pn, buf_t *prib)
     case NT_IMPORT:
       /* can't be part of an expression */
       assert(false);
-      break;
-    case NT_DISPLAY:
-      if (static_display(pn, prib)) pn->sc = SC_STATIC;
-      /* fall thru (i.e. fold arith constants inside) */
-    default: {
-      node_t *pcn = NULL;
-      if (arithmetic_constant_expr(pn)) {
-        node_t nd = mknd();
-        if (arithmetic_eval(pn, prib, &nd)) ndswap(&nd, pn);
-        ndfini(&nd);
-      } else {
-        size_t i;
-        for (i = 0; i < ndlen(pn); ++i) {
-          expr_fold_constants(ndref(pn, i), prib);
-        }   
+      return;
+    case NT_CALL: {
+      const node_t *pfn, *pdn;
+      assert(ndlen(pn) > 0);
+      if ((pfn = ndcref(pn, 0))->nt == NT_IDENTIFIER && (pdn = lookup_macro(pfn->name)) != NULL && ndlen(pdn) == 2) {
+        buf_t ids; ndbuf_t pars; size_t i; bool variadic = false;
+        bufinit(&ids, sizeof(sym_t)); ndbinit(&pars); 
+        pfn = ndcref(pdn, 0); /* function type for the macro */
+        assert(pfn->nt == NT_TYPE && pfn->ts == TS_FUNCTION); 
+        for (i = 1; i < ndlen(pn); ++i) ndswap(ndbnewbk(&pars), ndref(pn, i));
+        if (ndlen(pfn) > 1 && ndcref(pfn, ndlen(pfn)-1)->name == 0) 
+          variadic = true; 
+        if (!variadic && ndlen(pfn) != ndblen(&pars)+1)
+          neprintf(pn, "invalid number of parameters to macro");
+        if (variadic && ndlen(pfn) > ndblen(&pars)+2) 
+          neprintf(pn, "not enough parameters to variadic macro");
+        for (i = 1/* skip null type */; i < ndlen(pfn); ++i) {
+          const node_t *pin = ndcref(pfn, i);
+          assert(pin->nt == NT_VARDECL);
+          assert(pin->name != 0 || i+1 == ndlen(pfn)); /* ... is last */
+          *(sym_t*)bufnewbk(&ids) = pin->name;
+        }
+        ndcpy(pn, ndcref(pdn, 1));
+        patch_macro_template(&ids, &pars, pn);
+        buffini(&ids); ndbfini(&pars); 
+        /* fixme: this can go on forever! */
+        expr_fold_constants(pn, prib);
+        return;
       }
     } break;
+    case NT_DISPLAY:
+      if (fold_simd_display(pn, prib)) return;
+      if (static_display(pn, prib)) pn->sc = SC_STATIC;
+      break;
+    default:
+      break;
+  } 
+  if (arithmetic_constant_expr(pn)) {
+    node_t nd = mknd();
+    if (arithmetic_eval(pn, prib, &nd)) ndswap(&nd, pn);
+    ndfini(&nd);
+  } else {
+    size_t i;
+    for (i = 0; i < ndlen(pn); ++i) {
+      expr_fold_constants(ndref(pn, i), prib);
+    }   
   }
 }
 
@@ -3483,6 +3603,11 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
           id = intern_strlit(pn); ts = (pn->ts == TS_STRING ? TS_CHAR : TS_INT);
           pcn = npnewcode(pn); wrap_type_pointer(ndsettype(ndnewbk(pcn), ts));
           acode_pushin_id_mod_iarg(pcn, IN_REF_DATA, id, g_curmod, 0);
+        } break;
+        case TS_V128: {
+          assert(chblen(&pn->data) == 16); 
+          pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), pn->ts);
+          asm_simd128_const((ts_t)pn->val.i, &pn->data, icbnewbk(&pcn->data));
         } break;
         default: {
           assert(ts_numerical(pn->ts));

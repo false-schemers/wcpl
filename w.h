@@ -539,9 +539,9 @@ typedef enum insig {
   INSIG_X_Y, INSIG_T, INSIG_CI,
   INSIG_I32, INSIG_I64,
   INSIG_F32, INSIG_F64, 
-  INSIG_I128, /* new */
-  INSIG_MEMARG, INSIG_LANEIDX, /* new */
-  INSIG_MEMARG_LANEIDX, /* new */
+  INSIG_I128,
+  INSIG_MEMARG, INSIG_LANEIDX,
+  INSIG_MEMARG_LANEIDX, INSIG_LANEIDX16,
   INSIG_RF, INSIG_RD, INSIG_PR /* for internal use */
 } insig_t;
 
@@ -571,7 +571,7 @@ typedef union numval {
   long long i; unsigned long long u; float f; double d;
 } numval_t;
 
-/* argument value (compatible with numval) */
+/* argument value (backward-compatible with numval) */
 typedef union argval {
   long long i; unsigned long long u; float f; double d;
   signed char ix8[8]; signed short ix4[4]; signed int ix2[2];
@@ -581,8 +581,9 @@ typedef union argval {
 
 /* instruction */
 /* NB: IN_BR_TABLE has count N in arg.u, and is followed by N+1 dummy IN_BR inscodes */
+/* .id is symbolic replacement for index/address; shape id for IN_V128_CONST */
 typedef struct inscode {
-  instr_t in; sym_t id;
+  instr_t in; sym_t id; 
   argval_t arg, arg2; 
 } inscode_t;
 

@@ -1,6 +1,7 @@
 /* p.c (wcpl parser) -- esl */
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -314,7 +315,7 @@ static void intern_symbol(const char *name, tt_t tt, int info)
 {
   int *pt = bufnewbk(&g_syminfo);
   pt[0] = intern(name), pt[1] = tt, pt[2] = info;
-  bufqsort(&g_syminfo, &int_cmp);	
+  bufqsort(&g_syminfo, &int_cmp);
 }
 
 /* NB: unintern_symbol does not touch g_nodes! */
@@ -358,12 +359,13 @@ void init_symbols(void)
   node_t *pn, *psn; time_t now;
   bufinit(&g_syminfo, sizeof(int)*3);
   ndbinit(&g_nodes); time(&now);
-  intern_symbol("asm", TT_ASM_KW, -1);
+  intern_symbol("asm", TT_ASM_KW, -1); /* WCPL */
   intern_symbol("auto", TT_AUTO_KW, -1);
   intern_symbol("break", TT_BREAK_KW, -1);
   intern_symbol("case", TT_CASE_KW, -1);
   intern_symbol("char", TT_CHAR_KW, -1);
   intern_symbol("const", TT_CONST_KW, -1);
+  intern_symbol("constexpr", TT_CONSTEXPR_KW, -1);
   intern_symbol("continue", TT_CONTINUE_KW, -1);
   intern_symbol("default", TT_DEFAULT_KW, -1);
   intern_symbol("do"	, TT_DO_KW, -1);
@@ -375,12 +377,15 @@ void init_symbols(void)
   intern_symbol("for", TT_FOR_KW, -1);
   intern_symbol("goto", TT_GOTO_KW, -1);
   intern_symbol("if", TT_IF_KW, -1);
+  intern_symbol("inline", TT_INLINE_KW, -1);
   intern_symbol("int", TT_INT_KW, -1);
   intern_symbol("long", TT_LONG_KW, -1);
   intern_symbol("register", TT_REGISTER_KW, -1);
+  intern_symbol("restrict", TT_RESTRICT_KW, -1);
   intern_symbol("return", TT_RETURN_KW, -1);
   intern_symbol("short", TT_SHORT_KW, -1);
   intern_symbol("signed", TT_SIGNED_KW, -1);
+  intern_symbol("simd", TT_SIMD_KW, -1); /* WCPL */
   intern_symbol("static", TT_STATIC_KW, -1);
   intern_symbol("struct", TT_STRUCT_KW, -1);
   intern_symbol("switch", TT_SWITCH_KW, -1);
@@ -391,7 +396,7 @@ void init_symbols(void)
   intern_symbol("volatile", TT_VOLATILE_KW, -1);
   intern_symbol("while", TT_WHILE_KW, -1);
   intern_symbol("bool", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_BOOL;
+  ndsettype(ndbnewbk(&g_nodes), TS_BOOL);
   intern_symbol("true", TT_MACRO_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
   pn->ts = TS_BOOL; pn->val.i = 1; /* NB: int in C99 */
@@ -401,50 +406,51 @@ void init_symbols(void)
   pn->ts = TS_BOOL; pn->val.i = 0; /* NB: int in C99 */
   wrap_node(pn, NT_MACRODEF); pn->name = intern("false");
   intern_symbol("wchar_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_INT;
+  ndsettype(ndbnewbk(&g_nodes), TS_INT);
   intern_symbol("wint_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_INT;
+  ndsettype(ndbnewbk(&g_nodes), TS_INT);
   intern_symbol("int8_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_CHAR;
+  ndsettype(ndbnewbk(&g_nodes), TS_CHAR);
   intern_symbol("uint8_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_UCHAR;
+  ndsettype(ndbnewbk(&g_nodes), TS_UCHAR);
   intern_symbol("int16_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_SHORT;
+  ndsettype(ndbnewbk(&g_nodes), TS_SHORT);
   intern_symbol("uint16_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_USHORT;
+  ndsettype(ndbnewbk(&g_nodes), TS_USHORT);
   intern_symbol("int32_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_INT;
+  ndsettype(ndbnewbk(&g_nodes), TS_INT);
   intern_symbol("uint32_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_UINT;
+  ndsettype(ndbnewbk(&g_nodes), TS_UINT);
   intern_symbol("int64_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LLONG;
+  ndsettype(ndbnewbk(&g_nodes), TS_LLONG);
   intern_symbol("uint64_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_ULLONG;
+  ndsettype(ndbnewbk(&g_nodes), TS_ULLONG);
   intern_symbol("size_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_ULONG;
+  ndsettype(ndbnewbk(&g_nodes), TS_ULONG);
   intern_symbol("ssize_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
+  ndsettype(ndbnewbk(&g_nodes), TS_LONG);
   intern_symbol("uintptr_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_ULONG;
+  ndsettype(ndbnewbk(&g_nodes), TS_ULONG);
   intern_symbol("ptrdiff_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
+  ndsettype(ndbnewbk(&g_nodes), TS_LONG);
   intern_symbol("intptr_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_LONG;
+  ndsettype(ndbnewbk(&g_nodes), TS_LONG);
+  intern_symbol("float32_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
+  ndsettype(ndbnewbk(&g_nodes), TS_FLOAT);
+  intern_symbol("float64_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
+  ndsettype(ndbnewbk(&g_nodes), TS_DOUBLE);
   intern_symbol("v128_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_TYPE, -1, -1); pn->ts = TS_V128;
+  ndsettype(ndbnewbk(&g_nodes), TS_V128);
   intern_symbol("va_arg_t", TT_TYPE_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); make_vararg_union_type(pn);
   intern_symbol("INTPTR_MIN", TT_MACRO_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
-  pn->ts = TS_LONG; pn->val.i = LONG_MIN; /* wasm32 */
+  pn = ndsetilit(ndbnewbk(&g_nodes), TS_LONG, INT_MIN); /* wasm32 */
   wrap_node(pn, NT_MACRODEF); pn->name = intern("INTPTR_MIN");
   intern_symbol("INTPTR_MAX", TT_MACRO_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
-  pn->ts = TS_LONG; pn->val.i = LONG_MAX; /* wasm32 */
+  pn = ndsetilit(ndbnewbk(&g_nodes), TS_LONG, INT_MAX); /* wasm32 */
   wrap_node(pn, NT_MACRODEF); pn->name = intern("INTPTR_MAX");
   intern_symbol("UINTPTR_MAX", TT_MACRO_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
-  pn->ts = TS_ULONG; pn->val.u = ULONG_MAX; /* wasm32 */
+  pn = ndsetulit(ndbnewbk(&g_nodes), TS_ULONG, UINT_MAX); /* wasm32 */
   wrap_node(pn, NT_MACRODEF); pn->name = intern("UINTPTR_MAX");
   intern_symbol("NULL", TT_MACRO_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_CAST, -1, -1);
@@ -479,9 +485,24 @@ void init_symbols(void)
   pn->ts = TS_STRING; chbputtime("%X", gmtime(&now), &pn->data);
   chbputc(0, &pn->data); wrap_node(pn, NT_MACRODEF); pn->name = intern("__TIME__");
   intern_symbol("__WCPL__", TT_MACRO_NAME, (int)ndblen(&g_nodes));
-  pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
-  pn->ts = TS_INT; pn->val.d = 1;
+  pn = ndsetilit(ndbnewbk(&g_nodes), TS_INT, 1);
   wrap_node(pn, NT_MACRODEF); pn->name = intern("__WCPL__");
+}
+
+/* simple comparison of numerical NT_LITERAL nodes for equivalence */
+bool same_numlit(const node_t *pcn1, const node_t *pcn2)
+{
+  node_t *pn1 = (node_t*)pcn1, *pn2 = (node_t*)pcn2;
+  if (pn1->nt == NT_NULL || pn2->nt == NT_NULL) return true;
+  if (pn1->nt != NT_LITERAL || pn2->nt != NT_LITERAL) return false;
+  if (pn1->ts != pn2->ts) return false;
+  switch (pn1->ts) { 
+    case TS_INT: case TS_LONG: case TS_LLONG:
+      return pn1->val.i == pn2->val.i;
+    case TS_UINT: case TS_ULONG: case TS_ULLONG:
+      return pn1->val.u == pn2->val.u;
+  }
+  return false;
 }
 
 /* simple comparison of NT_TYPE nodes for equivalence */
@@ -491,6 +512,13 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
   assert(ptn1->nt == NT_TYPE && ptn2->nt == NT_TYPE);
   if (ptn1->ts == TS_ENUM && ptn2->ts == TS_INT) return true;
   if (ptn1->ts == TS_INT && ptn2->ts == TS_ENUM) return true;
+  if (ptn1->ts == TS_V128 && ptn2->ts == TS_V128) {
+    assert(ndlen(ptn1) <= 2 && ndlen(ptn2) <= 2);
+    /* make sure specialized vectors are specialized in the same way */
+    if (!ndlen(ptn1) || !ndlen(ptn2) || same_type(ndcref(ptn1, 0), ndcref(ptn2, 0))) return true;
+    if (ndlen(ptn1) < 2 || ndlen(ptn2) < 2) return true;
+    return same_numlit(ndcref(ptn1, 1), ndcref(ptn2, 1));
+  }
   if (ptn1->ts == TS_ARRAY && ptn2->ts == TS_PTR) { 
     assert(ndlen(ptn1) == 2 && ndlen(ptn2) == 1);
     return ndref(ptn1, 1)->nt == NT_NULL && same_type(ndref(ptn1, 0), ndref(ptn2, 0));
@@ -522,21 +550,9 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
     }
   } else if (ptn1->ts == TS_ARRAY) {
     /* allow incomplete array to be equivalent to a complete one */
-    node_t *pn1, *pn2; 
     assert(ndlen(ptn1) == 2 && ndlen(ptn2) == 2);
-    pn1 = ndref(ptn1, 0), pn2 = ndref(ptn2, 0);
-    if (!same_type(pn1, pn2)) return false;
-    pn1 = ndref(ptn1, 1), pn2 = ndref(ptn2, 1);
-    if (pn1->nt == NT_NULL || pn2->nt == NT_NULL) return true;
-    if (pn1->nt != NT_LITERAL || pn2->nt != NT_LITERAL) return false;
-    if (pn1->ts != pn2->ts) return false;
-    switch (pn1->ts) { 
-      case TS_INT: case TS_LONG: case TS_LLONG:
-        return ptn1->val.i == ptn2->val.i;
-      case TS_UINT: case TS_ULONG: case TS_ULLONG:
-        return ptn1->val.u == ptn2->val.u;
-      default: return false;
-    }
+    return same_type(ndref(ptn1, 0), ndref(ptn2, 0))
+        && same_numlit(ndref(ptn1, 1), ndref(ptn2, 1));
   }
   return true;
 }
@@ -614,6 +630,17 @@ const node_t *lookup_global(sym_t name)
   const node_t *pn = NULL;
   int *pi = bufbsearch(&g_syminfo, &name, &int_cmp);
   if (pi && pi[1] == TT_IDENTIFIER && pi[2] >= 0) {
+    assert(pi[2] < (int)buflen(&g_nodes));
+    pn = bufref(&g_nodes, (size_t)pi[2]);
+  }
+  return pn;
+}
+
+const node_t *lookup_macro(sym_t name)
+{
+  const node_t *pn = NULL;
+  int *pi = bufbsearch(&g_syminfo, &name, &int_cmp);
+  if (pi && pi[1] == TT_MACRO_NAME && pi[2] >= 0) {
     assert(pi[2] < (int)buflen(&g_nodes));
     pn = bufref(&g_nodes, (size_t)pi[2]);
   }
@@ -1870,6 +1897,20 @@ node_t *ndsettype(node_t *dst, ts_t ts)
   return dst;
 }
 
+node_t *ndsetilit(node_t *dst, ts_t ts, long long i)
+{
+  ndset(dst, NT_LITERAL, -1, -1);
+  dst->ts = ts; dst->val.i = i;
+  return dst;
+}
+
+node_t *ndsetulit(node_t *dst, ts_t ts, unsigned long long u)
+{
+  ndset(dst, NT_LITERAL, -1, -1);
+  dst->ts = ts; dst->val.u = u;
+  return dst;
+}
+
 void ndclear(node_t* pn)
 {
   ndfini(pn);
@@ -2265,11 +2306,12 @@ static sym_t gettag(pws_t *pw)
 static bool type_specifier_ahead(pws_t *pw)
 {
   switch (peekt(pw)) {
-    case TT_CHAR_KW:   case TT_CONST_KW:    case TT_DOUBLE_KW:
-    case TT_ENUM_KW:   case TT_FLOAT_KW:    case TT_INT_KW:
-    case TT_LONG_KW:   case TT_SHORT_KW:    case TT_SIGNED_KW:
-    case TT_STRUCT_KW: case TT_UNION_KW:    case TT_UNSIGNED_KW:
-    case TT_VOID_KW:   case TT_VOLATILE_KW: case TT_TYPE_NAME:
+    case TT_CHAR_KW:     case TT_CONST_KW:    case TT_DOUBLE_KW:
+    case TT_ENUM_KW:     case TT_FLOAT_KW:    case TT_INT_KW:
+    case TT_LONG_KW:     case TT_RESTRICT_KW: case TT_SHORT_KW:
+    case TT_SIGNED_KW:   case TT_SIMD_KW:     case TT_STRUCT_KW: 
+    case TT_UNION_KW:    case TT_UNSIGNED_KW: case TT_VOID_KW:   
+    case TT_VOLATILE_KW: case TT_TYPE_NAME:
       return true;
     default:;
   }
@@ -2329,7 +2371,7 @@ static bool no_etcpars(ndbuf_t *ppars)
   return true;
 }
 
-static void patch_macro_template(buf_t *pids, ndbuf_t *ppars, node_t *pn)
+void patch_macro_template(buf_t *pids, ndbuf_t *ppars, node_t *pn)
 {
   size_t n = buflen(pids), i; sym_t *pi = bufdata(pids); 
   bool etcbound = n > 0 && pi[n-1] == 0; /* ... is macro-bound */
@@ -2365,6 +2407,25 @@ static void patch_macro_template(buf_t *pids, ndbuf_t *ppars, node_t *pn)
       patch_macro_template(pids, ppars, ndref(pn, 0));
       for (i = 1; i+1 < ndlen(pn); i += 2) {
         patch_macro_template(pids, ppars, ndref(pn, i+1));
+      }
+    }
+  } else if (pn->nt == NT_ACODE) {
+    size_t insi; 
+    assert(pn->data.esz == sizeof(inscode_t));
+    for (insi = 0; insi < buflen(&pn->data); ++insi) {
+      inscode_t *pic = bufref(&pn->data, insi);
+      if (pic->id) {
+        for (i = 0; i < n; ++i) { /* linear search is ok here */
+          if (i+1 == n && !pi[i]) break; /* ... */
+          if (pi[i] != pic->id) continue;
+          else {
+            node_t *prn = ndbref(ppars, i); int r;
+            if (!arithmetic_eval_to_int(prn, NULL, &r))
+              n2eprintf(prn, pn, "parameter not an integer constant");
+            pic->id = 0; pic->arg.i = r;
+            break;
+          }
+        }
       }
     }
   } else {
@@ -2799,17 +2860,22 @@ static long long parse_asm_signed(pws_t *pw)
   return 0;
 }
 
-static unsigned long long parse_asm_unsigned(pws_t *pw)
+static unsigned long long parse_asm_unsigned(pws_t *pw, unsigned long long maxval)
 {
   node_t xnd = mknd(), lnd = mknd(); bool ok = false;
   int startpos = peekpos(pw);
   parse_primary_expr(pw, &xnd);
   if (arithmetic_eval(&xnd, NULL, &lnd) && lnd.nt == NT_LITERAL) {
     switch (lnd.ts) {
+      case TS_INT: case TS_LONG: case TS_LLONG:
+        if (lnd.val.i < 0) 
+          reprintf(pw, startpos, "unsigned argument is negative");
+        /* else fall thru */
       case TS_UINT: case TS_ULONG: case TS_ULLONG: {
         unsigned long long ull = lnd.val.u;
         ndfini(&xnd), ndfini(&lnd);
-        return ull;
+        if (ull <= maxval) return ull;
+        reprintf(pw, startpos, "unsigned argument is too big");  
       }
       default:;
     }
@@ -2857,7 +2923,8 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
   } else {
     /* declaration or regular instr */
     inscode_t *pic = bufnewbk(&pan->data);
-    chbuf_t cb = mkchb(); tt_t tt; instr_t in;
+    chbuf_t cb = mkchb(); tt_t tt; 
+    instr_t in; insig_t is;
     tt = peekt(pw);
     if (tt == TT_IDENTIFIER || 
       (TT_AUTO_KW <= tt && tt <= TT_WHILE_KW) ||
@@ -2895,7 +2962,7 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
     in = name_instr(chbdata(&cb));
     if (in == IN_PLACEHOLDER) reprintf(pw, pw->pos, "unknown instruction");
     pic->in = in;
-    switch (instr_sig(in)) {
+    switch (is = instr_sig(in)) {
       case INSIG_NONE:
         break;
       case INSIG_BT:   case INSIG_L:    case INSIG_RD:
@@ -2913,10 +2980,10 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
           pic->arg.i = parse_asm_signed(pw);
         }
         break;
-      case INSIG_X_Y:  case INSIG_MEMARG:
+      case INSIG_X_Y:
         if (peekt(pw) == TT_IDENTIFIER) pic->id = getid(pw);
-        else pic->arg.u = parse_asm_unsigned(pw);
-        pic->arg2.u = (unsigned)parse_asm_unsigned(pw);
+        else pic->arg.u = parse_asm_unsigned(pw, INT32_MAX);
+        pic->arg2.u = (unsigned)parse_asm_unsigned(pw, INT32_MAX);
         break;
       case INSIG_F32:
         pic->arg.f = (float)parse_asm_double(pw);
@@ -2924,10 +2991,66 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
       case INSIG_F64:
         pic->arg.d = parse_asm_double(pw);
         break;
+      case INSIG_MEMARG: {
+        if (ahead(pw, "offset")) {
+          dropt(pw); expect(pw, TT_ASN, "=");
+          pic->arg.u = parse_asm_unsigned(pw, INT32_MAX);
+        } else pic->arg.u = 0;
+        if (ahead(pw, "align")) {
+          unsigned long long align; unsigned a = 0;
+          dropt(pw); expect(pw, TT_ASN, "=");
+          align = parse_asm_unsigned(pw, 16);
+          switch ((int)align) { /* fixme: use ntz? */
+            case 1:  a = 0; break;
+            case 2:  a = 1; break;
+            case 4:  a = 2; break;
+            case 8:  a = 3; break;
+            case 16: a = 4; break;
+          }
+          pic->arg2.u = a;
+        } else pic->arg2.u = 0;
+      } break;
+      case INSIG_LANEIDX:
+        if (peekt(pw) == TT_IDENTIFIER) pic->id = getid(pw);
+        else pic->arg.u = parse_asm_unsigned(pw, 16);
+        break;
+      case INSIG_MEMARG_LANEIDX: {
+        unsigned a = 0;
+        if (ahead(pw, "offset")) {
+          dropt(pw); expect(pw, TT_ASN, "=");
+          pic->arg2.ux2[0] = (unsigned)parse_asm_unsigned(pw, INT32_MAX);
+        } else pic->arg2.ux2[0] = 0;
+        if (ahead(pw, "align")) {
+          unsigned long long align; 
+          dropt(pw); expect(pw, TT_ASN, "=");
+          align = parse_asm_unsigned(pw, 16);
+          switch ((int)align) { /* fixme: use ntz? */
+            case 1:  a = 0; break;
+            case 2:  a = 1; break;
+            case 4:  a = 2; break;
+            case 8:  a = 3; break;
+            case 16: a = 4; break;
+          }
+          pic->arg2.ux2[1] = a;
+        } else pic->arg2.ux2[1] = 0;
+        if (peekt(pw) == TT_IDENTIFIER) pic->id = getid(pw);
+        else pic->arg.u = parse_asm_unsigned(pw, 16);
+      } break;
+      case INSIG_LANEIDX16: {
+        size_t i; unsigned long long lidxv = 0;
+        if (peekt(pw) == TT_IDENTIFIER) { 
+          pic->id = getid(pw); /* packed */
+        } else for (i = 0; i < 16; ++i) {
+          unsigned long long lidx = parse_asm_unsigned(pw, i == 0 ? UINT32_MAX : 16);
+          lidxv = (lidxv << 4) | lidx;
+          if (peekt(pw) == TT_COMMA || peekt(pw) == TT_RPAR) break;
+        }
+        pic->arg.u = lidxv;
+      } break;
       case INSIG_LS_L: case INSIG_PR:
-        assert(false); /* fixme */
+        /* fixme? */
       default:
-        assert(false);     
+        reprintf(pw, pw->pos, "inline assembly: instruction not supported");     
     } 
     chbfini(&cb);
   }
@@ -3013,6 +3136,10 @@ void patch_display_array_sizes(node_t *psn, const node_t *ptn)
       /* replace placeholder type */
       ndswap(ndref(psn, 0), &tn);
       ndfini(&tn);
+    } else {
+      /* just replace placeholder type */
+      node_t *pstn = ndref(psn, 0);
+      if (pstn->ts == TS_VOID) ndcpy(pstn, ptn);
     }
   }
 }
@@ -3201,6 +3328,37 @@ static void parse_enum_body(pws_t *pw, node_t *pn)
   }
 }
 
+/* parse simd body <T, N> */
+static void parse_simd_body(pws_t *pw, node_t *pn)
+{
+  node_t *ptn; int startpos; 
+  ndset(pn, NT_TYPE, pw->id, peekpos(pw));
+  pn->ts = TS_V128;
+  expect(pw, TT_LT, "<");
+  ptn = ndnewbk(pn); startpos = peekpos(pw);
+  parse_base_type(pw, ptn);
+  if (ptn->ts < TS_BOOL || ptn->ts > TS_DOUBLE)
+    reprintf(pw, startpos, "unexpected base type in simd<T, N> type specifier");
+  expect(pw, TT_COMMA, ","); startpos = peekpos(pw);
+  if (ahead(pw, "2") || ahead(pw, "4") || ahead(pw, "8") || ahead(pw, "16")) {
+    node_t *pvn = ndnewbk(pn); long n = atol(pw->tokstr); dropt(pw);
+    ndset(pvn, NT_LITERAL, pw->id, startpos); pvn->ts = TS_INT; pvn->val.i = n; 
+    switch (ptn->ts) {
+      case TS_BOOL:                  n = 128; break; /* all sizes work */
+      case TS_CHAR:  case TS_UCHAR:  n *=  8; break;
+      case TS_SHORT: case TS_USHORT: n *= 16; break;
+      case TS_INT:   case TS_UINT:   n *= 32; break;
+      case TS_LONG:  case TS_ULONG:  n *= 32; break; /* wasm32 */
+      case TS_LLONG: case TS_ULLONG: n *= 64; break;
+      case TS_FLOAT:                 n *= 32; break; 
+      case TS_DOUBLE:                n *= 64; break;
+      default: assert(false); 
+    }
+    if (n != 128) reprintf(pw, startpos, "unexpected type/count in simd<T, N> type specifier");
+  } else reprintf(pw, startpos, "unexpected count in simd<T, N> type specifier");
+  expect(pw, TT_GT, ">");
+}
+
 /* parse struct or union body (name? + declist?) */
 static void parse_sru_body(pws_t *pw, ts_t sru, node_t *pn)
 {
@@ -3244,7 +3402,7 @@ static void parse_sru_body(pws_t *pw, ts_t sru, node_t *pn)
 static void parse_base_type(pws_t *pw, node_t *pn)
 {
   int v = 0, c = 0, s = 0, i = 0, l = 0, f = 0, d = 0;
-  int sg = 0, ug = 0, en = 0, st = 0, un = 0, ty = 0;   
+  int sg = 0, ug = 0, en = 0, si = 0, st = 0, un = 0, ty = 0;   
   int pos = peekpos(pw); sym_t tn = 0;
   while (type_specifier_ahead(pw)) {
     switch (pw->ctk) {
@@ -3258,22 +3416,24 @@ static void parse_base_type(pws_t *pw, node_t *pn)
       case TT_FLOAT_KW:    f = 1; break;
       case TT_DOUBLE_KW:   d = 1; break;
       case TT_ENUM_KW:     en = 1; break;
+      case TT_SIMD_KW:     si = 1; break;
       case TT_STRUCT_KW:   st = 1; break;
       case TT_UNION_KW:    un = 1; break;
       case TT_TYPE_NAME:   ty = 1; tn = intern(pw->tokstr); break;
       case TT_CONST_KW:    /* ignored */ break;  
       case TT_VOLATILE_KW: /* ignored */ break;
+      case TT_RESTRICT_KW: /* ignored */ break;
       default: assert(false);
     }
     dropt(pw);
   }
   if (c + s + l > 0 && i > 0) i = 0;
-  if (v + c + s + i + l + f + d + en + st + un + ty == 0 && sg + ug != 0) i = 1;
+  if (v + c + s + i + l + f + d + en + si + st + un + ty == 0 && sg + ug != 0) i = 1;
   if (!!l + f + d > 1)
     reprintf(pw, pw->pos, "invalid type specifier: unsupported type"); 
-  if (v + c + s + i + !!l + f + d + en + st + un + ty != 1 || sg + ug > 1)
+  if (v + c + s + i + !!l + f + d + en + si + st + un + ty != 1 || sg + ug > 1)
     reprintf(pw, pw->pos, "invalid type specifier: missing or conflicting keywords"); 
-  if (f + d + en + st + un + ty > 0 && sg + ug > 0)
+  if (f + d + en + si + st + un + ty > 0 && sg + ug > 0)
     reprintf(pw, pw->pos, "invalid type specifier: unexpected signedness keyword"); 
   ndset(pn, NT_TYPE, pw->id, pos);
   if (v) pn->ts = TS_VOID;
@@ -3290,6 +3450,7 @@ static void parse_base_type(pws_t *pw, node_t *pn)
   else if (f) pn->ts = TS_FLOAT; 
   else if (d) pn->ts = TS_DOUBLE; 
   else if (en) parse_enum_body(pw, pn);
+  else if (si) parse_simd_body(pw, pn);
   else if (st) parse_sru_body(pw, TS_STRUCT, pn);
   else if (un) parse_sru_body(pw, TS_UNION, pn);
   else if (ty) load_typedef_type(pw, pn, tn);
@@ -4206,6 +4367,10 @@ static void dump(node_t *pn, FILE* fp, int indent)
         case TS_BOOL: case TS_UCHAR: case TS_USHORT: case TS_UINT: case TS_ULONG: case TS_ULLONG:
           chbputllu(pn->val.u, &cb);
           fputs(chbdata(&cb), fp);
+          break;
+        case TS_V128:
+          if (ndlen(pn) == 2) fprintf(fp, "%s %d ", ts_name(ndref(pn, 0)->ts), (int)ndref(pn, 0)->val.i);
+          fdumpss(chbdata(&pn->data), chblen(&pn->data), fp);
           break;
         default: assert(false); 
       }    
