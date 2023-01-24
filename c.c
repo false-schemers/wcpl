@@ -773,14 +773,6 @@ static sym_t intern_strlit(node_t *pn)
   return pn->name;
 }
 
-
-/* static eval value */
-typedef struct seval {
-  ts_t ts;      /* TS_PTR or ts_numerical */
-  numval_t val; /* ts_numerical */
-  sym_t id;     /* TS_PTR (can be 0 if val is 0) */
-} seval_t; 
-
 /* evaluate pn expression statically, putting result into pr */
 bool static_eval(node_t *pn, buf_t *prib, seval_t *pr)
 {

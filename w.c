@@ -1756,11 +1756,13 @@ char *format_inscode(inscode_t *pic, chbuf_t *pcb)
     case INSIG_I32: {
       long long i = (long long)(pic->arg.u << 32) >> 32; /* extend sign to upper 32 bits */
       chbputf(pcb, " %lld", i); /* write negatives (if considered signed) as negatives */
-      if (pic->id) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
+      if (pic->id && pic->arg2.mod) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
+      else if (pic->id) chbputf(pcb, " (; $%s ;)", symname(pic->id)); 
     } break;
     case INSIG_I64:
       chbputf(pcb, " %lld", pic->arg.i); 
-      if (pic->id) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
+      if (pic->id && pic->arg2.mod) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
+      else if (pic->id) chbputf(pcb, " (; $%s ;)", symname(pic->id)); 
       break;
     case INSIG_CI: /* should be dumped fancily if types are available */
       if (pic->id) chbputf(pcb, " (type $%s)", symname(pic->id)); 

@@ -17,12 +17,21 @@ extern size_t  g_sdbaddr;  /* static data allocation start */
 extern size_t  g_stacksz;  /* stack size in bytes */
 extern size_t  g_argvbsz;  /* argv buf size in bytes */
 
+/* static eval value */
+typedef struct seval {
+  ts_t ts;      /* TS_PTR or ts_numerical */
+  numval_t val; /* ts_numerical */
+  sym_t id;     /* TS_PTR (can be 0 if val is 0) */
+} seval_t; 
+
 /* convert function type to a function signature */
 extern funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs);
 /* calc size/align for ptn; prn is NULL or reference node for errors, use 0 for lvl */
 extern void measure_type(const node_t *ptn, node_t *prn, size_t *psize, size_t *palign, int lvl);
 /* calc offset for ptn.fld; prn is NULL or reference node for errors */
 extern size_t measure_offset(const node_t *ptn, node_t *prn, sym_t fld, node_t **ppftn);
+/* evaluate pn expression statically, putting result into pr */
+extern bool static_eval(node_t *pn, buf_t *prib, seval_t *pr);
 /* evaluate pen arithmetic expression statically, putting result into prn */
 extern bool arithmetic_eval(node_t *pen, buf_t *prib, node_t *prn);
 /* evaluate integer expression pen statically, putting result into pi */

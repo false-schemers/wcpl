@@ -2419,11 +2419,23 @@ void patch_macro_template(buf_t *pids, ndbuf_t *ppars, node_t *pn)
           if (i+1 == n && !pi[i]) break; /* ... */
           if (pi[i] != pic->id) continue;
           else {
-            node_t *prn = ndbref(ppars, i); int r;
-            if (!arithmetic_eval_to_int(prn, NULL, &r))
-              n2eprintf(prn, pn, "parameter not an integer constant");
-            pic->id = 0; pic->arg.i = r;
-            break;
+            node_t *prn = ndbref(ppars, i); seval_t r;
+            if (!static_eval(prn, NULL, &r) || r.id != 0)
+              n2eprintf(prn, pn, "parameter not a numerical constant");
+            switch (pic->in) {
+              case IN_F32_CONST:
+                if (r.ts == TS_FLOAT) pic->arg.f = r.val.f;
+                else n2eprintf(prn, pn, "parameter not a float constant");
+                break;
+              case IN_F64_CONST:
+                if (r.ts == TS_DOUBLE) pic->arg.d = r.val.d;
+                else n2eprintf(prn, pn, "parameter not a float constant");
+                break;
+              default:
+                pic->arg.i = r.val.i;
+                break;
+            }
+            pic->id = 0;
           }
         }
       }
@@ -2969,7 +2981,6 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
       case INSIG_XL:   case INSIG_XG:   case INSIG_XT:
       case INSIG_T:    case INSIG_I32:  case INSIG_I64:
       case INSIG_RF:
-        /* fixme: more specific parsing needed */
         if (peekt(pw) == TT_IDENTIFIER) {
           if (peekc(pw) == ':') { /* mod:id */
             pic->arg2.mod = getid(pw);
@@ -2985,11 +2996,18 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
         else pic->arg.u = parse_asm_unsigned(pw, INT32_MAX);
         pic->arg2.u = (unsigned)parse_asm_unsigned(pw, INT32_MAX);
         break;
-      case INSIG_F32:
-        pic->arg.f = (float)parse_asm_double(pw);
-        break;
-      case INSIG_F64:
-        pic->arg.d = parse_asm_double(pw);
+      case INSIG_F32: case INSIG_F64:
+        if (peekt(pw) == TT_IDENTIFIER) {
+          if (peekc(pw) == ':') { /* mod:id */
+            pic->arg2.mod = getid(pw);
+            expect(pw, TT_COLON, ":");
+          } 
+          pic->id = getid(pw);
+        } else if (is == INSIG_F32) {
+          pic->arg.f = (float)parse_asm_double(pw);
+        } else {
+          pic->arg.d = parse_asm_double(pw);
+        }
         break;
       case INSIG_MEMARG: {
         if (ahead(pw, "offset")) {
