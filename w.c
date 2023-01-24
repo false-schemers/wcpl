@@ -373,9 +373,6 @@ static void wasm_expr(icbuf_t *pcb)
       case INSIG_I32: case INSIG_I64:
         wasm_signed(pic->arg.i); 
         break;
-      case INSIG_MEMARG:
-        wasm_unsigned(pic->arg2.u); wasm_unsigned(pic->arg.u);
-        break;
       case INSIG_X_Y: case INSIG_CI:
         wasm_unsigned(pic->arg.u); wasm_unsigned(pic->arg2.u); 
         break;
@@ -385,6 +382,28 @@ static void wasm_expr(icbuf_t *pcb)
       case INSIG_F64:
         wasm_double(pic->arg.d); 
         break;
+      case INSIG_I128: {
+        int i; unsigned long long val;
+        for (val = pic->arg.u, i = 0; i < 8; val >>= 8, ++i) wasm_byte((unsigned)val & 0xFFU);
+        for (val = pic->arg2.u, i = 0; i < 8; val >>= 8, ++i) wasm_byte((unsigned)val & 0xFFU);
+      } break;
+      case INSIG_MEMARG:
+        wasm_unsigned(pic->arg2.u); wasm_unsigned(pic->arg.u);
+        break;
+      case INSIG_LANEIDX:
+        wasm_byte((unsigned)pic->arg.u);
+        break;
+      case INSIG_MEMARG_LANEIDX:
+        wasm_unsigned(pic->arg2.ux2[1]); wasm_unsigned(pic->arg2.ux2[0]);
+        wasm_byte((unsigned)pic->arg.u);
+        break;
+      case INSIG_LANEIDX16: {
+        int i; unsigned long long lidxv;
+        for (lidxv = pic->arg.u, i = 16-1; i >= 0; --i) {
+          unsigned off = i*4, lidx = (unsigned)((lidxv >> off) & 0xFULL);
+          wasm_byte(lidx);
+        }
+      } break;
       case INSIG_LS_L: { 
         /* takes multiple opcodes */
         size_t d = i + (unsigned)pic->arg.u + 1;
@@ -3220,6 +3239,18 @@ static unsigned parse_uint(sws_t *pw)
   return (unsigned)v.u;
 }
 
+static bool parse_v128(sws_t *pw, argval_t *parg, argval_t *parg2)
+{
+  expect(pw, "i64x2"); /* no specific output yet */
+  if (peekt(pw) == WT_INT) {
+    scan_integer(pw, pw->tokstr, (numval_t*)parg); dropt(pw);
+    if (peekt(pw) == WT_INT) {
+      scan_integer(pw, pw->tokstr, (numval_t*)parg2); dropt(pw);
+    } else seprintf(pw, "invalid second part of i64x2 literal");
+  } else seprintf(pw, "invalid first part of i64x2 literal");
+  return false;
+}
+
 static unsigned parse_offset(sws_t *pw)
 {
   char *s;
@@ -3336,6 +3367,9 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
         } else {
           seprintf(pw, "invalid double literal %s", pw->tokstr);
         } 
+      } break;
+      case INSIG_I128: {
+        parse_v128(pw, &pic->arg, &pic->arg2);
       } break;
       case INSIG_MEMARG: {
         unsigned offset = parse_offset(pw), align = parse_align(pw);
@@ -4347,7 +4381,7 @@ static void wat_to_wasm_code(wasm_module_t *pbm, size_t parc, vtbuf_t *pltb, icb
         /* extend sign to upper 32 bits */
         pdc->arg.i = (psc->arg.i << 32) >> 32;
       } break;
-      case INSIG_I64: case INSIG_F32: case INSIG_F64: /* const */ {
+      case INSIG_I64: case INSIG_F32: case INSIG_F64: case INSIG_I128: /* const */ {
         /* nothing to patch here */
       } break;
       case INSIG_CI: /* call_indirect */ {
@@ -4359,6 +4393,9 @@ static void wat_to_wasm_code(wasm_module_t *pbm, size_t parc, vtbuf_t *pltb, icb
       case INSIG_X_Y: /* table init/copy */ {
       } break;
       case INSIG_MEMARG: /* load*, store* */ {
+        /* nothing to patch here */
+      } break;
+      case INSIG_LANEIDX: case INSIG_MEMARG_LANEIDX: case INSIG_LANEIDX16: {
         /* nothing to patch here */
       } break;
       case INSIG_LS_L: /* br_table */ {

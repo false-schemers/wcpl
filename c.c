@@ -2178,7 +2178,8 @@ static void fundef_wasmify(node_t *pdn)
       case TS_CHAR:  case TS_UCHAR:  case TS_SHORT: case TS_USHORT: 
         cast = ptni->ts;
       case TS_INT:   case TS_UINT:   case TS_LONG:  case TS_ULONG:  
-      case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: case TS_PTR: {
+      case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: 
+      case TS_V128:  case TS_PTR: {
         if (pdni->sc == SC_AUTO) { /* field in fp$ frame struct */
           node_t *pvn = ndnewbk(&frame); vi_t *pvi = bufnewbk(&vib);
           ndset(pvn, NT_VARDECL, pdni->pwsid, pdni->startpos);
