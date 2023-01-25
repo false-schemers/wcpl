@@ -1,10 +1,12 @@
 - title: "Getting Started"
   url: "docs/getting-started"
   children:
-    - title: Features
-      url: "docs/getting-started#getting-started"
     - title: Installation
       url: "docs/getting-started#installation"
+    - title: Libraries
+      url: "docs/getting-started#libraries"
+    - title: Modules
+      url: "docs/getting-started#modules"
     - title: Use
       url: "docs/getting-started#use"
 - title: "News"
