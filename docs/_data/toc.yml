@@ -1,5 +1,5 @@
 - title: "About"
-  url: "docs/"
+  url: "index"
 - title: "Getting Started"
   url: "docs/getting-started"
   children:
