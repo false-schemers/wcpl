@@ -34,9 +34,11 @@ github_repo: "wcpl"
 # google-analytics: G-XXXXXXXXXX
 # Image and (square) dimension for logo (don't start with /)
 # If commented, will use material hat theme
-# logo: "assets/img/logo/SRCC-square-red.png"
-logo_width: 34
+logo: "assets/img/favicon.png"
+logo_width: 32
 color: "#8c1515" # primary color for header, buttons
+#logo_width: 34
+#color: "#000000" # primary color for header, buttons
 
 # Build settings
 markdown: kramdown
