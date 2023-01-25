@@ -3,9 +3,9 @@
   children:
     - title: Features
       url: "docs/getting-started#getting-started"
-    - title: Development
-      url: "docs/getting-started#development"
-    - title: Customization
-      url: "docs/getting-started#customization"
+    - title: Installation
+      url: "docs/getting-started#installation"
+    - title: Use
+      url: "docs/getting-started#use"
 - title: "News"
   url: "news"

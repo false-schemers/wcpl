@@ -268,7 +268,7 @@ You can include block quotes to emphasize text.
 
 > Here is an example. Isn't this much more prominent to the user?
 
-## Development
+## Installation
 
 Initially (on OS X), you will need to setup [Brew](http://brew.sh/) which is a package manager for OS X and [Git](https://git-scm.com/). To install Brew and Git, run the following commands:
 
@@ -380,7 +380,7 @@ into this:
 https://<circleci>/0/mkdocs-jekyll/docs/getting-started/index.html
 ```
 
-## Customization
+## Use
 
 #### config.yml
 
