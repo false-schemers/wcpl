@@ -56,8 +56,8 @@ tag_color: danger # danger, success, warning, primary, info, secondary
 # discourse_category: "stanford-research-computing"
 # discourse_tags: null # comma separated string, leave null to not filter
 
-accentColor: black # red, purple, green, etc.
-themeColor: black # red, purple, green, blue, orange, purple, grey
+accentColor: white # red, purple, green, etc.
+themeColor: white # red, purple, green, blue, orange, purple, grey
 fixedNav: 'true' # true or false
 
 permalink: /:year/:title/
