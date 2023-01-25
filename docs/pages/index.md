@@ -10,7 +10,6 @@ WCPL (Webassembly Combined Programming Language) is a standalone self-hosted com
 for a subset of C targeting Webassembly and WASI.
 
 - [About](/about.md)
-- [Getting Started](getting-started.md)
-- [Getting Started2](getting-started)
+- [Getting Started](docs/getting-started.md)
 - [News](/news.md)
 
