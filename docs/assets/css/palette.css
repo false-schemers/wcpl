@@ -286,6 +286,21 @@ button[data-md-color-primary=grey] {
 [data-md-color-primary=grey] .md-nav__item--nested>.md-nav__link {
     color: inherit;
 }
+button[data-md-color-primary=black] {
+    background-color: #757575;
+}
+[data-md-color-primary=black] .md-typeset a {
+    color: #757575;
+}
+[data-md-color-primary=black] .md-header, [data-md-color-primary=black] .md-hero {
+    background-color: #000000;
+}
+[data-md-color-primary=black] .md-nav__link--active, [data-md-color-primary=black] .md-nav__link:active {
+    color: #757575;
+}
+[data-md-color-primary=black] .md-nav__item--nested>.md-nav__link {
+    color: inherit;
+}
 button[data-md-color-primary=blue-grey] {
     background-color: #546e7a;
 }
