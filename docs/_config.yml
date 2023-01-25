@@ -20,7 +20,7 @@ author: Der Magen
 description: Standalone self-hosted compiler/linker/libc for a subset of C targeting Webassembly/WASI.
 
 # DO NOT CHANGE THE LINE OF THIS FILE without editing .circleci/circle_urls.sh
-# baseurl: "/mkdocs-jekyll" # the subpath of your site, e.g. /blog
+baseurl: "/" # the subpath of your site, e.g. /blog
 
 # This is mostly for testing
 url: "https://wcpl.xyz" # the base hostname & protocol for your site
