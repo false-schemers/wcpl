@@ -501,6 +501,7 @@ bool same_numlit(const node_t *pcn1, const node_t *pcn2)
       return pn1->val.i == pn2->val.i;
     case TS_UINT: case TS_ULONG: case TS_ULLONG:
       return pn1->val.u == pn2->val.u;
+    default:;
   }
   return false;
 }

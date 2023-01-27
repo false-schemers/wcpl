@@ -55,7 +55,7 @@ cc -o wcpl [wcpl].c
 ## Modules
 
 WCPL treats each source file and header file as a module with a separate namespace. The name of the module is derived
-from the name of the file, so if a source file is named `foo.c`, it's header file should be named `foo.h`; both
+from the name of the file, so if a source file is named `foo.c`, its header file should be named `foo.h`; both
 will contribute to module named `foo`. If needed, the name of the module can be specified directly via `#pragma module`
 directive. Please note that module names only affect internal naming scheme used by the linker; `#include` directives
 have to use actual header file names (slashes in include file names are replaced by dots, so `#include <sys/etc.h>`
