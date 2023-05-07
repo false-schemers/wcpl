@@ -39,12 +39,12 @@ extern  int   egetopt(int argc, char* argv[], const char* opts);
 extern  void  eoptreset(void); /* reset getopt globals */
 
 /* common utility functions */
-extern void exprintf(const char *fmt, ...);
-extern void *exmalloc(size_t n);
-extern void *excalloc(size_t n, size_t s);
-extern void *exrealloc(void *m, size_t n);
-extern char *exstrdup(const char *s);
-extern char *exstrndup(const char* s, size_t n);
+extern void eprintf(const char *fmt, ...);
+extern void *emalloc(size_t n);
+extern void *ecalloc(size_t n, size_t s);
+extern void *erealloc(void *m, size_t n);
+extern char *estrdup(const char *s);
+extern char *estrndup(const char* s, size_t n);
 extern char *strtrc(char *str, int c, int toc);
 extern char *strprf(const char *str, const char *prefix);
 extern char *strsuf(const char *str, const char *suffix);
@@ -145,46 +145,46 @@ extern bool ucsin(unsigned uc, const ucset_t *ps);
 extern void ucspushi(ucset_t *ps, unsigned fc, unsigned lc);
 
 /* regular char buffers */
-typedef buf_t chbuf_t;
-#define chbinit(mem) (bufinit(mem, sizeof(char)))
-#define chbicpy(mem, pb) (buficpy(mem, pb))
-#define chbfini(pb) (buffini(pb))
-#define mkchb() (mkbuf(sizeof(char)))
-#define newchb() (newbuf(sizeof(char)))
-#define freechb(pb) (freebuf(pb))
-#define chblen(pb) (buflen(pb))
-#define chbclear(pb) (bufclear(pb))
-#define chbputc(c, pb) (*(char*)bufnewbk(pb) = (char)(c))
-extern void chbput(const char *s, size_t n, chbuf_t* pcb);
-extern void chbputs(const char *s, chbuf_t* pcb);
-extern void chbputlc(unsigned long uc, chbuf_t* pcb);
-extern void chbputwc(wchar_t wc, chbuf_t* pcb);
-extern void chbputd(int v, chbuf_t* pcb);
-extern void chbputld(long v, chbuf_t* pcb);
-extern void chbputt(ptrdiff_t v, chbuf_t* pcb);
-extern void chbputu(unsigned v, chbuf_t* pcb);
-extern void chbputx(unsigned v, chbuf_t* pcb);
-extern void chbputlu(unsigned long v, chbuf_t* pcb);
-extern void chbputllu(unsigned long long v, chbuf_t* pcb);
-extern void chbputll(long long v, chbuf_t* pcb);
-extern void chbputz(size_t v, chbuf_t* pcb);
-extern void chbputg(double v, chbuf_t* pcb);
-extern void chbputvf(chbuf_t* pcb, const char *fmt, va_list ap);
-extern void chbputf(chbuf_t* pcb, const char *fmt, ...);
-extern void chbput4le(unsigned v, chbuf_t* pcb);
-extern void chbputtime(const char *fmt, const struct tm *tp, chbuf_t* pcb);
-extern void chbinsc(chbuf_t* pcb, size_t n, int c);
-extern void chbinss(chbuf_t* pcb, size_t n, const char *s);
-extern char* chbset(chbuf_t* pcb, const char *s, size_t n);
-extern char* chbsets(chbuf_t* pcb, const char *s);
-extern char* chbsetf(chbuf_t* pcb, const char *fmt, ...);
-extern char* chbdata(chbuf_t* pcb);
-extern void chbcpy(chbuf_t* pdcb, const chbuf_t* pscb);
-extern void chbcat(chbuf_t* pdcb, const chbuf_t* pscb);
-extern dstr_t chbclose(chbuf_t* pcb);
-extern int chbuf_cmp(const void *p1, const void *p2);
-extern char* fgetlb(chbuf_t *pcb, FILE *fp);
-extern char *wcsto8cb(const wchar_t *wstr, int rc, chbuf_t *pcb);
+typedef buf_t cbuf_t;
+#define cbinit(mem) (bufinit(mem, sizeof(char)))
+#define cbicpy(mem, pb) (buficpy(mem, pb))
+#define cbfini(pb) (buffini(pb))
+#define mkcb() (mkbuf(sizeof(char)))
+#define newcb() (newbuf(sizeof(char)))
+#define freecb(pb) (freebuf(pb))
+#define cblen(pb) (buflen(pb))
+#define cbclear(pb) (bufclear(pb))
+#define cbputc(c, pb) (*(char*)bufnewbk(pb) = (char)(c))
+extern void cbput(const char *s, size_t n, cbuf_t* pcb);
+extern void cbputs(const char *s, cbuf_t* pcb);
+extern void cbputlc(unsigned long uc, cbuf_t* pcb);
+extern void cbputwc(wchar_t wc, cbuf_t* pcb);
+extern void cbputd(int v, cbuf_t* pcb);
+extern void cbputld(long v, cbuf_t* pcb);
+extern void cbputt(ptrdiff_t v, cbuf_t* pcb);
+extern void cbputu(unsigned v, cbuf_t* pcb);
+extern void cbputx(unsigned v, cbuf_t* pcb);
+extern void cbputlu(unsigned long v, cbuf_t* pcb);
+extern void cbputllu(unsigned long long v, cbuf_t* pcb);
+extern void cbputll(long long v, cbuf_t* pcb);
+extern void cbputz(size_t v, cbuf_t* pcb);
+extern void cbputg(double v, cbuf_t* pcb);
+extern void cbputvf(cbuf_t* pcb, const char *fmt, va_list ap);
+extern void cbputf(cbuf_t* pcb, const char *fmt, ...);
+extern void cbput4le(unsigned v, cbuf_t* pcb);
+extern void cbputtime(const char *fmt, const struct tm *tp, cbuf_t* pcb);
+extern void cbinsc(cbuf_t* pcb, size_t n, int c);
+extern void cbinss(cbuf_t* pcb, size_t n, const char *s);
+extern char* cbset(cbuf_t* pcb, const char *s, size_t n);
+extern char* cbsets(cbuf_t* pcb, const char *s);
+extern char* cbsetf(cbuf_t* pcb, const char *fmt, ...);
+extern char* cbdata(cbuf_t* pcb);
+extern void cbcpy(cbuf_t* pdcb, const cbuf_t* pscb);
+extern void cbcat(cbuf_t* pdcb, const cbuf_t* pscb);
+extern dstr_t cbclose(cbuf_t* pcb);
+extern int cbuf_cmp(const void *p1, const void *p2);
+extern char* fgetlb(cbuf_t *pcb, FILE *fp);
+extern char *wcsto8cb(const wchar_t *wstr, int rc, cbuf_t *pcb);
 
 /* wide char buffers */
 extern wchar_t *s8ctowcb(const char *str, wchar_t rc, buf_t *pb);
@@ -194,18 +194,18 @@ extern unsigned long *s8ctoucb(const char *str, unsigned long rc, buf_t *pb);
 
 
 /* grow pcb to get to the required alignment */
-extern void binalign(chbuf_t* pcb, size_t align);
+extern void binalign(cbuf_t* pcb, size_t align);
 /* lay out numbers as little-endian binary into cbuf */
-extern void binchar(int c, chbuf_t* pcb);  /* align=1 */
-extern void binshort(int s, chbuf_t* pcb); /* align=2 */
-extern void binint(int i, chbuf_t* pcb);   /* align=4 */
-extern void binllong(long long ll, chbuf_t* pcb); /* align=8 */
-extern void binuchar(unsigned uc, chbuf_t* pcb);  /* align=1 */
-extern void binushort(unsigned us, chbuf_t* pcb); /* align=2 */
-extern void binuint(unsigned ui, chbuf_t* pcb);   /* align=4 */
-extern void binullong(unsigned long long ull, chbuf_t* pcb); /* align=8 */
-extern void binfloat(float f, chbuf_t* pcb);   /* align=4 */
-extern void bindouble(double d, chbuf_t* pcb); /* align=8 */
+extern void binchar(int c, cbuf_t* pcb);  /* align=1 */
+extern void binshort(int s, cbuf_t* pcb); /* align=2 */
+extern void binint(int i, cbuf_t* pcb);   /* align=4 */
+extern void binllong(long long ll, cbuf_t* pcb); /* align=8 */
+extern void binuchar(unsigned uc, cbuf_t* pcb);  /* align=1 */
+extern void binushort(unsigned us, cbuf_t* pcb); /* align=2 */
+extern void binuint(unsigned ui, cbuf_t* pcb);   /* align=4 */
+extern void binullong(unsigned long long ull, cbuf_t* pcb); /* align=8 */
+extern void binfloat(float f, cbuf_t* pcb);   /* align=4 */
+extern void bindouble(double d, cbuf_t* pcb); /* align=8 */
 
 
 /* symbols */
@@ -215,7 +215,7 @@ typedef int sym_t;
 extern sym_t intern(const char *name);
 /* 0 => NULL, otherwise returns stored string */
 extern const char *symname(sym_t s);
-/* uses limited formatter (chbputvf) internally */
+/* uses limited formatter (cbputvf) internally */
 extern sym_t internf(const char *fmt, ...);
 /* reset symbol table */
 extern void clearsyms(void);

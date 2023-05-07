@@ -634,7 +634,7 @@ extern void entbfini(entbuf_t* pb);
 typedef struct dseg {
   dsmode_t dsm;
   unsigned idx;
-  chbuf_t data;
+  cbuf_t data;
   buf_t code;
 } dseg_t;
 
@@ -690,8 +690,8 @@ extern const char *instr_name(instr_t in);
 extern const char *valtype_name(valtype_t vt);
 extern instr_t name_instr(const char *name);
 extern insig_t instr_sig(instr_t in);
-extern char *format_funcsig(funcsig_t *pfs, chbuf_t *pcb);
-extern char *format_inscode(inscode_t *pic, chbuf_t *pcb);
+extern char *format_funcsig(funcsig_t *pfs, cbuf_t *pcb);
+extern char *format_inscode(inscode_t *pic, cbuf_t *pcb);
 
 
 /* wat text representations */

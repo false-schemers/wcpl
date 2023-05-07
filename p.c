@@ -24,17 +24,17 @@
 
 sym_t base_from_path(const char *path)
 {
-  chbuf_t cb = mkchb(); char *fn = getfname(path);
-  sym_t bp = intern(chbset(&cb, path, fn-path));
-  chbfini(&cb);
+  cbuf_t cb = mkcb(); char *fn = getfname(path);
+  sym_t bp = intern(cbset(&cb, path, fn-path));
+  cbfini(&cb);
   return bp;
 }
 
 sym_t modname_from_path(const char *path)
 {
-  chbuf_t cb = mkchb(); char *fn = getfname(path);
-  sym_t mod = intern(chbset(&cb, fn, spanfbase(fn)));  
-  chbfini(&cb);
+  cbuf_t cb = mkcb(); char *fn = getfname(path);
+  sym_t mod = intern(cbset(&cb, fn, spanfbase(fn)));  
+  cbfini(&cb);
   return mod;
 }
 
@@ -42,24 +42,24 @@ pws_t *pws_from_modname(bool sys, sym_t mod)
 {
   pws_t *pws = NULL;
   if (mod) {
-    size_t i; chbuf_t cb = mkchb();
+    size_t i; cbuf_t cb = mkcb();
     if (!sys) { /* start with current directory */
-      pws = newpws(chbsetf(&cb, "%s", symname(mod)));
-      if (!pws) pws = newpws(chbsetf(&cb, "%s.h", symname(mod)));
-      if (!pws) pws = newpws(chbsetf(&cb, "%s.wh", symname(mod)));
+      pws = newpws(cbsetf(&cb, "%s", symname(mod)));
+      if (!pws) pws = newpws(cbsetf(&cb, "%s.h", symname(mod)));
+      if (!pws) pws = newpws(cbsetf(&cb, "%s.wh", symname(mod)));
     }
     /* search include base directories */
     if (!pws) for (i = 0; i < buflen(g_ibases); ++i) {
       sym_t *pb = bufref(g_ibases, i);
-      pws = newpws(chbsetf(&cb, "%s%s", symname(*pb), symname(mod)));
+      pws = newpws(cbsetf(&cb, "%s%s", symname(*pb), symname(mod)));
       if (pws) break;
-      pws = newpws(chbsetf(&cb, "%s%s.h", symname(*pb), symname(mod)));
+      pws = newpws(cbsetf(&cb, "%s%s.h", symname(*pb), symname(mod)));
       if (pws) break;
-      pws = newpws(chbsetf(&cb, "%s%s.wh", symname(*pb), symname(mod)));
+      pws = newpws(cbsetf(&cb, "%s%s.wh", symname(*pb), symname(mod)));
       if (pws) break;
     }
-    if (pws) logef("# found '%s' module interface in %s (pws #%d)\n", symname(mod), chbdata(&cb), pwsid(pws));
-    chbfini(&cb);
+    if (pws) logef("# found '%s' module interface in %s (pws #%d)\n", symname(mod), cbdata(&cb), pwsid(pws));
+    cbfini(&cb);
   }
   return pws;
 }
@@ -72,14 +72,14 @@ struct pws {
   sym_t curmod;       /* current module name or 0 */
   FILE *input;        /* current input stream */
   bool inateof;       /* current input is exausted */  
-  chbuf_t inchb;      /* input buffer for parser */  
+  cbuf_t incb;      /* input buffer for parser */  
   buf_t lsposs;       /* line start positions */  
   size_t discarded;   /* count of discarded chars */  
-  chbuf_t chars;      /* line buffer of chars */
+  cbuf_t chars;      /* line buffer of chars */
   int curi;           /* current input position in buf */
   bool gottk;         /* lookahead token is available */
   tt_t ctk;           /* lookahead token type */
-  chbuf_t token;      /* lookahead token char data */
+  cbuf_t token;      /* lookahead token char data */
   char *tokstr;       /* lookahead token string */
   int pos;            /* absolute pos of la token start */
   int cclevel;        /* nesting of active cc blocks */
@@ -103,13 +103,13 @@ pws_t *newpws(const char *infile)
   FILE *fp;
   fp = streql(infile, "-") ? stdin : fopen(infile, "r");
   if (fp) {
-    pws_t *pw = exmalloc(sizeof(pws_t));
+    pws_t *pw = emalloc(sizeof(pws_t));
     pw->id = (int)buflen(&g_pwsbuf);
-    pw->infile = exstrdup(infile);
+    pw->infile = estrdup(infile);
     pw->curmod = streql(infile, "-") ? intern("_") : modname_from_path(infile);
     pw->input = fp;
     pw->inateof = false;
-    chbinit(&pw->inchb);
+    cbinit(&pw->incb);
     bufinit(&pw->lsposs, sizeof(size_t));
     pw->discarded = 0;
     bufinit(&pw->chars, sizeof(char));
@@ -117,7 +117,7 @@ pws_t *newpws(const char *infile)
     pw->curi = 0; 
     pw->gottk = false;
     pw->ctk = TT_EOF;
-    chbinit(&pw->token);
+    cbinit(&pw->token);
     pw->tokstr = NULL;
     pw->pos = 0;
     pw->cclevel = 0;
@@ -134,8 +134,8 @@ void closepws(pws_t *pw)
     if (pw->input && pw->input != stdin) {
       fclose(pw->input); pw->input = NULL;
     }
-    chbclear(&pw->inchb);
-    chbclear(&pw->token);
+    cbclear(&pw->incb);
+    cbclear(&pw->token);
   }
 }
 
@@ -144,10 +144,10 @@ static void freepws(pws_t *pw)
   if (pw) {
     free(pw->infile);
     if (pw->input && pw->input != stdin) fclose(pw->input);
-    chbfini(&pw->inchb);
+    cbfini(&pw->incb);
     buffini(&pw->lsposs);
-    chbfini(&pw->chars);
-    chbfini(&pw->token);
+    cbfini(&pw->chars);
+    cbfini(&pw->token);
     free(pw);
   }
 }
@@ -184,10 +184,10 @@ static void pos2lnoff(pws_t *pw, int gci, int *pln1, int *poff0)
 }
 
 /* recall line #n; return NULL if it is not available */
-static char *recallline(pws_t *pw, int lno, chbuf_t *pcb)
+static char *recallline(pws_t *pw, int lno, cbuf_t *pcb)
 {
-  size_t gci, ppi; chbuf_t *pp = &pw->chars; 
-  char *pchars = chbdata(pp);
+  size_t gci, ppi; cbuf_t *pp = &pw->chars; 
+  char *pchars = cbdata(pp);
   assert(lno > 0);
   /* check if this line is already comitted in full */
   if (lno >= (int)(1+buflen(&pw->lsposs))) return NULL;
@@ -198,21 +198,21 @@ static char *recallline(pws_t *pw, int lno, chbuf_t *pcb)
   gci -= pw->discarded; /* now gci is relative to pp */
   assert(gci <= buflen(pp));
   /* collect the characters */
-  chbclear(pcb);
-  for (ppi = gci; ppi <= chblen(pp); ++ppi) {
+  cbclear(pcb);
+  for (ppi = gci; ppi <= cblen(pp); ++ppi) {
     int c = pchars[ppi];
     if (c == '\n') break;
-    chbputc(c, pcb);
+    cbputc(c, pcb);
   }
-  return chbdata(pcb);
+  return cbdata(pcb);
 }
 
 /* try to get new line of input so parsing can continue */
 static int fetchline(pws_t *pw, char **ptbase, int *pendi)
 {
-  chbuf_t *pp = &pw->chars; int c = EOF;
+  cbuf_t *pp = &pw->chars; int c = EOF;
   if (!pw->inateof) {
-    char *line = fgetlb(&pw->inchb, pw->input);
+    char *line = fgetlb(&pw->incb, pw->input);
     if (!line) {
       pw->inateof = true;
     } else {
@@ -222,16 +222,16 @@ static int fetchline(pws_t *pw, char **ptbase, int *pendi)
         ch = unutf8((unsigned char **)&ln);
         if (ch == 0 || ch == (unsigned long)-1) {
           int lno = (int)buflen(&pw->lsposs)+1;
-          exprintf("%s:%d: utf-8 encoding error", pw->infile, lno);
+          eprintf("%s:%d: utf-8 encoding error", pw->infile, lno);
         }
       }
-      chbputs(line, pp); 
+      cbputs(line, pp); 
       if (ch == '\\') pp->fill -= 1; /* c preprocessor-like behavior */
-      else chbputc('\n', pp); /* normal line not ending in backslash */
+      else cbputc('\n', pp); /* normal line not ending in backslash */
       if (c == EOF) c = '\n';
       *(size_t*)bufnewbk(&pw->lsposs) = pos;
-      *ptbase = chbdata(pp);
-      *pendi = (int)chblen(pp);
+      *ptbase = cbdata(pp);
+      *pendi = (int)cblen(pp);
     }
   }
   return c;  
@@ -246,7 +246,7 @@ static bool clearinput(pws_t *pw)
     /* throw away chars before curi -- but not after the beginning of the line where curi
      * is located as we don't want to lose the ability to show current line as error line;
      * also we still need to keep track of discarded chars for position calculations */
-    chbuf_t *pp = &pw->chars; 
+    cbuf_t *pp = &pw->chars; 
     size_t nl = buflen(&pw->lsposs);
     size_t lspos = nl ? *(size_t*)bufref(&pw->lsposs, nl-1): 0;  /* abs pos of last line's start */
     if (lspos < pw->discarded) {
@@ -269,17 +269,17 @@ static bool clearinput(pws_t *pw)
 /* report error, possibly printing location information */
 static void vrprintf(pws_t *pw, int startpos, const char *fmt, va_list args)
 {
-  chbuf_t cb = mkchb(); const char *s;
+  cbuf_t cb = mkcb(); const char *s;
   int ln = 0, off = 0; assert(fmt);
-  if (pw != NULL && pw->infile != NULL) chbputf(&cb, "%s:", pw->infile);
+  if (pw != NULL && pw->infile != NULL) cbputf(&cb, "%s:", pw->infile);
   if (pw && startpos >= 0) {
     pos2lnoff(pw, startpos, &ln, &off);
-    if (ln > 0) chbputf(&cb, "%d:%d:", ln, off+1);
+    if (ln > 0) cbputf(&cb, "%d:%d:", ln, off+1);
   }
   fflush(stdout); 
-  if (chblen(&cb) > 0) {
-    chbputc(' ', &cb);
-    fputs(chbdata(&cb), stderr);
+  if (cblen(&cb) > 0) {
+    cbputc(' ', &cb);
+    fputs(cbdata(&cb), stderr);
   }
   vfprintf(stderr, fmt, args); 
   fputc('\n', stderr);
@@ -289,7 +289,7 @@ static void vrprintf(pws_t *pw, int startpos, const char *fmt, va_list args)
     fputs("^\n", stderr);
   }
   fflush(stderr); 
-  chbfini(&cb);
+  cbfini(&cb);
 }
 
 /* report error, possibly printing location information, and exit */
@@ -478,12 +478,12 @@ void init_symbols(void)
   wrap_node(pn, NT_MACRODEF); pn->name = intern("__VA_ARGS__");
   intern_symbol("__DATE__", TT_MACRO_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
-  pn->ts = TS_STRING; chbputtime("%b %d %Y", gmtime(&now), &pn->data);
-  chbputc(0, &pn->data); wrap_node(pn, NT_MACRODEF); pn->name = intern("__DATE__");
+  pn->ts = TS_STRING; cbputtime("%b %d %Y", gmtime(&now), &pn->data);
+  cbputc(0, &pn->data); wrap_node(pn, NT_MACRODEF); pn->name = intern("__DATE__");
   intern_symbol("__TIME__", TT_MACRO_NAME, (int)ndblen(&g_nodes));
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_LITERAL, -1, -1);
-  pn->ts = TS_STRING; chbputtime("%X", gmtime(&now), &pn->data);
-  chbputc(0, &pn->data); wrap_node(pn, NT_MACRODEF); pn->name = intern("__TIME__");
+  pn->ts = TS_STRING; cbputtime("%X", gmtime(&now), &pn->data);
+  cbputc(0, &pn->data); wrap_node(pn, NT_MACRODEF); pn->name = intern("__TIME__");
   intern_symbol("__WCPL__", TT_MACRO_NAME, (int)ndblen(&g_nodes));
   pn = ndsetilit(ndbnewbk(&g_nodes), TS_INT, 1);
   wrap_node(pn, NT_MACRODEF); pn->name = intern("__WCPL__");
@@ -690,13 +690,13 @@ const node_t *lookup_eus_type(ts_t ts, sym_t name)
 #define state_10ddddd 82
 #define state_4L 83
 #define state_73LL 84
-static tt_t lex(pws_t *pw, chbuf_t *pcb)
+static tt_t lex(pws_t *pw, cbuf_t *pcb)
 {
-  char *tbase = chbdata(&pw->chars);
+  char *tbase = cbdata(&pw->chars);
   int *pcuri = &pw->curi;
-  int endi = (int)chblen(&pw->chars);
+  int endi = (int)cblen(&pw->chars);
   int c, state = 0; bool longprefix = false;
-  chbclear(pcb);
+  cbclear(pcb);
   while (true) {
     switch (state) {
     case 0: 
@@ -704,109 +704,109 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (c == '^') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 29; continue;
       } else if (c == '%') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 28; continue;
       } else if (c == '|') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 27; continue;
       } else if (c == '&') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 26; continue;
       } else if (c == '!') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 25; continue;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 24; continue;
       } else if (c == '<') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 23; continue;
       } else if (c == '>') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 22; continue;
       } else if (c == '#') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 21; continue;
       } else if (c == ';') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_SEMICOLON;
       } else if (c == ',') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_COMMA;
       } else if (c == '}') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_RBRC;
       } else if (c == '{') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_LBRC;
       } else if (c == ']') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_RBRK;
       } else if (c == '[') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_LBRK;
       } else if (c == ')') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_RPAR;
       } else if (c == '(') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_LPAR;
       } else if (c == '?') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_QMARK;
       } else if (c == ':') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_COLON;
       } else if (c == '~') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_TILDE;
       } else if (c == '\"') {
         state = 11; continue;
       } else if (c == '\'') {
         state = 10; continue;
       } else if (c == '-') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 9; continue;
       } else if (c == '+') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 8; continue;
       } else if (c == '.') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 7; continue;
       } else if (c == '0') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 6; continue;
       } else if ((c >= '1' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 5; continue;
       } else if (c == 'L') {
         state = state_4L; continue;
       } else if ((c >= 'A' && c <= 'Z') || c == '_' || (c >= 'a' && c <= 'z')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 4; continue;
       } else if (c == '*') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 3; continue;
       } else if (c == '/') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 2; continue;
       } else if (c == '\t' || c == '\f' || c == ' ') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 1; continue;
       } else if (c == '\r') {
         readchar();
         if (c == '\n') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           return TT_WHITESPACE; /* single-char token */
         } else {
           unreadchar();
           return TT_EOF;
         }
       } else if (c == '\n') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_WHITESPACE; /* single-char token */
       } else {
         unreadchar();
@@ -817,7 +817,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_WHITESPACE;
       } else if (c == '\t' || c == '\f' || c == ' ') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 1; continue;
       } else {
         unreadchar();
@@ -828,13 +828,13 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_SLASH;
       } else if (c == '*') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 76; continue;
       } else if (c == '/') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 75; continue;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_SLASH_ASN;
       } else {
         unreadchar();
@@ -845,7 +845,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_STAR;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_STAR_ASN;
       } else {
         unreadchar();
@@ -854,8 +854,8 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
     case state_4L:
       readchar();
       if (c == EOF) {
-        chbputc('L', pcb);
-        return lookup_symbol(chbdata(pcb), NULL);
+        cbputc('L', pcb);
+        return lookup_symbol(cbdata(pcb), NULL);
       } else if (c == '\"') {
         longprefix = true;
         state = 11; continue;
@@ -863,24 +863,24 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
         longprefix = true;
         state = 10; continue;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || c == '_' || (c >= 'a' && c <= 'z')) {
-        chbputc('L', pcb);
-        chbputc(c, pcb);
+        cbputc('L', pcb);
+        cbputc(c, pcb);
         state = 4; continue;
       } else {
         unreadchar();
-        chbputc('L', pcb);
-        return lookup_symbol(chbdata(pcb), NULL);
+        cbputc('L', pcb);
+        return lookup_symbol(cbdata(pcb), NULL);
       }
     case 4:
       readchar();
       if (c == EOF) {
-        return lookup_symbol(chbdata(pcb), NULL);
+        return lookup_symbol(cbdata(pcb), NULL);
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || c == '_' || (c >= 'a' && c <= 'z')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 4; continue;
       } else {
         unreadchar();
-        return lookup_symbol(chbdata(pcb), NULL);
+        return lookup_symbol(cbdata(pcb), NULL);
       }
     case 5:
       readchar();
@@ -896,13 +896,13 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
         if (c != EOF) unreadchar();
         state = 73; continue;
       } else if (c == '.') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 66; continue;
       } else if (c == 'E' || c == 'e') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 62; continue;
       } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 5; continue;
       } else {
         unreadchar();
@@ -913,21 +913,21 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_INT;
       } else if (c == '.') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 66; continue;
       } else if ((c >= '8' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 65; continue;
       } else if ((c >= '0' && c <= '7')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 64; continue;
       } else if (c == 'U' || c == 'u') {
         state = 74; continue;
       } else if (c == 'E' || c == 'e') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 62; continue;
       } else if (c == 'X' || c == 'x') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 61; continue;
       } else if (c == 'L' || c == 'l') {
         readchar();
@@ -945,10 +945,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_DOT;
       } else if (c == '.') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 55; continue;
       } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 54; continue;
       } else {
         unreadchar();
@@ -959,10 +959,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_PLUS;
       } else if (c == '+') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_PLUS_PLUS;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_PLUS_ASN;
       } else {
         unreadchar();
@@ -973,13 +973,13 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_MINUS;
       } else if (c == '-') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_MINUS_MINUS;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_MINUS_ASN;
       } else if (c == '>') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_ARROW;
       } else {
         unreadchar();
@@ -990,19 +990,19 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (c == '\\') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 44; continue;
       } else if (is8chead(c)) { 
         int u = c & 0xFF;
-        if (u < 0xE0) { chbputc(c, pcb); state = state_10d; continue; }
-        if (u < 0xF0) { chbputc(c, pcb); state = state_10dd; continue; }
-        if (u < 0xF8) { chbputc(c, pcb); state = state_10ddd; continue; }
-        if (u < 0xFC) { chbputc(c, pcb); state = state_10dddd; continue; }
-        if (u < 0xFE) { chbputc(c, pcb); state = state_10ddddd; continue; }
+        if (u < 0xE0) { cbputc(c, pcb); state = state_10d; continue; }
+        if (u < 0xF0) { cbputc(c, pcb); state = state_10dd; continue; }
+        if (u < 0xF8) { cbputc(c, pcb); state = state_10ddd; continue; }
+        if (u < 0xFC) { cbputc(c, pcb); state = state_10dddd; continue; }
+        if (u < 0xFE) { cbputc(c, pcb); state = state_10ddddd; continue; }
         unreadchar();
         return TT_EOF;
       } else if (!(c == '\n' || c == '\'' || c == '\\')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 43; continue;
       } else {
         unreadchar();
@@ -1013,7 +1013,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (is8ctail(c)) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = state_10dddd; continue;
       } else {
         unreadchar();
@@ -1024,7 +1024,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (is8ctail(c)) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = state_10ddd; continue;
       } else {
         unreadchar();
@@ -1035,7 +1035,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (is8ctail(c)) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = state_10dd; continue;
       } else {
         unreadchar();
@@ -1046,7 +1046,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (is8ctail(c)) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = state_10d; continue;
       } else {
         unreadchar();
@@ -1057,7 +1057,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (is8ctail(c)) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 43; continue;
       } else {
         unreadchar();
@@ -1068,12 +1068,12 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (c == '\\') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 34; continue;
       } else if (c == '\"') {
         return longprefix ? TT_LSTRING : TT_STRING;
       } else if (!(c == '\n' || c == '\"' || c == '\\')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 11; continue;
       } else {
         unreadchar();
@@ -1084,7 +1084,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_HASH;
       } else if (c == '#') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 32; continue;
       } else {
         unreadchar();
@@ -1095,10 +1095,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_GT;
       } else if (c == '>') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 31; continue;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_GE;
       } else {
         unreadchar();
@@ -1109,10 +1109,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_LT;
       } else if (c == '<') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 30; continue;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_LE;
       } else {
         unreadchar();
@@ -1123,7 +1123,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_ASN;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_EQ;
       } else {
         unreadchar();
@@ -1134,7 +1134,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_NOT;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_NE;
       } else {
         unreadchar();
@@ -1145,10 +1145,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_AND;
       } else if (c == '&') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_AND_AND;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_AND_ASN;
       } else {
         unreadchar();
@@ -1159,10 +1159,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_OR;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_OR_ASN;
       } else if (c == '|') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_OR_OR;
       } else {
         unreadchar();
@@ -1173,7 +1173,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_REM;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_REM_ASN;
       } else {
         unreadchar();
@@ -1184,7 +1184,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_XOR;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_XOR_ASN;
       } else {
         unreadchar();
@@ -1195,7 +1195,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_SHL;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_SHL_ASN;
       } else {
         unreadchar();
@@ -1206,7 +1206,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_SHR;
       } else if (c == '=') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_SHR_ASN;
       } else {
         unreadchar();
@@ -1219,16 +1219,16 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '7')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 37; continue;
       } else if (c == 'u') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 36; continue;
       } else if (c == 'x') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 35; continue;
       } else if (c == '\"' || c == '\'' || c == '?' || c == '\\' || (c >= 'a' && c <= 'b') || c == 'f' || c == 'n' || c == 'r' || c == 't' || c == 'v') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 11; continue;
       } else {
         unreadchar();
@@ -1239,7 +1239,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 42; continue;
       } else {
         unreadchar();
@@ -1250,7 +1250,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 39; continue;
       } else {
         unreadchar();
@@ -1261,15 +1261,15 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '7')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 38; continue;
       } else if (c == '\\') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 34; continue;
       } else if (c == '\"') {
         return longprefix ? TT_LSTRING : TT_STRING;
       } else if (!(c == '\n' || c == '\"' || (c >= '0' && c <= '7') || c == '\\')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 11; continue;
       } else {
         unreadchar();
@@ -1280,12 +1280,12 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (c == '\\') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 34; continue;
       } else if (c == '\"') {
         return longprefix ? TT_LSTRING : TT_STRING;
       } else if (!(c == '\n' || c == '\"' || c == '\\')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 11; continue;
       } else {
         unreadchar();
@@ -1296,7 +1296,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 40; continue;
       } else {
         unreadchar();
@@ -1307,7 +1307,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 41; continue;
       } else {
         unreadchar();
@@ -1318,7 +1318,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 11; continue;
       } else {
         unreadchar();
@@ -1329,15 +1329,15 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 42; continue;
       } else if (c == '\\') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 34; continue;
       } else if (c == '\"') {
         return longprefix ? TT_LSTRING : TT_STRING;
       } else if (!(c == '\n' || c == '\"' || (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || c == '\\' || (c >= 'a' && c <= 'f'))) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 11; continue;
       } else {
         unreadchar();
@@ -1358,16 +1358,16 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '7')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 47; continue;
       } else if (c == 'u') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 46; continue;
       } else if (c == 'x') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 45; continue;
       } else if (c == '\"' || c == '\'' || c == '?' || c == '\\' || (c >= 'a' && c <= 'b') || c == 'f' || c == 'n' || c == 'r' || c == 't' || c == 'v') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 43; continue;
       } else {
         unreadchar();
@@ -1378,7 +1378,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 53; continue;
       } else {
         unreadchar();
@@ -1389,7 +1389,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 50; continue;
       } else {
         unreadchar();
@@ -1402,7 +1402,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       } else if (c == '\'') {
         return longprefix ? TT_LCHAR : TT_CHAR;
       } else if ((c >= '0' && c <= '7')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 48; continue;
       } else {
         unreadchar();
@@ -1415,7 +1415,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       } else if (c == '\'') {
         return longprefix ? TT_LCHAR : TT_CHAR;
       } else if ((c >= '0' && c <= '7')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 43; continue;
       } else {
         unreadchar();
@@ -1426,7 +1426,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 51; continue;
       } else {
         unreadchar();
@@ -1437,7 +1437,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 52; continue;
       } else {
         unreadchar();
@@ -1448,7 +1448,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 43; continue;
       } else {
         unreadchar();
@@ -1459,7 +1459,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 53; continue;
       } else if (c == '\'') {
         return longprefix ? TT_LCHAR : TT_CHAR;
@@ -1474,10 +1474,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       } else if (c == 'F' || c == 'f') {
         return TT_FLOAT;
       } else if (c == 'E' || c == 'e') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 57; continue;
       } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 54; continue;
       } else {
         unreadchar();
@@ -1488,7 +1488,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (c == '.') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 56; continue;
       } else {
         unreadchar();
@@ -1501,10 +1501,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (c == '+' || c == '-') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 59; continue;
       } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 58; continue;
       } else {
         unreadchar();
@@ -1517,7 +1517,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       } else if (c == 'F' || c == 'f') {
         return TT_FLOAT;
       } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 58; continue;
       } else {
         unreadchar();
@@ -1528,7 +1528,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 58; continue;
       } else {
         unreadchar();
@@ -1539,10 +1539,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (c == '.') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 90; continue;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 70; continue;
       } else {
         unreadchar();
@@ -1553,10 +1553,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (c == '+' || c == '-') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 69; continue;
       } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 68; continue;
       } else {
         unreadchar();
@@ -1567,18 +1567,18 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_INT;
       } else if (c == '.') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 66; continue;
       } else if ((c >= '8' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 65; continue;
       } else if ((c >= '0' && c <= '7')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 64; continue;
       } else if (c == 'U' || c == 'u') {
         state = 74; continue;
       } else if (c == 'E' || c == 'e') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 62; continue;
       } else if (c == 'L' || c == 'l') {
         readchar();
@@ -1596,13 +1596,13 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (c == '.') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 66; continue;
       } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 65; continue;
       } else if (c == 'E' || c == 'e') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 62; continue;
       } else {
         unreadchar();
@@ -1615,10 +1615,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       } else if (c == 'F' || c == 'f') {
         return TT_FLOAT;
       } else if (c == 'E' || c == 'e') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 57; continue;
       } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 54; continue;
       } else {
         unreadchar();
@@ -1631,7 +1631,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       } else if (c == 'F' || c == 'f') {
         return TT_FLOAT;
       } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 68; continue;
       } else {
         unreadchar();
@@ -1642,7 +1642,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 68; continue;
       } else {
         unreadchar();
@@ -1653,10 +1653,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_INT;
       } else if (c == '.') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 91; continue;
       } else if (c == 'P' || c == 'p') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 62; continue; 
       } else if (c == 'U' || c == 'u') {
         state = 74; continue;
@@ -1669,7 +1669,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
         if (c != EOF) unreadchar();
         state = 73; continue;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 70; continue;
       } else {
         unreadchar();
@@ -1713,7 +1713,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (!(c == '\n')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 75; continue;
       } else {
         unreadchar(); /* \n will be in a separate whitespace token */
@@ -1724,10 +1724,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (!(c == '*')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 76; continue;
       } else {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 77; continue;
       }
     case 77:
@@ -1735,13 +1735,13 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (c == '*') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 77; continue;
       } else if (!(c == '*' || c == '/')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 76; continue;
       } else {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         return TT_WHITESPACE;
       }
     case 90:
@@ -1749,7 +1749,7 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 91; continue;
       } else {
         unreadchar();
@@ -1760,10 +1760,10 @@ static tt_t lex(pws_t *pw, chbuf_t *pcb)
       if (c == EOF) {
         return TT_EOF;
       } else if (c == 'P' || c == 'p') {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 62; continue;
       } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         state = 91; continue;
       } else {
         unreadchar();
@@ -1793,14 +1793,14 @@ static tt_t peekt(pws_t *pw)
         reprintf(pw, pw->pos, "illegal token"); 
     } while (pw->ctk == TT_WHITESPACE); 
     pw->gottk = true; 
-    pw->tokstr = chbdata(&pw->token); 
+    pw->tokstr = cbdata(&pw->token); 
   } 
   return pw->ctk; 
 }
 
 static int peekc(pws_t *pw)
 {
-  return chbdata(&pw->chars)[pw->curi];
+  return cbdata(&pw->chars)[pw->curi];
 } 
 
 static int peekpos(pws_t *pw)
@@ -1848,7 +1848,7 @@ node_t* ndinit(node_t* pn)
 {
   memset(pn, 0, sizeof(node_t));
   pn->pwsid = pn->startpos = -1;
-  bufinit(&pn->data, sizeof(char)); /* chbuf by default */
+  bufinit(&pn->data, sizeof(char)); /* cbuf by default */
   ndbinit(&pn->body);
   return pn;
 }
@@ -1989,7 +1989,7 @@ void clear_nodepool(void)
 
 node_t *npalloc(void)
 {
-  node_t *pn = exmalloc(sizeof(node_t)), **ppn;
+  node_t *pn = emalloc(sizeof(node_t)), **ppn;
   ndinit(pn);
   ppn = bufnewbk(&g_npbuf); *ppn = pn;
   return pn;
@@ -2554,10 +2554,10 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       char *ns = pw->tokstr; unsigned long ul; bool raw;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       while (*ns && (errno = 0, ul = strtou8cc32(ns, &ns, &raw), !errno && ul <= 0x10FFFFUL)) {
-        if (raw) { assert(ul <= 0xFFL); chbputc(ul, &pn->data); }
-        else chbputlc(ul, &pn->data); /* in utf-8 */
+        if (raw) { assert(ul <= 0xFFL); cbputc(ul, &pn->data); }
+        else cbputlc(ul, &pn->data); /* in utf-8 */
       }
-      chbputc(0, &pn->data); /* terminating zero char, C-style */
+      cbputc(0, &pn->data); /* terminating zero char, C-style */
       if (*ns) 
         reprintf(pw, startpos+(int)(ns-pw->tokstr), "string literal char overflow");
       pn->ts = TS_STRING;
@@ -2567,9 +2567,9 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
       char *ns = pw->tokstr; unsigned long ul;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
       while (*ns && (errno = 0, ul = strtou8cc32(ns, &ns, NULL), !errno && ul <= 0x10FFFFUL)) {
-        chbput4le((unsigned)ul, &pn->data); /* 4 bytes, in LE order */
+        cbput4le((unsigned)ul, &pn->data); /* 4 bytes, in LE order */
       }
-      chbput4le(0, &pn->data); /* terminating zero wchar, C-style */
+      cbput4le(0, &pn->data); /* terminating zero wchar, C-style */
       if (*ns) reprintf(pw, startpos+(int)(ns-pw->tokstr), "long string literal char overflow");
       pn->ts = TS_LSTRING;
       dropt(pw);
@@ -2936,25 +2936,25 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
   } else {
     /* declaration or regular instr */
     inscode_t *pic = bufnewbk(&pan->data);
-    chbuf_t cb = mkchb(); tt_t tt; 
+    cbuf_t cb = mkcb(); tt_t tt; 
     instr_t in; insig_t is;
     tt = peekt(pw);
     if (tt == TT_IDENTIFIER || 
       (TT_AUTO_KW <= tt && tt <= TT_WHILE_KW) ||
       (TT_TYPE_NAME <= tt && tt <= TT_INTR_NAME)) {
       bool dot = peekc(pw) == '.';
-      chbputs(pw->tokstr, &cb); dropt(pw);
+      cbputs(pw->tokstr, &cb); dropt(pw);
       if (dot) {
-        expect(pw, TT_DOT, "."); chbputc('.', &cb); 
+        expect(pw, TT_DOT, "."); cbputc('.', &cb); 
         tt = peekt(pw);
         if (tt == TT_IDENTIFIER || 
           (TT_AUTO_KW <= tt && tt <= TT_WHILE_KW) ||
           (TT_TYPE_NAME <= tt && tt <= TT_INTR_NAME)) {
-          chbputs(pw->tokstr, &cb); dropt(pw);
+          cbputs(pw->tokstr, &cb); dropt(pw);
         }
       }
     }
-    if (streql(chbdata(&cb), "register")) {
+    if (streql(cbdata(&cb), "register")) {
       valtype_t vt = 0;
       tt = peekt(pw);
       if (streql(pw->tokstr, "f64")) vt = VT_F64;
@@ -2968,11 +2968,11 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
       pic->in = IN_REGDECL;
       pic->id = getid(pw);
       pic->arg.u = vt;  
-      chbfini(&cb);
+      cbfini(&cb);
       return;
     }
-    if (!chblen(&cb)) reprintf(pw, pw->pos, "instruction name expected");
-    in = name_instr(chbdata(&cb));
+    if (!cblen(&cb)) reprintf(pw, pw->pos, "instruction name expected");
+    in = name_instr(cbdata(&cb));
     if (in == IN_PLACEHOLDER) reprintf(pw, pw->pos, "unknown instruction");
     pic->in = in;
     switch (is = instr_sig(in)) {
@@ -3071,7 +3071,7 @@ static void parse_asm_instr(pws_t *pw, node_t *pan)
       default:
         reprintf(pw, pw->pos, "inline assembly: instruction not supported");     
     } 
-    chbfini(&cb);
+    cbfini(&cb);
   }
 }
 
@@ -3982,22 +3982,22 @@ static void parse_define_directive(pws_t *pw, int startpos)
 
 static void parse_include_directive(pws_t *pw, node_t *pn, int startpos)
 {
-  chbuf_t cb; bool gotdot = false;
-  chbinit(&cb);
+  cbuf_t cb; bool gotdot = false;
+  cbinit(&cb);
   dropt(pw);
   if (peekt(pw) == TT_STRING) {
     char *sep, *s;
     const char *cs = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_/";
-    if ((sep = strsuf(pw->tokstr, ".h")) != NULL) chbset(&cb, pw->tokstr, sep-pw->tokstr);
-    else if ((sep = strsuf(pw->tokstr, ".wh")) != NULL) chbset(&cb, pw->tokstr, sep-pw->tokstr);
-    else chbsets(&cb, pw->tokstr);
-    s = chbdata(&cb);
+    if ((sep = strsuf(pw->tokstr, ".h")) != NULL) cbset(&cb, pw->tokstr, sep-pw->tokstr);
+    else if ((sep = strsuf(pw->tokstr, ".wh")) != NULL) cbset(&cb, pw->tokstr, sep-pw->tokstr);
+    else cbsets(&cb, pw->tokstr);
+    s = cbdata(&cb);
     if (strspn(s, cs) != strlen(s))
       reprintf(pw, peekpos(pw), "unsupported module name in include directive");
     dropt(pw);
     strtrc(s, '/', '.');
     ndset(pn, NT_INCLUDE, pw->id, startpos);
-    pn->name = intern(chbdata(&cb));
+    pn->name = intern(cbdata(&cb));
     pn->op = TT_STRING;
   } else {
     tt_t tt;
@@ -4006,9 +4006,9 @@ static void parse_include_directive(pws_t *pw, node_t *pn, int startpos)
       if (peekt(pw) == TT_DOT) {
         dropt(pw); gotdot = true;
       } else if (!gotdot && ((tt = peekt(pw)) == TT_IDENTIFIER || tt >= TT_ASM_KW)) {
-        chbputs(pw->tokstr, &cb); dropt(pw);
+        cbputs(pw->tokstr, &cb); dropt(pw);
       } else if (!gotdot && peekt(pw) == TT_SLASH) {
-        chbputc('.', &cb); dropt(pw);
+        cbputc('.', &cb); dropt(pw);
       } else if (gotdot && peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "h")) {
         dropt(pw); break;
       } else if (gotdot && peekt(pw) == TT_IDENTIFIER && streql(pw->tokstr, "wh")) {
@@ -4023,10 +4023,10 @@ static void parse_include_directive(pws_t *pw, node_t *pn, int startpos)
     }
     expect(pw, TT_GT, ">");
     ndset(pn, NT_INCLUDE, pw->id, startpos);
-    pn->name = intern(chbdata(&cb));
+    pn->name = intern(cbdata(&cb));
     pn->op = TT_IDENTIFIER;
   }
-  chbfini(&cb);
+  cbfini(&cb);
 }
 
 /* returns false if stopped on #endif, true if stopped on #else (both consumed) */
@@ -4039,12 +4039,12 @@ static bool parse_inactive_cc_block(pws_t *pw)
       pw->pos = (int)pw->discarded + pw->curi; 
       pw->ctk = lex(pw, &pw->token); 
       pw->gottk = true; 
-      pw->tokstr = chbdata(&pw->token); 
+      pw->tokstr = cbdata(&pw->token); 
     }
     switch (pw->ctk) {
       case TT_EOF:
         if (pw->inateof) reprintf(pw, pw->pos, "missing #endif"); /* real eof */
-        else if (pw->curi < (int)chblen(&pw->chars)) pw->curi += 1; /* try to step over it */
+        else if (pw->curi < (int)cblen(&pw->chars)) pw->curi += 1; /* try to step over it */
         else reprintf(pw, pw->pos, "can't skip token inside inactive cc block");
         bol = false; dropt(pw); continue;
       case TT_WHITESPACE:
@@ -4185,56 +4185,56 @@ void nwprintf(const node_t *pn, const char *fmt, ...)
 
 static void fdumpss(const char *str, size_t n, FILE* fp)
 {
-  chbuf_t cb = mkchb();
-  chbputc('\"', &cb);
+  cbuf_t cb = mkcb();
+  cbputc('\"', &cb);
   while (n > 0) {
     int c = *str & 0xFF;
     /* check for control chars manually */
     if (c <= 0x1F || c >= 0x7F) {
       switch (c) {
-        case '\a' : chbputs("\\a", &cb); break;
-        case '\b' : chbputs("\\b", &cb); break;
-        case '\t' : chbputs("\\t", &cb); break;
-        case '\n' : chbputs("\\n", &cb); break;
-        case '\r' : chbputs("\\r", &cb); break;
+        case '\a' : cbputs("\\a", &cb); break;
+        case '\b' : cbputs("\\b", &cb); break;
+        case '\t' : cbputs("\\t", &cb); break;
+        case '\n' : cbputs("\\n", &cb); break;
+        case '\r' : cbputs("\\r", &cb); break;
         default   : {
           char buf[10]; sprintf(buf, "\\%.2X", c); /* WAT-style; R7RS: "\\x%.2X;" */
-          chbputs(buf, &cb);
+          cbputs(buf, &cb);
         } break;
       }
       ++str; --n;
       continue;
     } else if (c == '\"' || c == '\\') {
       switch (c) {
-        case '\"' : chbputs("\\\"", &cb); break;
-        case '\\' : chbputs("\\\\", &cb); break;
+        case '\"' : cbputs("\\\"", &cb); break;
+        case '\\' : cbputs("\\\\", &cb); break;
       }
       ++str; --n;
       continue;
     } else { 
       /* put ascii chars as-is */
-      chbputc(c, &cb);
+      cbputc(c, &cb);
       ++str; --n;
     }
   }
-  chbputc('\"', &cb);
-  fputs(chbdata(&cb), fp);
-  chbfini(&cb);
+  cbputc('\"', &cb);
+  fputs(cbdata(&cb), fp);
+  cbfini(&cb);
 }
 
 static void fdumpv32(const char *str, size_t n, FILE* fp)
 {
-  chbuf_t cb = mkchb(); size_t i;
-  chbputs("#(", &cb); /* #u32? */
+  cbuf_t cb = mkcb(); size_t i;
+  cbputs("#(", &cb); /* #u32? */
   for (i = 0; i+4 <= n; i += 4) {
     /* stored in le order */
     unsigned u = str[i] | (str[i+1] << 8) | (str[i+2] << 16) | (str[i+3] << 24);
-    if (i) chbputc(' ', &cb);
-    chbputu(u, &cb);
+    if (i) cbputc(' ', &cb);
+    cbputu(u, &cb);
   }
-  chbputc(')', &cb);
-  fputs(chbdata(&cb), fp);
-  chbfini(&cb);
+  cbputc(')', &cb);
+  fputs(cbdata(&cb), fp);
+  cbfini(&cb);
 }
 
 const char *ts_name(ts_t ts)
@@ -4364,14 +4364,14 @@ static void dump(node_t *pn, FILE* fp, int indent)
       fprintf(fp, "(null");
     } break;
     case NT_LITERAL: {
-      chbuf_t cb; chbinit(&cb);
+      cbuf_t cb; cbinit(&cb);
       fprintf(fp, "(literal %s ", ts_name(pn->ts));
       switch (pn->ts) {
         case TS_STRING:
-          fdumpss(chbdata(&pn->data), chblen(&pn->data), fp);
+          fdumpss(cbdata(&pn->data), cblen(&pn->data), fp);
           break;
         case TS_LSTRING:
-          fdumpv32(chbdata(&pn->data), chblen(&pn->data), fp);
+          fdumpv32(cbdata(&pn->data), cblen(&pn->data), fp);
           break;
         case TS_FLOAT: 
           fprintf(fp, "%.9g", (double)pn->val.f);
@@ -4380,20 +4380,20 @@ static void dump(node_t *pn, FILE* fp, int indent)
           fprintf(fp, "%.17g", pn->val.d);
           break;
         case TS_CHAR: case TS_SHORT: case TS_INT: case TS_LONG: case TS_LLONG:
-          chbputll(pn->val.i, &cb);
-          fputs(chbdata(&cb), fp);
+          cbputll(pn->val.i, &cb);
+          fputs(cbdata(&cb), fp);
           break;          
         case TS_BOOL: case TS_UCHAR: case TS_USHORT: case TS_UINT: case TS_ULONG: case TS_ULLONG:
-          chbputllu(pn->val.u, &cb);
-          fputs(chbdata(&cb), fp);
+          cbputllu(pn->val.u, &cb);
+          fputs(cbdata(&cb), fp);
           break;
         case TS_V128:
           if (ndlen(pn) == 2) fprintf(fp, "%s %d ", ts_name(ndref(pn, 0)->ts), (int)ndref(pn, 0)->val.i);
-          fdumpss(chbdata(&pn->data), chblen(&pn->data), fp);
+          fdumpss(cbdata(&pn->data), cblen(&pn->data), fp);
           break;
         default: assert(false); 
       }    
-      chbfini(&cb);
+      cbfini(&cb);
     } break;
     case NT_IDENTIFIER: {
       fputs(symname(pn->name), fp);
@@ -4439,7 +4439,7 @@ static void dump(node_t *pn, FILE* fp, int indent)
       fprintf(fp, "(comma");
     } break;
     case NT_ACODE: {
-      size_t i, ri = 1; chbuf_t cb = mkchb();
+      size_t i, ri = 1; cbuf_t cb = mkcb();
       node_t *ptn = ndref(pn, 0);
       if (ptn->ts == TS_PTR && ndlen(ndref(ptn, 0)) == 0) {
         ptn = ndref(ptn, 0);
@@ -4466,7 +4466,7 @@ static void dump(node_t *pn, FILE* fp, int indent)
         }
       }  
       fputs(")", fp);
-      chbfini(&cb);
+      cbfini(&cb);
       if (!indent) fputc('\n', fp);
       return;
     }

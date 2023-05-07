@@ -20,15 +20,15 @@
 
 /* wasm binary encoding globals */
 static FILE *g_wasmout = NULL; /* current binary output stream */
-static chbuf_t *g_curbuf = NULL; /* current destination or NULL */
-static chbuf_t *g_sectbuf = NULL; /* current section or NULL */
-static chbuf_t *g_ssecbuf = NULL; /* current subsection or NULL */
-static chbuf_t *g_codebuf = NULL; /* current code or NULL */
+static cbuf_t *g_curbuf = NULL; /* current destination or NULL */
+static cbuf_t *g_sectbuf = NULL; /* current section or NULL */
+static cbuf_t *g_ssecbuf = NULL; /* current subsection or NULL */
+static cbuf_t *g_codebuf = NULL; /* current code or NULL */
 static unsigned g_sectcnt = 0; /* section element count */
 
 /* wat text encoding globals */
 static FILE *g_watout = NULL; /* current text output stream */
-static chbuf_t *g_watbuf = NULL; /* work buffer for wat dump */
+static cbuf_t *g_watbuf = NULL; /* work buffer for wat dump */
 static int g_watindent = 0; /* cur line indent for wat dump */
 static bool g_watexec = false; /* wat executable is being parsed */
 
@@ -49,7 +49,7 @@ static void wasm_section_start(secid_t si)
 {
   assert(g_sectbuf == NULL);
   fputc((int)si & 0xFF, g_wasmout);
-  g_sectbuf = newchb(); /* buffer emits */
+  g_sectbuf = newcb(); /* buffer emits */
   g_curbuf = g_sectbuf; /* emits go here */
   g_sectcnt = 0; /* incremented as elements are added */
 }
@@ -62,24 +62,24 @@ static void wasm_section_bumpc(void)
 
 static void wasm_section_end(void)
 {
-  chbuf_t *psb = g_sectbuf;
+  cbuf_t *psb = g_sectbuf;
   assert(psb != NULL && psb == g_curbuf);
   g_sectbuf = g_curbuf = NULL; /* emit directly from now on */
-  if (g_sectcnt > 0 || chblen(psb) == 0) {
+  if (g_sectcnt > 0 || cblen(psb) == 0) {
     /* element count needs to be inserted */
-    chbuf_t cb; chbinit(&cb);
+    cbuf_t cb; cbinit(&cb);
     g_curbuf = &cb; wasm_unsigned(g_sectcnt);
     g_curbuf = NULL;
-    wasm_unsigned(chblen(&cb) + chblen(psb));
-    fwrite(chbdata(&cb), 1, chblen(&cb), g_wasmout);
-    fwrite(chbdata(psb), 1, chblen(psb), g_wasmout);
-    chbfini(&cb); 
+    wasm_unsigned(cblen(&cb) + cblen(psb));
+    fwrite(cbdata(&cb), 1, cblen(&cb), g_wasmout);
+    fwrite(cbdata(psb), 1, cblen(psb), g_wasmout);
+    cbfini(&cb); 
   } else {
     /* element count is in psb */
-    wasm_unsigned(chblen(psb));
-    fwrite(chbdata(psb), 1, chblen(psb), g_wasmout);
+    wasm_unsigned(cblen(psb));
+    fwrite(cbdata(psb), 1, cblen(psb), g_wasmout);
   }
-  freechb(psb);
+  freecb(psb);
 }
 
 static void wasm_subsection_start(unsigned ssi)
@@ -87,48 +87,48 @@ static void wasm_subsection_start(unsigned ssi)
   assert(g_ssecbuf == NULL);
   assert(g_sectbuf != NULL && g_sectbuf == g_curbuf);
   wasm_byte(ssi);
-  g_ssecbuf = newchb(); /* buffer emits */
+  g_ssecbuf = newcb(); /* buffer emits */
   g_curbuf = g_ssecbuf; /* emits go here */
 }
 
 static void wasm_subsection_end(void)
 {
-  chbuf_t *psb = g_ssecbuf;
+  cbuf_t *psb = g_ssecbuf;
   assert(psb != NULL && psb == g_curbuf);
   assert(g_sectbuf != NULL);
   g_ssecbuf = NULL, g_curbuf = g_sectbuf; /* emit to section from now on */
-  wasm_unsigned(chblen(psb));
-  chbput(chbdata(psb), chblen(psb), g_curbuf);
-  freechb(psb);
+  wasm_unsigned(cblen(psb));
+  cbput(cbdata(psb), cblen(psb), g_curbuf);
+  freecb(psb);
 }
 
 static void wasm_code_start(void)
 {
   assert(g_sectbuf != NULL && g_sectbuf == g_curbuf);
   assert(g_codebuf == NULL);
-  g_codebuf = newchb(); /* buffer emits */
+  g_codebuf = newcb(); /* buffer emits */
   g_curbuf = g_codebuf; /* emits go here */
 }
 
 static void wasm_code_end(void)
 {
-  chbuf_t *psb = g_codebuf;
+  cbuf_t *psb = g_codebuf;
   assert(psb != NULL && psb == g_curbuf);
   assert(g_sectbuf != NULL);
   g_curbuf = g_sectbuf; /* emit to section from now on */
   g_codebuf = NULL;
-  wasm_unsigned(chblen(psb));
-  chbput(chbdata(psb), chblen(psb), g_curbuf);
-  freechb(psb);
+  wasm_unsigned(cblen(psb));
+  cbput(cbdata(psb), cblen(psb), g_curbuf);
+  freecb(psb);
 }
 
 static void wasm_byte(unsigned b)
 {
-  if (g_curbuf) chbputc(b & 0xFF, g_curbuf);
+  if (g_curbuf) cbputc(b & 0xFF, g_curbuf);
   else fputc((int)b & 0xFF, g_wasmout);
 }
 
-static void wasm_data(chbuf_t *pcb)
+static void wasm_data(cbuf_t *pcb)
 {
   char *s = pcb->buf; size_t n = pcb->fill;
   while (n--) wasm_byte(*s++);
@@ -288,14 +288,14 @@ dseg_t* dseginit(dseg_t* ps, dsmode_t dsm)
 {
   memset(ps, 0, sizeof(dseg_t));
   ps->dsm = dsm;
-  chbinit(&ps->data);
+  cbinit(&ps->data);
   icbinit(&ps->code);
   return ps;
 }
 
 void dsegfini(dseg_t* ps)
 {
-  chbfini(&ps->data);
+  cbfini(&ps->data);
   icbfini(&ps->code);
 }
 
@@ -743,7 +743,7 @@ static void wasm_datas(dsegbuf_t *pdsb)
     switch (ps->dsm) {
       case DS_ACTIVE_MI: wasm_unsigned(ps->idx); /* fall thru */
       case DS_ACTIVE: wasm_expr(&ps->code); /* fall thru */
-      case DS_PASSIVE: wasm_unsigned(chblen(&ps->data)), wasm_data(&ps->data); break;
+      case DS_PASSIVE: wasm_unsigned(cblen(&ps->data)), wasm_data(&ps->data); break;
       default: assert(false);
     }  
     wasm_section_bumpc();
@@ -1720,139 +1720,139 @@ insig_t instr_sig(instr_t in)
   return INSIG_NONE;
 }
 
-char *format_inscode(inscode_t *pic, chbuf_t *pcb)
+char *format_inscode(inscode_t *pic, cbuf_t *pcb)
 {
   insig_t is;
-  chbclear(pcb);
+  cbclear(pcb);
   if (pic->in == IN_REGDECL) {
     const char *ts = valtype_name((valtype_t)pic->arg.u);
-    if (!pic->id) chbputf(pcb, "register %s", ts); 
-    else chbputf(pcb, "register %s $%s", ts, symname(pic->id)); 
-    return chbdata(pcb);
+    if (!pic->id) cbputf(pcb, "register %s", ts); 
+    else cbputf(pcb, "register %s $%s", ts, symname(pic->id)); 
+    return cbdata(pcb);
   } else if (pic->in == IN_END) { /* has a label for display purposes */
-    if (pic->id) chbputf(pcb, "end $%s", symname(pic->id));
-    else chbputs("end", pcb);
-    return chbdata(pcb);
+    if (pic->id) cbputf(pcb, "end $%s", symname(pic->id));
+    else cbputs("end", pcb);
+    return cbdata(pcb);
   }
-  chbputs(instr_name(pic->in), pcb);
+  cbputs(instr_name(pic->in), pcb);
   switch (is = instr_sig(pic->in)) {
     case INSIG_NONE:
       break;
     case INSIG_BT: {
       valtype_t vt = pic->arg.u;
-      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
-      if (vt != BT_VOID) chbputf(pcb, " (result %s)", valtype_name(vt)); 
+      if (pic->id) cbputf(pcb, " $%s", symname(pic->id)); 
+      if (vt != BT_VOID) cbputf(pcb, " (result %s)", valtype_name(vt)); 
     } break;
     case INSIG_XL: case INSIG_XG: case INSIG_XT: case INSIG_RF:
       if (pic->id && pic->arg2.mod) 
-        chbputf(pcb, " $%s:%s", symname(pic->arg2.mod), symname(pic->id)); 
-      else if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
-      else chbputf(pcb, " %lld", pic->arg.i); 
+        cbputf(pcb, " $%s:%s", symname(pic->arg2.mod), symname(pic->id)); 
+      else if (pic->id) cbputf(pcb, " $%s", symname(pic->id)); 
+      else cbputf(pcb, " %lld", pic->arg.i); 
       break;
     case INSIG_L: case INSIG_T: case INSIG_LANEIDX:
-      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
-      else chbputf(pcb, " %lld", pic->arg.i); 
+      if (pic->id) cbputf(pcb, " $%s", symname(pic->id)); 
+      else cbputf(pcb, " %lld", pic->arg.i); 
       break;
     case INSIG_I32: {
       long long i = (long long)(pic->arg.u << 32) >> 32; /* extend sign to upper 32 bits */
-      chbputf(pcb, " %lld", i); /* write negatives (if considered signed) as negatives */
-      if (pic->id && pic->arg2.mod) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
-      else if (pic->id) chbputf(pcb, " (; $%s ;)", symname(pic->id)); 
+      cbputf(pcb, " %lld", i); /* write negatives (if considered signed) as negatives */
+      if (pic->id && pic->arg2.mod) cbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
+      else if (pic->id) cbputf(pcb, " (; $%s ;)", symname(pic->id)); 
     } break;
     case INSIG_I64:
-      chbputf(pcb, " %lld", pic->arg.i); 
-      if (pic->id && pic->arg2.mod) chbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
-      else if (pic->id) chbputf(pcb, " (; $%s ;)", symname(pic->id)); 
+      cbputf(pcb, " %lld", pic->arg.i); 
+      if (pic->id && pic->arg2.mod) cbputf(pcb, " (; $%s:%s ;)", symname(pic->arg2.mod), symname(pic->id)); 
+      else if (pic->id) cbputf(pcb, " (; $%s ;)", symname(pic->id)); 
       break;
     case INSIG_CI: /* should be dumped fancily if types are available */
-      if (pic->id) chbputf(pcb, " (type $%s)", symname(pic->id)); 
+      if (pic->id) cbputf(pcb, " (type $%s)", symname(pic->id)); 
       else {
         size_t n = (size_t)pic->arg.u;
         if (n < fsblen(&g_funcsigs)) { /* ref to global fsig */
-          chbuf_t cb = mkchb();
+          cbuf_t cb = mkcb();
           format_funcsig(fsbref(&g_funcsigs, n), &cb);
-          chbputf(pcb, " %s", chbdata(&cb));
-          chbfini(&cb);  
+          cbputf(pcb, " %s", cbdata(&cb));
+          cbfini(&cb);  
         } else { /* assume fsigs are dumped separately */
-          chbputf(pcb, " (type %u)", (unsigned)pic->arg.u); 
+          cbputf(pcb, " (type %u)", (unsigned)pic->arg.u); 
         }
       }
       break;
     case INSIG_X_Y:
-      if (pic->id) chbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
-      else chbputf(pcb, " %lld %u", pic->arg.i, pic->arg2.u); 
+      if (pic->id) cbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
+      else cbputf(pcb, " %lld %u", pic->arg.i, pic->arg2.u); 
       break;
     case INSIG_F32: {
       char buf[32]; float f = pic->arg.f;
       char *s = uftohex(as_uint32(f), buf);
-      chbputf(pcb, " %s", s);
+      cbputf(pcb, " %s", s);
       if (-HUGE_VAL < f && f < HUGE_VAL) {
-        sprintf(buf, "%.9g", (double)f); chbputf(pcb, " (; %s ;)", &buf[0]);
+        sprintf(buf, "%.9g", (double)f); cbputf(pcb, " (; %s ;)", &buf[0]);
       }
     } break;
     case INSIG_F64: {
       char buf[32]; double d = pic->arg.d;
       char *s = udtohex(as_uint64(d), buf);
-      chbputf(pcb, " %s", s);
+      cbputf(pcb, " %s", s);
       if (-HUGE_VAL < d && d < HUGE_VAL) {
-        sprintf(buf, "%.9g", d); chbputf(pcb, " (; %s ;)", &buf[0]);
+        sprintf(buf, "%.9g", d); cbputf(pcb, " (; %s ;)", &buf[0]);
       } 
     } break;
     case INSIG_I128: {
       /* todo: negative pic->id as an element type hint in as set in asm_simd128_const() */
-      if (pic->id > 0) chbputf(pcb, " $%s", symname(pic->id)); 
+      if (pic->id > 0) cbputf(pcb, " $%s", symname(pic->id)); 
       else {
-        chbputf(pcb, " i64x2");
-        chbputf(pcb, " %lld", pic->arg.i); 
-        chbputf(pcb, " %lld", pic->arg2.i); 
+        cbputf(pcb, " i64x2");
+        cbputf(pcb, " %lld", pic->arg.i); 
+        cbputf(pcb, " %lld", pic->arg2.i); 
       }
     } break;
     case INSIG_MEMARG:
-      if (pic->id) chbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
-      else chbputf(pcb, " offset=%llu align=%u", pic->arg.u, 1<<(int)pic->arg2.u); 
+      if (pic->id) cbputf(pcb, " $%s %u", symname(pic->id), pic->arg2.u); 
+      else cbputf(pcb, " offset=%llu align=%u", pic->arg.u, 1<<(int)pic->arg2.u); 
       break;
     case INSIG_MEMARG_LANEIDX: {
-      chbputf(pcb, " offset=%llu align=%u", pic->arg2.ux2[0], 1<<(int)pic->arg2.ux2[1]); 
-      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
-      else chbputf(pcb, " %llu", pic->arg.u); 
+      cbputf(pcb, " offset=%llu align=%u", pic->arg2.ux2[0], 1<<(int)pic->arg2.ux2[1]); 
+      if (pic->id) cbputf(pcb, " $%s", symname(pic->id)); 
+      else cbputf(pcb, " %llu", pic->arg.u); 
     } break;      
     case INSIG_LANEIDX16: {
       int i; unsigned long long lidxv;
-      if (pic->id) chbputf(pcb, " $%s", symname(pic->id)); 
+      if (pic->id) cbputf(pcb, " $%s", symname(pic->id)); 
       else for (lidxv = pic->arg.u, i = 16-1; i >= 0; --i) {
         unsigned off = i*4, lidx = (unsigned)((lidxv >> off) & 0xFULL);
-        chbputf(pcb, " %u", lidx); 
+        cbputf(pcb, " %u", lidx); 
       } 
     } break;      
     case INSIG_LS_L:
-      chbputf(pcb, " (; see next %llu+1 branches ;)", pic->arg.u);
+      cbputf(pcb, " (; see next %llu+1 branches ;)", pic->arg.u);
       break; /* takes multiple inscodes, should be taken care of by caller */
     case INSIG_RD: /* IN_REF_DATA -- not in WASM! */ 
-      chbputf(pcb, " $%s:%s", symname(pic->arg2.mod), symname(pic->id));
-      if (pic->arg.i != 0) chbputf(pcb, " offset=%lld", pic->arg.i); 
+      cbputf(pcb, " $%s:%s", symname(pic->arg2.mod), symname(pic->id));
+      if (pic->arg.i != 0) cbputf(pcb, " offset=%lld", pic->arg.i); 
       break;
     case INSIG_PR: /* IN_DATA_PUT_REF -- not in WASM! */
       assert(!pic->arg2.mod && !pic->id);
-      chbputf(pcb, " offset=%llu", pic->arg.u);
+      cbputf(pcb, " offset=%llu", pic->arg.u);
       break;
     default:
       assert(false);     
   }
-  return chbdata(pcb);
+  return cbdata(pcb);
 }
 
-char *format_funcsig(funcsig_t *pfs, chbuf_t *pcb)
+char *format_funcsig(funcsig_t *pfs, cbuf_t *pcb)
 {
   size_t i;
-  chbclear(pcb);
-  chbputs("(param", pcb);
+  cbclear(pcb);
+  cbputs("(param", pcb);
   for (i = 0; i < vtblen(&pfs->partypes); ++i)
-    chbputf(pcb, " %s", valtype_name(*vtbref(&pfs->partypes, i)));
-  chbputs(") (result", pcb);
+    cbputf(pcb, " %s", valtype_name(*vtbref(&pfs->partypes, i)));
+  cbputs(") (result", pcb);
   for (i = 0; i < vtblen(&pfs->restypes); ++i)
-    chbputf(pcb, " %s", valtype_name(*vtbref(&pfs->restypes, i)));
-  chbputs(")", pcb);
-  return chbdata(pcb);
+    cbputf(pcb, " %s", valtype_name(*vtbref(&pfs->restypes, i)));
+  cbputs(")", pcb);
+  return cbdata(pcb);
 }
 
 /* wat text representations */
@@ -1964,44 +1964,44 @@ static void wat_imports(watiebuf_t *pib)
   for (i = 0; i < watieblen(pib); ++i) {
     watie_t *pi = watiebref(pib, i);
     const char *smod = symname(pi->mod), *sname = symname(pi->id);
-    chbsetf(g_watbuf, "(import \"%s\" \"%s\" ", smod, sname);
+    cbsetf(g_watbuf, "(import \"%s\" \"%s\" ", smod, sname);
     switch (pi->iek) {
       case IEK_FUNC: {
-        chbputf(g_watbuf, "(func $%s:%s", smod, sname);
+        cbputf(g_watbuf, "(func $%s:%s", smod, sname);
         for (j = 0; j < vtblen(&pi->fs.partypes); ++j) {
           valtype_t *pvt = vtbref(&pi->fs.partypes, j);
-          chbputf(g_watbuf, " (param %s)", valtype_name(*pvt));
+          cbputf(g_watbuf, " (param %s)", valtype_name(*pvt));
         }
         for (j = 0; j < vtblen(&pi->fs.restypes); ++j) {
           valtype_t *pvt = vtbref(&pi->fs.restypes, j);
-          chbputf(g_watbuf, " (result %s)", valtype_name(*pvt));
+          cbputf(g_watbuf, " (result %s)", valtype_name(*pvt));
         }
-        chbputc(')', g_watbuf); 
+        cbputc(')', g_watbuf); 
       } break;
       case IEK_DATA: {
         char *vcs = (pi->mut == MT_VAR) ? "var" : "const";
-        chbputf(g_watbuf, "(data $%s:%s %s", smod, sname, vcs);
-        chbputf(g_watbuf, " align=%d", pi->align);
-        chbputf(g_watbuf, " size=%u", (unsigned)pi->n);
-        chbputc(')', g_watbuf); 
+        cbputf(g_watbuf, "(data $%s:%s %s", smod, sname, vcs);
+        cbputf(g_watbuf, " align=%d", pi->align);
+        cbputf(g_watbuf, " size=%u", (unsigned)pi->n);
+        cbputc(')', g_watbuf); 
       } break;
       case IEK_MEM: {
-        chbputf(g_watbuf, "(memory $%s:%s", smod, sname);
-        if (pi->lt == LT_MIN) chbputf(g_watbuf, " %u)", pi->n);
-        else chbputf(g_watbuf, " %u %u)", pi->n, pi->m);
+        cbputf(g_watbuf, "(memory $%s:%s", smod, sname);
+        if (pi->lt == LT_MIN) cbputf(g_watbuf, " %u)", pi->n);
+        else cbputf(g_watbuf, " %u %u)", pi->n, pi->m);
       } break;
       case IEK_GLOBAL: {
-        chbputf(g_watbuf, "(global $%s:%s", smod, sname);
+        cbputf(g_watbuf, "(global $%s:%s", smod, sname);
         if (pi->mut == MT_CONST) {
-          chbputf(g_watbuf, " %s)", valtype_name(pi->vt));
+          cbputf(g_watbuf, " %s)", valtype_name(pi->vt));
         } else {
-          chbputf(g_watbuf, " (mut %s))", valtype_name(pi->vt));
+          cbputf(g_watbuf, " (mut %s))", valtype_name(pi->vt));
         }
       } break;
       default:;
     }
-    chbputc(')', g_watbuf); 
-    wat_line(chbdata(g_watbuf));
+    cbputc(')', g_watbuf); 
+    wat_line(cbdata(g_watbuf));
   }
 }
 
@@ -2012,12 +2012,12 @@ static void wat_export_mems(watiebuf_t *peb)
     watie_t *pe = watiebref(peb, i);
     if (pe->iek == IEK_MEM) {
       const char *smod = symname(pe->mod), *sname = symname(pe->id);
-      chbsetf(g_watbuf, "(memory $%s:%s", smod, sname);
-      if (pe->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pe->id));
-      if (pe->lt == LT_MIN) chbputf(g_watbuf, " %u", pe->n);
-      else chbputf(g_watbuf, " %u %u", pe->n, pe->m);
-      chbputc(')', g_watbuf); 
-      wat_line(chbdata(g_watbuf));
+      cbsetf(g_watbuf, "(memory $%s:%s", smod, sname);
+      if (pe->exported) cbputf(g_watbuf, " (export \"%s\")", symname(pe->id));
+      if (pe->lt == LT_MIN) cbputf(g_watbuf, " %u", pe->n);
+      else cbputf(g_watbuf, " %u %u", pe->n, pe->m);
+      cbputc(')', g_watbuf); 
+      wat_line(cbdata(g_watbuf));
     }
   }
 }
@@ -2029,17 +2029,17 @@ static void wat_export_globals(watiebuf_t *peb)
     watie_t *pe = watiebref(peb, i);
     if (pe->iek == IEK_GLOBAL) {
       const char *smod = symname(pe->mod), *sname = symname(pe->id);
-      chbsetf(g_watbuf, "(global $%s:%s", smod, sname);
-      if (pe->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pe->id));
-      if (pe->mut == MT_CONST) chbputf(g_watbuf, " %s", valtype_name(pe->vt));
-      else chbputf(g_watbuf, " (mut %s)", valtype_name(pe->vt));
+      cbsetf(g_watbuf, "(global $%s:%s", smod, sname);
+      if (pe->exported) cbputf(g_watbuf, " (export \"%s\")", symname(pe->id));
+      if (pe->mut == MT_CONST) cbputf(g_watbuf, " %s", valtype_name(pe->vt));
+      else cbputf(g_watbuf, " (mut %s)", valtype_name(pe->vt));
       if (pe->ic.in != 0) {
-        chbuf_t cb = mkchb();
-        chbputf(g_watbuf, " (%s)", format_inscode(&pe->ic, &cb));
-        chbfini(&cb);
+        cbuf_t cb = mkcb();
+        cbputf(g_watbuf, " (%s)", format_inscode(&pe->ic, &cb));
+        cbfini(&cb);
       }
-      chbputc(')', g_watbuf); 
-      wat_line(chbdata(g_watbuf));
+      cbputc(')', g_watbuf); 
+      wat_line(cbdata(g_watbuf));
     }
   }
 }
@@ -2061,19 +2061,19 @@ static void wat_export_datas(watiebuf_t *pdb)
       if (smod != NULL && sname != NULL) { /* symbolic segment (nonfinal) */
         char *vcs = (pd->mut == MT_VAR) ? "var" : "const";
         assert(pd->align); assert(pd->ic.id == 0);
-        chbsetf(g_watbuf, "(data $%s:%s", smod, sname);
-        if (pd->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pd->id));
-        chbputf(g_watbuf, " %s align=%d", vcs, pd->align);
+        cbsetf(g_watbuf, "(data $%s:%s", smod, sname);
+        if (pd->exported) cbputf(g_watbuf, " (export \"%s\")", symname(pd->id));
+        cbputf(g_watbuf, " %s align=%d", vcs, pd->align);
       } else { /* positioned segment (final, WAT-compatible) */
-        chbuf_t cb = mkchb();
+        cbuf_t cb = mkcb();
         assert(!pd->align); assert(pd->ic.in == IN_I32_CONST);
-        chbsetf(g_watbuf, "(data (%s)", format_inscode(&pd->ic, &cb));
-        chbfini(&cb);
+        cbsetf(g_watbuf, "(data (%s)", format_inscode(&pd->ic, &cb));
+        cbfini(&cb);
       }
       if (smod != NULL && sname != NULL && data_all_zeroes((char *)pc, n)) {
-        chbputf(g_watbuf, " size=%z", n); /* .wo shortcut */
+        cbputf(g_watbuf, " size=%z", n); /* .wo shortcut */
       } else {  
-        chbputs(" \"", g_watbuf);
+        cbputs(" \"", g_watbuf);
         for (i = 0; i < n; ++i) {
           unsigned c = pc[i]; char ec = 0;
           switch ((int)c) {
@@ -2084,27 +2084,27 @@ static void wat_export_datas(watiebuf_t *pdb)
             case 0x27: ec = '\''; break;
             case 0x5C: ec = '\\'; break;
           }
-          if (ec) chbputf(g_watbuf, "\\%c", (int)ec);
-          else if (' ' <= c && c < 127) chbputc(c, g_watbuf); 
-          else chbputf(g_watbuf, "\\%x%x", (c>>4)&0xF, c&0xF);
+          if (ec) cbputf(g_watbuf, "\\%c", (int)ec);
+          else if (' ' <= c && c < 127) cbputc(c, g_watbuf); 
+          else cbputf(g_watbuf, "\\%x%x", (c>>4)&0xF, c&0xF);
         }
-        chbputc('\"', g_watbuf); 
+        cbputc('\"', g_watbuf); 
       }
       if (icblen(&pd->code) == 0) { /* leaf segment */
-        chbputc(')', g_watbuf); 
-        wat_line(chbdata(g_watbuf));
+        cbputc(')', g_watbuf); 
+        wat_line(cbdata(g_watbuf));
       } else { /* WCPL data segment with ref slots */
         size_t j;
         assert(smod != NULL && sname != NULL); /* not in standard WAT! */
-        wat_line(chbdata(g_watbuf));
+        wat_line(cbdata(g_watbuf));
         g_watindent += 2;
         for (j = 0; j < icblen(&pd->code); ++j) {
           inscode_t *pic = icbref(&pd->code, j);
           assert(pic->in == IN_REF_DATA || pic->in == IN_DATA_PUT_REF);
           format_inscode(pic, g_watbuf);
-          chbinsc(g_watbuf, 0, j == 0 ? '(' : ' ');
-          if (j+1 == icblen(&pd->code)) chbputs("))", g_watbuf);
-          wat_line(chbdata(g_watbuf));
+          cbinsc(g_watbuf, 0, j == 0 ? '(' : ' ');
+          if (j+1 == icblen(&pd->code)) cbputs("))", g_watbuf);
+          wat_line(cbdata(g_watbuf));
         }
         g_watindent -= 2;
       }
@@ -2120,15 +2120,15 @@ static void wat_export_tables(watiebuf_t *pfb)
     size_t tlen;
     if (pt->iek != IEK_TABLE) continue;
     tlen = buflen(&pt->table) + 1; /* elem 0 is reserved */
-    chbsetf(g_watbuf, "(table %d %d funcref)", (int)tlen, (int)tlen);
-    wat_line(chbdata(g_watbuf));
-    chbsetf(g_watbuf, "(elem (i32.const 1)");
+    cbsetf(g_watbuf, "(table %d %d funcref)", (int)tlen, (int)tlen);
+    wat_line(cbdata(g_watbuf));
+    cbsetf(g_watbuf, "(elem (i32.const 1)");
     for (j = 0; j < buflen(&pt->table); ++j) {
       dpme_t *pe = bufref(&pt->table, j);
-      chbputf(g_watbuf, " $%s:%s", symname(pe->mod), symname(pe->id));
+      cbputf(g_watbuf, " $%s:%s", symname(pe->mod), symname(pe->id));
     }
-    chbputf(g_watbuf, ")");
-    wat_line(chbdata(g_watbuf));
+    cbputf(g_watbuf, ")");
+    wat_line(cbdata(g_watbuf));
   }
 }
 
@@ -2138,42 +2138,42 @@ static void wat_export_funcs(watiebuf_t *pfb)
   for (i = 0; i < watieblen(pfb); ++i) {
     watie_t *pf = watiebref(pfb, i);
     if (pf->iek != IEK_FUNC) continue;
-    chbsetf(g_watbuf, "(func $%s:%s", symname(pf->mod), symname(pf->id));
-    if (pf->exported) chbputf(g_watbuf, " (export \"%s\")", symname(pf->id));
-    wat_line(chbdata(g_watbuf)); chbclear(g_watbuf);
+    cbsetf(g_watbuf, "(func $%s:%s", symname(pf->mod), symname(pf->id));
+    if (pf->exported) cbputf(g_watbuf, " (export \"%s\")", symname(pf->id));
+    wat_line(cbdata(g_watbuf)); cbclear(g_watbuf);
     g_watindent += 2;
     for (j = 0; j < vtblen(&pf->fs.partypes); ++j) {
       valtype_t *pvt = vtbref(&pf->fs.partypes, j);
       inscode_t *pic = icbref(&pf->code, j);
       assert(pic->in == IN_REGDECL);
       assert(*pvt == (valtype_t)pic->arg.u);
-      if (!pic->id) chbputf(g_watbuf, "(param %s) ", valtype_name((valtype_t)pic->arg.u));
-      else chbputf(g_watbuf, "(param $%s %s) ", symname(pic->id), valtype_name((valtype_t)pic->arg.u));
+      if (!pic->id) cbputf(g_watbuf, "(param %s) ", valtype_name((valtype_t)pic->arg.u));
+      else cbputf(g_watbuf, "(param $%s %s) ", symname(pic->id), valtype_name((valtype_t)pic->arg.u));
     }
     for (k = 0; k < vtblen(&pf->fs.restypes); ++k) {
       valtype_t *pvt = vtbref(&pf->fs.restypes, k);
-      chbputf(g_watbuf, "(result %s) ", valtype_name(*pvt));
+      cbputf(g_watbuf, "(result %s) ", valtype_name(*pvt));
     }
-    if (chblen(g_watbuf) > 0) { wat_line(chbdata(g_watbuf)); chbclear(g_watbuf); }
+    if (cblen(g_watbuf) > 0) { wat_line(cbdata(g_watbuf)); cbclear(g_watbuf); }
     for (/* use current j */; j < icblen(&pf->code); ++j) {
       inscode_t *pic = icbref(&pf->code, j);
       if (pic->in != IN_REGDECL) break;
-      chbputf(g_watbuf, "(local $%s %s) ", symname(pic->id), valtype_name((valtype_t)pic->arg.u));
+      cbputf(g_watbuf, "(local $%s %s) ", symname(pic->id), valtype_name((valtype_t)pic->arg.u));
     }
-    if (chblen(g_watbuf) > 0) wat_line(chbdata(g_watbuf));
+    if (cblen(g_watbuf) > 0) wat_line(cbdata(g_watbuf));
     /* code */
     for (/* use current j */; j < icblen(&pf->code); ++j) {
       inscode_t *pic = icbref(&pf->code, j);
       assert(pic->in != IN_REGDECL && pic->in != IN_PLACEHOLDER);
       if (pic->in == IN_BR_TABLE) { /* takes multiple inscodes */
         size_t n = (unsigned)pic->arg.u + 1;
-        chbsetf(g_watbuf, "br_table"); 
+        cbsetf(g_watbuf, "br_table"); 
         for (k = j+1; k < j+1+n; ++k) {
           assert(k < icblen(&pf->code));
           pic = icbref(&pf->code, k); assert(pic->in == IN_BR && pic->id);
-          chbputf(g_watbuf, " $%s", symname(pic->id));
+          cbputf(g_watbuf, " $%s", symname(pic->id));
         }
-        wat_line(chbdata(g_watbuf));
+        wat_line(cbdata(g_watbuf));
         j += n; /* account for n aditional inscodes */
       } else { /* takes single inscode */
         wat_line(format_inscode(pic, g_watbuf));
@@ -2186,9 +2186,9 @@ static void wat_export_funcs(watiebuf_t *pfb)
 
 void write_wat_module(wat_module_t* pm, FILE *pf)
 {
-  chbuf_t cb;
+  cbuf_t cb;
   g_watout = pf;
-  g_watbuf = chbinit(&cb);
+  g_watbuf = cbinit(&cb);
   if (!pm->name) wat_linef("(module");
   else wat_linef("(module $%s", symname(pm->name));
   g_watindent += 2;
@@ -2200,7 +2200,7 @@ void write_wat_module(wat_module_t* pm, FILE *pf)
   wat_export_funcs(&pm->exports);
   wat_writeln(")");
   g_watout = NULL;
-  chbfini(&cb);
+  cbfini(&cb);
   g_watbuf = NULL;
 }
 
@@ -2222,11 +2222,11 @@ typedef struct sws {
   FILE *input;        /* current input stream */
   int lno;            /* current line no. (0-based) */
   bool inateof;       /* current input is exausted */  
-  chbuf_t chars;      /* line buffer of chars */
+  cbuf_t chars;      /* line buffer of chars */
   int curi;           /* current input position in line */
   bool gottk;         /* lookahead token is available */
   wt_t ctk;           /* lookahead token type */
-  chbuf_t token;      /* lookahead token char data */
+  cbuf_t token;      /* lookahead token char data */
   char *tokstr;       /* lookahead token string */
   int posl;           /* lno of la token start */
   int posi;           /* posi of la token start */
@@ -2238,8 +2238,8 @@ sws_t *newsws(const char *infile)
   FILE *fp;
   fp = streql(infile, "-") ? stdin : fopen(infile, "r");
   if (fp) {
-    sws_t *pw = exmalloc(sizeof(sws_t));
-    pw->infile = exstrdup(infile);
+    sws_t *pw = emalloc(sizeof(sws_t));
+    pw->infile = estrdup(infile);
     pw->input = fp;
     pw->lno = 0;
     pw->inateof = false;
@@ -2248,7 +2248,7 @@ sws_t *newsws(const char *infile)
     pw->curi = 0; 
     pw->gottk = false;
     pw->ctk = WT_EOF;
-    chbinit(&pw->token);
+    cbinit(&pw->token);
     pw->tokstr = NULL;
     pw->posl = 0;
     pw->posi = 0;
@@ -2262,8 +2262,8 @@ static void freesws(sws_t *pw)
   if (pw) {
     free(pw->infile);
     if (pw->input && pw->input != stdin) fclose(pw->input);
-    chbfini(&pw->chars);
-    chbfini(&pw->token);
+    cbfini(&pw->chars);
+    cbfini(&pw->token);
     free(pw);
   }
 }
@@ -2271,19 +2271,19 @@ static void freesws(sws_t *pw)
 /* try to get new line of input so parsing can continue */
 static int fetchline(sws_t *pw, char **ptbase, int *pendi)
 {
-  chbuf_t *pp = &pw->chars; int c = EOF;
-  chbclear(pp);
+  cbuf_t *pp = &pw->chars; int c = EOF;
+  cbclear(pp);
   if (!pw->inateof) {
     char *line = fgetlb(pp, pw->input);
     if (!line) {
       pw->inateof = true;
     } else {
-      chbputc('\n', pp);
+      cbputc('\n', pp);
       c = '\n';
       pw->lno += 1;
       pw->curi = 0;
-      *ptbase = chbdata(pp);
-      *pendi = (int)chblen(pp);
+      *ptbase = cbdata(pp);
+      *pendi = (int)cblen(pp);
     }
   }
   return c;  
@@ -2297,13 +2297,13 @@ static int fetchline(sws_t *pw, char **ptbase, int *pendi)
 #define state_10ddd 48
 #define state_10dddd 49
 #define state_10ddddd 50
-static wt_t lex(sws_t *pw, chbuf_t *pcb)
+static wt_t lex(sws_t *pw, cbuf_t *pcb)
 {
-  char *tbase = chbdata(&pw->chars);
+  char *tbase = cbdata(&pw->chars);
   int *pcuri = &pw->curi;
-  int endi = (int)chblen(&pw->chars);
+  int endi = (int)cblen(&pw->chars);
   int c, state = 0;
-  chbclear(pcb);
+  cbclear(pcb);
   while (true) {
     switch (state) {
       case 0: 
@@ -2311,32 +2311,32 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (c == '\"') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 9; continue;
         } else if (c == '0') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 8; continue;
         } else if ((c >= '1' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 7; continue;
         } else if (c == '+' || c == '-') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 6; continue;
         } else if (c == '!' || (c >= '#' && c <= '\'') || c == '*' || (c >= '.' && c <= '/') || c == ':' || (c >= '<' && c <= 'Z') 
                 || c == '\\' || (c >= '^' && c <= 'z') || c == '|' || c == '~') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 5; continue;
         } else if (c == ')') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 4; continue;
         } else if (c == '(') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 3; continue;
         } else if (c == ';') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 2; continue;
         } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 1; continue;
         } else {
           unreadchar();
@@ -2347,7 +2347,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_WHITESPACE;
         } else if ((c >= '\t' && c <= '\n') || (c >= '\f' && c <= '\r') || c == ' ') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 1; continue;
         } else {
           unreadchar();
@@ -2358,7 +2358,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (c == ';') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 43; continue;
         } else {
           unreadchar();
@@ -2369,7 +2369,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_LPAR;
         } else if (c == ';') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 42; continue;
         } else {
           unreadchar();
@@ -2383,7 +2383,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
           return WT_IDCHARS;
         } else if (c == '!' || (c >= '#' && c <= '\'') || (c >= '*' && c <= ':') || (c >= '<' && c <= 'Z') || c == '\\' 
                 || (c >= '^' && c <= 'z') || c == '|' || c == '~') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 5; continue;
         } else {
           unreadchar();
@@ -2394,16 +2394,16 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (c == 'i') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 38; continue;
         } else if (c == 'n') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 37; continue;
         } else if (c == '0') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 8; continue;
         } else if ((c >= '1' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 7; continue;
         } else {
           unreadchar();
@@ -2414,13 +2414,13 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_INT;
         } else if (c == '.') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 22; continue;
         } else if (c == 'E' || c == 'e') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 21; continue;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 7; continue;
         } else {
           unreadchar();
@@ -2431,16 +2431,16 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_INT;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 23; continue;
         } else if (c == '.') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 22; continue;
         } else if (c == 'E' || c == 'e') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 21; continue;
         } else if (c == 'X' || c == 'x') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 20; continue;
         } else {
           unreadchar();
@@ -2451,22 +2451,22 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (c == '\"') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 13; continue;
         } else if (c == '\\') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 12; continue;
         } else if (is8chead(c)) { 
           int u = c & 0xFF;
-          if (u < 0xE0) { chbputc(c, pcb); state = state_10d; continue; }
-          if (u < 0xF0) { chbputc(c, pcb); state = state_10dd; continue; }
-          if (u < 0xF8) { chbputc(c, pcb); state = state_10ddd; continue; }
-          if (u < 0xFC) { chbputc(c, pcb); state = state_10dddd; continue; }
-          if (u < 0xFE) { chbputc(c, pcb); state = state_10ddddd; continue; }
+          if (u < 0xE0) { cbputc(c, pcb); state = state_10d; continue; }
+          if (u < 0xF0) { cbputc(c, pcb); state = state_10dd; continue; }
+          if (u < 0xF8) { cbputc(c, pcb); state = state_10ddd; continue; }
+          if (u < 0xFC) { cbputc(c, pcb); state = state_10dddd; continue; }
+          if (u < 0xFE) { cbputc(c, pcb); state = state_10ddddd; continue; }
           unreadchar();
           return WT_EOF;
         } else if (!(c == '\n' || c == '\"' || c == '\\')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 9; continue;
         } else {
           unreadchar();
@@ -2477,7 +2477,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (is8ctail(c)) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = state_10dddd; continue;
         } else {
           unreadchar();
@@ -2488,7 +2488,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (is8ctail(c)) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = state_10ddd; continue;
         } else {
           unreadchar();
@@ -2499,7 +2499,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (is8ctail(c)) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = state_10dd; continue;
         } else {
           unreadchar();
@@ -2510,7 +2510,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (is8ctail(c)) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = state_10d; continue;
         } else {
           unreadchar();
@@ -2521,7 +2521,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (is8ctail(c)) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 9; continue;
         } else {
           unreadchar();
@@ -2532,16 +2532,16 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (c == 'u') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 16; continue;
         } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
           unreadchar();
           state = 15; continue;
         } else if ((c >= '\t' && c <= '\n') || c == '\r' || c == ' ') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 14; continue;
         } else if (c == '\"' || c == '\'' || c == '\\' || c == 'n' || c == 'r' || c == 't') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 9; continue;
         } else {
           unreadchar();
@@ -2554,10 +2554,10 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '\t' && c <= '\n') || c == '\r' || c == ' ') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 14; continue;
         } else if (c == '\\') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 9; continue;
         } else {
           unreadchar();
@@ -2568,7 +2568,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 19; continue;
         } else {
           unreadchar();
@@ -2579,7 +2579,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (c == '{') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 17; continue;
         } else {
           unreadchar();
@@ -2590,7 +2590,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 18; continue;
         } else {
           unreadchar();
@@ -2601,10 +2601,10 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 18; continue;
         } else if (c == '}') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 9; continue;
         } else {
           unreadchar();
@@ -2615,7 +2615,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 9; continue;
         } else {
           unreadchar();
@@ -2626,7 +2626,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 29; continue;
         } else {
           unreadchar();
@@ -2637,10 +2637,10 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 28; continue;
         } else if (c == '+' || c == '-') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 27; continue;
         } else {
           unreadchar();
@@ -2651,10 +2651,10 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_FLOAT;
         } else if (c == 'E' || c == 'e') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 24; continue;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 22; continue;
         } else {
           unreadchar();
@@ -2665,13 +2665,13 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 23; continue;
         } else if (c == '.') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 22; continue;
         } else if (c == 'E' || c == 'e') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 21; continue;
         } else {
           unreadchar();
@@ -2682,10 +2682,10 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 26; continue;
         } else if (c == '+' || c == '-') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 25; continue;
         } else {
           unreadchar();
@@ -2696,7 +2696,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 26; continue;
         } else {
           unreadchar();
@@ -2707,7 +2707,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_FLOAT;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 26; continue;
         } else {
           unreadchar();
@@ -2718,7 +2718,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 28; continue;
         } else {
           unreadchar();
@@ -2729,7 +2729,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_FLOAT;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 28; continue;
         } else {
           unreadchar();
@@ -2740,13 +2740,13 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_INT;
         } else if (c == 'P' || c == 'p') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 31; continue;
         } else if (c == '.') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 30; continue;
         } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 29; continue;
         } else {
           unreadchar();
@@ -2757,10 +2757,10 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_FLOAT;
         } else if (c == 'P' || c == 'p') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 34; continue;
         } else if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 30; continue;
         } else {
           unreadchar();
@@ -2771,10 +2771,10 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 33; continue;
         } else if (c == '+' || c == '-') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 32; continue;
         } else {
           unreadchar();
@@ -2785,7 +2785,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 33; continue;
         } else {
           unreadchar();
@@ -2796,7 +2796,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_FLOAT;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 33; continue;
         } else {
           unreadchar();
@@ -2807,10 +2807,10 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 36; continue;
         } else if (c == '+' || c == '-') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 35; continue;
         } else {
           unreadchar();
@@ -2821,7 +2821,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 36; continue;
         } else {
           unreadchar();
@@ -2832,7 +2832,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_FLOAT;
         } else if ((c >= '0' && c <= '9')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 36; continue;
         } else {
           unreadchar();
@@ -2843,7 +2843,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (c == 'a') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 41; continue;
         } else {
           unreadchar();
@@ -2854,7 +2854,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (c == 'n') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 39; continue;
         } else {
           unreadchar();
@@ -2865,7 +2865,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (c == 'f') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 40; continue;
         } else {
           unreadchar();
@@ -2878,7 +2878,7 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (c == 'n') {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 40; continue;
         } else {
           unreadchar();
@@ -2891,10 +2891,10 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (!(c == '\n')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 44; continue;
         } else {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 45; continue;
         }
       case 44:
@@ -2902,10 +2902,10 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
         if (c == EOF) {
           return WT_EOF;
         } else if (!(c == '\n')) {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 44; continue;
         } else {
-          chbputc(c, pcb);
+          cbputc(c, pcb);
           state = 45; continue;
         }
       case 45:
@@ -2928,27 +2928,27 @@ static wt_t lex(sws_t *pw, chbuf_t *pcb)
 /* report error, possibly printing location information */
 static void vseprintf(sws_t *pw, const char *fmt, va_list args)
 {
-  chbuf_t cb = mkchb(); const char *s;
+  cbuf_t cb = mkcb(); const char *s;
   int ln = 0, off = 0; assert(fmt);
-  if (pw != NULL && pw->infile != NULL) chbputf(&cb, "%s:", pw->infile);
+  if (pw != NULL && pw->infile != NULL) cbputf(&cb, "%s:", pw->infile);
   if (pw != NULL) {
     ln = pw->posl, off = pw->posi;
-    if (ln > 0) chbputf(&cb, "%d:%d:", ln, off+1);
+    if (ln > 0) cbputf(&cb, "%d:%d:", ln, off+1);
   }
   fflush(stdout); 
-  if (chblen(&cb) > 0) {
-    chbputc(' ', &cb);
-    fputs(chbdata(&cb), stderr);
+  if (cblen(&cb) > 0) {
+    cbputc(' ', &cb);
+    fputs(cbdata(&cb), stderr);
   }
   vfprintf(stderr, fmt, args); 
   fputc('\n', stderr);
-  if (pw && ln > 0 && (s = chbdata(&pw->chars)) != NULL) {
+  if (pw && ln > 0 && (s = cbdata(&pw->chars)) != NULL) {
     fputs(s, stderr); fputc('\n', stderr);
     while (off-- > 0) fputc(' ', stderr);
     fputs("^\n", stderr);
   }
   fflush(stderr); 
-  chbfini(&cb);
+  cbfini(&cb);
 }
 
 /* report error, possibly printing location information, and exit */
@@ -2962,27 +2962,27 @@ void seprintf(sws_t *pw, const char *fmt, ...)
 }
 
 #define readchar() (c = *pcuri < endi ? tbase[(*pcuri)++] : fetchline(pw, &tbase, &endi))
-static bool lexbc(sws_t *pw, chbuf_t *pcb) 
+static bool lexbc(sws_t *pw, cbuf_t *pcb) 
 {
-  char *tbase = chbdata(&pw->chars);
+  char *tbase = cbdata(&pw->chars);
   int *pcuri = &pw->curi;
-  int endi = (int)chblen(&pw->chars);
+  int endi = (int)cblen(&pw->chars);
   int c;
   while (true) {
     readchar();
     if (c == EOF) break;
-    chbputc(c, pcb);
+    cbputc(c, pcb);
     if (c == '(') {
       readchar();
       if (c == EOF) break;
-      chbputc(c, pcb);
+      cbputc(c, pcb);
       if (c == ';') {
         if (!lexbc(pw, pcb)) return false;
       }      
     } else if (c == ';') {
       readchar();
       if (c == EOF) break;
-      chbputc(c, pcb);
+      cbputc(c, pcb);
       if (c == ')') return true;
     }
   }
@@ -3001,7 +3001,7 @@ static wt_t peekt(sws_t *pw)
       }
       switch (pw->ctk) {
         case WT_IDCHARS: {
-          char *s = chbdata(&pw->token);
+          char *s = cbdata(&pw->token);
           if (*s == '$') pw->ctk = WT_ID;
           else if ('a' <= *s && *s <= 'z') pw->ctk = WT_KEYWORD; 
           else pw->ctk = WT_RESERVED;
@@ -3015,14 +3015,14 @@ static wt_t peekt(sws_t *pw)
       }
     } while (WT_WHITESPACE <= pw->ctk && pw->ctk <= WT_BC); 
     pw->gottk = true; 
-    pw->tokstr = chbdata(&pw->token); 
+    pw->tokstr = cbdata(&pw->token); 
   } 
   return pw->ctk; 
 }
 
 static bool peeks(sws_t *pw, const char *s)
 {
-  return strprf(chbdata(&pw->chars)+pw->curi, s) != NULL;
+  return strprf(cbdata(&pw->chars)+pw->curi, s) != NULL;
 }
 
 static void dropt(sws_t *pw) 
@@ -3107,10 +3107,10 @@ static unsigned long strtowatec(const char *s, char** ep)
   return (unsigned long)(-1);
 }
 
-static char *scan_string(sws_t *pw, const char *s, chbuf_t *pcb)
+static char *scan_string(sws_t *pw, const char *s, cbuf_t *pcb)
 {
   int c = *s++; assert(c == '"');
-  chbclear(pcb);
+  cbclear(pcb);
   if (*s) {
     while (*s != '"') {
       c = *s; errno = 0;
@@ -3118,26 +3118,26 @@ static char *scan_string(sws_t *pw, const char *s, chbuf_t *pcb)
       if (is8chead(c)) { 
         char *e; unsigned long ul = strtou8c(s, &e); 
         if (errno || ul > 0x10FFFFUL) goto err;
-        chbput(s, e-s, pcb); /* as-is! */
+        cbput(s, e-s, pcb); /* as-is! */
         s = e;
       } else if (c == '\\' && isxdigit(s[1]) && isxdigit(s[2])) {
         unsigned b, h; 
         c = tolower(s[1]); h = ('0' <= c && c <= '9') ? c-'0' : 10+c-'a'; b = h << 4;
         c = tolower(s[2]); h = ('0' <= c && c <= '9') ? c-'0' : 10+c-'a'; b = b | h;
-        chbputc(b, pcb);
+        cbputc(b, pcb);
         s += 3;
       } else if (c == '\\') {
         char *e; unsigned long ul = strtowatec(s, &e);
         if (errno || ul > 0x10FFFFUL) goto err;
-        chbputlc(ul, pcb); /* in utf-8 */
+        cbputlc(ul, pcb); /* in utf-8 */
         s = e;
       } else {
-        chbputc(c, pcb);
+        cbputc(c, pcb);
         s += 1;
       }
     }
     c = *++s; assert(c == 0);
-    return chbdata(pcb);
+    return cbdata(pcb);
   err:;
   }
   seprintf(pw, "invalid string literal");
@@ -3152,11 +3152,11 @@ static void parse_mod_id(sws_t *pw, sym_t *pmid, sym_t *pid)
   } else if (peekt(pw) != WT_ID || (sep = strchr((s = pw->tokstr), ':')) == NULL) { 
     seprintf(pw, "expected $mod:id, got %s", pw->tokstr);
   } else {
-    chbuf_t cb = mkchb();
+    cbuf_t cb = mkcb();
     assert(*s == '$'); ++s;
-    *pmid = intern(chbset(&cb, s, sep-s));
+    *pmid = intern(cbset(&cb, s, sep-s));
     *pid = intern(sep+1);
-    chbfini(&cb);
+    cbfini(&cb);
     dropt(pw);
   }
 } 
@@ -3176,12 +3176,12 @@ static sym_t parse_id(sws_t *pw)
   return 0; /* never */
 }
 
-static sym_t parse_id_string(sws_t *pw, chbuf_t *pcb, const char *chset)
+static sym_t parse_id_string(sws_t *pw, cbuf_t *pcb, const char *chset)
 {
   char *s = NULL; size_t n; bool ok = false;
   ok = (peekt(pw) == WT_STRING);
   if (ok) ok = (s = scan_string(pw, pw->tokstr, pcb)) != NULL;
-  if (ok) ok = (n = strlen(s)) == chblen(pcb); /* no \00s inside */
+  if (ok) ok = (n = strlen(s)) == cblen(pcb); /* no \00s inside */
   if (ok) ok = strspn(s, chset) == n;
   if (ok) { dropt(pw); return intern(s); }
   else seprintf(pw, "expected \"id\", got %s", pw->tokstr);
@@ -3475,7 +3475,7 @@ static void parse_limits(sws_t *pw, watie_t *pi)
 
 static void parse_import_des(sws_t *pw, watie_t *pi)
 {
-  chbuf_t cb = mkchb();
+  cbuf_t cb = mkcb();
   expect(pw, "(");
   if (ahead(pw, "global")) {
     dropt(pw);
@@ -3532,26 +3532,26 @@ static void parse_import_des(sws_t *pw, watie_t *pi)
     seprintf(pw, "unexpected import descriptor %s", pw->tokstr);
   }
   expect(pw, ")");
-  chbfini(&cb);
+  cbfini(&cb);
 }
 
 static void parse_optional_export(sws_t *pw, watie_t *pe)
 {
   if (ahead(pw, "(") && peeks(pw, "export")) {
-    sym_t id; chbuf_t cb = mkchb();
+    sym_t id; cbuf_t cb = mkcb();
     const char *cs = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$";
     dropt(pw); expect(pw, "export");
     id = parse_id_string(pw, &cb, cs);
     if (id != pe->id) seprintf(pw, "unexpected export rename"); 
     pe->exported = true;
     expect(pw, ")");
-    chbfini(&cb);
+    cbfini(&cb);
   }
 }
 
 static void parse_modulefield(sws_t *pw, wat_module_t* pm)
 {
-  chbuf_t cb = mkchb();
+  cbuf_t cb = mkcb();
   expect(pw, "(");
   if (ahead(pw, "import")) {
     watie_t *pi = watiebnewbk(&pm->imports, IEK_UNKN);
@@ -3580,7 +3580,7 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
       dropt(pw);
     } else if (peekt(pw) == WT_KEYWORD && strprf(pw->tokstr, "size=") != NULL) {
       size_t size = (size_t)parse_size(pw);
-      chbclear(&pd->data); bufresize(&pd->data, size); /* zeroes */
+      cbclear(&pd->data); bufresize(&pd->data, size); /* zeroes */
     } else if (g_watexec) {
       expect(pw, "(");
       parse_ins(pw, &pd->ic, &pd->code);
@@ -3697,7 +3697,7 @@ static void parse_modulefield(sws_t *pw, wat_module_t* pm)
     seprintf(pw, "unexpected module field type %s", pw->tokstr);
   }
   expect(pw, ")");
-  chbfini(&cb);
+  cbfini(&cb);
 }
 
 static void parse_module(sws_t *pw, wat_module_t* pm)
@@ -3720,7 +3720,7 @@ void read_wat_object_module(const char *fname, wat_module_t* pm)
     parse_module(pw, pm);
     freesws(pw);
   } else {
-    exprintf("cannot read object file: %s", fname);
+    eprintf("cannot read object file: %s", fname);
   }
 }
 
@@ -3737,34 +3737,34 @@ void read_wat_executable_module(const char *fname, wat_module_t* pm)
     expect(pw, ")");
     freesws(pw);
   } else {
-    exprintf("cannot read executabe wat file: %s", fname);
+    eprintf("cannot read executabe wat file: %s", fname);
   }
 }
 
 void load_library_wat_module(sym_t mod, wat_module_t* pm)
 {
-  chbuf_t cb = mkchb(); size_t i;
+  cbuf_t cb = mkcb(); size_t i;
   sws_t *pws = NULL;
   for (i = 0; i < buflen(g_lbases); ++i) {
     sym_t *pb = bufref(g_lbases, i);
-    pws = newsws(chbsetf(&cb, "%s%s.o", symname(*pb), symname(mod)));
+    pws = newsws(cbsetf(&cb, "%s%s.o", symname(*pb), symname(mod)));
     if (pws) break;
-    pws = newsws(chbsetf(&cb, "%s%s.wo", symname(*pb), symname(mod)));
+    pws = newsws(cbsetf(&cb, "%s%s.wo", symname(*pb), symname(mod)));
     if (pws) break;
-    pws = newsws(chbsetf(&cb, "%s%s.wat", symname(*pb), symname(mod)));
+    pws = newsws(cbsetf(&cb, "%s%s.wat", symname(*pb), symname(mod)));
     if (pws) break;
   }
   if (pws) {
-    logef("# found '%s' module object in %s\n", symname(mod), chbdata(&cb));
+    logef("# found '%s' module object in %s\n", symname(mod), cbdata(&cb));
     wat_module_clear(pm);
     pm->main = MAIN_ABSENT;
     parse_module(pws, pm);
     logef("# '%s' module object loaded\n", symname(mod));
     freesws(pws);
   } else {
-    exprintf("cannot locate object module: '%s'", symname(mod));
+    eprintf("cannot locate object module: '%s'", symname(mod));
   }
-  chbfini(&cb); 
+  cbfini(&cb); 
 }
 
 
@@ -3793,7 +3793,7 @@ static bool process_subsystem_depglobal(modid_t *pmii, wat_module_t* pmi, wat_mo
   /* as of now, we only have one subsystem, WASI */
   if (pmii->mod != g_wasi_mod) return false;
   pi = bufbsearch(&pmi->imports, pmii, &modid_cmp);
-  if (!pi) exprintf("cannot locate import '%s:%s' in '%s' module", 
+  if (!pi) eprintf("cannot locate import '%s:%s' in '%s' module", 
     symname(pmii->mod), symname(pmii->id), symname(pmi->name));
   if (!bufsearch(&pm->imports, pmii, &modid_cmp)) { /* linear! */
     watie_t *newpi = watiebnewbk(&pm->imports, pi->iek); 
@@ -3808,12 +3808,12 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
 {
   wat_module_t* pmi = bufbsearch(pwb, &pmii->mod, &sym_cmp);
   vvverbosef("process_depglobal: %s:%s\n", symname(pmii->mod), symname(pmii->id)); 
-  if (!pmi) exprintf("cannot locate '%s' module (looking for %s)", symname(pmii->mod), symname(pmii->id));  
+  if (!pmi) eprintf("cannot locate '%s' module (looking for %s)", symname(pmii->mod), symname(pmii->id));  
   switch (pmii->iek) {
     case IEK_MEM: {
       watie_t *pe = bufbsearch(&pmi->exports, pmii, &modid_cmp), *newpe;
       if (!pe || pe->iek != IEK_MEM) 
-        exprintf("cannot locate memory '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
+        eprintf("cannot locate memory '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
       newpe = watiebnewbk(&pm->exports, IEK_MEM); newpe->mod = pe->mod; newpe->id = pe->id; 
       memswap(pe, newpe, sizeof(watie_t)); /* mod/id still there so bsearch works */
       newpe->exported = true; /* memory should be exported! */
@@ -3823,7 +3823,7 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
       watie_t *pd = bufbsearch(&pmi->exports, pmii, &modid_cmp), *newpd;
       modid_t mi; size_t i;
       if (!pd || pd->iek != IEK_DATA)
-        exprintf("cannot locate data '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
+        eprintf("cannot locate data '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
       for (i = 0; i < icblen(&pd->code); ++i) {
         inscode_t *pic = icbref(&pd->code, i);
         if (pic->in == IN_REF_DATA) {
@@ -3842,7 +3842,7 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
     case IEK_GLOBAL: {
       watie_t *pe = bufbsearch(&pmi->exports, pmii, &modid_cmp), *newpe;
       if (!pe || pe->iek != IEK_GLOBAL) 
-        exprintf("cannot locate global '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
+        eprintf("cannot locate global '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
       if (pe->ic.in == IN_GLOBAL_GET || pe->ic.in == IN_REF_DATA) {
         inscode_t *pic = &pe->ic;
         modid_t mi; mi.mod = pic->arg2.mod; mi.id = pic->id; 
@@ -3867,7 +3867,7 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
       watie_t *pf = bufbsearch(&pmi->exports, pmii, &modid_cmp), *newpf;
       modid_t mi; size_t i;
       if (!pf || pf->iek != IEK_FUNC) 
-        exprintf("cannot locate func '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
+        eprintf("cannot locate func '%s' in '%s' module", symname(pmii->id), symname(pmii->mod));  
       for (i = 0; i < icblen(&pf->code); ++i) {
         inscode_t *pic = icbref(&pf->code, i);
         switch (pic->in) {
@@ -3901,7 +3901,7 @@ static void process_depglobal(modid_t *pmii, wat_module_buf_t *pwb, buf_t *pdg, 
 
 /* data sharing map */
 typedef struct dsme {
-  chbuf_t data; /* data segment data */
+  cbuf_t data; /* data segment data */
   int align;    /* alignment in bytes: 1,2,4,8,16 */
   bool write;   /* belongs to wtiteable memory */
   sym_t id;     /* module-local dseg id */
@@ -3918,13 +3918,13 @@ typedef buf_t dsmebuf_t;
 dsme_t* dsmeinit(dsme_t* pe)
 {
   memset(pe, 0, sizeof(dsme_t));
-  chbinit(&pe->data);
+  cbinit(&pe->data);
   return pe;
 }
 
 void dsmefini(dsme_t* pe)
 {
-  chbfini(&pe->data);
+  cbfini(&pe->data);
 }
 
 void dsmebfini(dsmebuf_t* pb)
@@ -3939,7 +3939,7 @@ void dsmebfini(dsmebuf_t* pb)
 int dsme_cmp(const void *p1, const void *p2)
 {
   dsme_t *pe1 = (dsme_t*)p1, *pe2 = (dsme_t*)p2; 
-  int cmp = chbuf_cmp(&pe1->data, &pe2->data);
+  int cmp = cbuf_cmp(&pe1->data, &pe2->data);
   if (cmp) return cmp;
   cmp = pe1->align - pe2->align;
   if (cmp < 0) return -1; if (cmp > 0) return 1;
@@ -3950,7 +3950,7 @@ int dsme_cmp(const void *p1, const void *p2)
 size_t watify_wat_module(wat_module_t* pm)
 {
   size_t curaddr = g_sdbaddr;
-  chbuf_t dseg = mkchb(); size_t i;
+  cbuf_t dseg = mkcb(); size_t i;
   buf_t dpmap = mkbuf(sizeof(dpme_t));
   buf_t table = mkbuf(sizeof(dpme_t));
   dsmebuf_t dsmap; dsmebinit(&dsmap);
@@ -3967,7 +3967,7 @@ size_t watify_wat_module(wat_module_t* pm)
       if (pd->mut == MT_CONST && icblen(&pd->code) == 0) {
         /* leaf, read-only: try to merge it with equals */
         dsme_t e, *pe; dsmeinit(&e); 
-        chbcpy(&e.data, &pd->data);
+        cbcpy(&e.data, &pd->data);
         e.align = pd->align; assert(pd->align);
         pe = bufbsearch(&dsmap, &e, &dsme_cmp);
         if (!pe) { /* new data elt */
@@ -3978,7 +3978,7 @@ size_t watify_wat_module(wat_module_t* pm)
           align = pd->align, n = addr % align;
           if (n > 0) addr += align - n;
           if (n > 0) bufresize(&dseg, buflen(&dseg) + (align-n));
-          chbcat(&dseg, &pe->data);
+          cbcat(&dseg, &pe->data);
           pe->addr = addr;
           curaddr = addr + buflen(&pe->data);
           bufqsort(&dsmap, &dsme_cmp);
@@ -3994,7 +3994,7 @@ size_t watify_wat_module(wat_module_t* pm)
         if (n > 0) addr += align - n;
         if (n > 0) bufresize(&dseg, buflen(&dseg) + (align-n));
         if (icblen(&pd->code) > 0) { /* patch pd->data */
-          size_t i; chbuf_t cb = mkchb(); bool gotarg = false;
+          size_t i; cbuf_t cb = mkcb(); bool gotarg = false;
           for (i = 0; i < icblen(&pd->code); ++i) {
             modid_t mi; dpme_t *pdpme; size_t off; 
             inscode_t *pic = icbref(&pd->code, i);
@@ -4002,24 +4002,24 @@ size_t watify_wat_module(wat_module_t* pm)
               unsigned address;
               mi.mod = pic->arg2.mod; mi.id = pic->id;
               pdpme = bufsearch(&dpmap, &mi, &modid_cmp); /* linear, still adding to it */
-              if (!pdpme) exprintf("internal error: undefined ref in data: $%s:%s", 
+              if (!pdpme) eprintf("internal error: undefined ref in data: $%s:%s", 
                 mi.mod ? symname(mi.mod) : "?", mi.id ? symname(mi.id) : "?");
               address = (unsigned)((long long)pdpme->address + pic->arg.i);
               bufclear(&cb); binuint(address, &cb); /* wasm32 */
               gotarg = true;
             } else if (gotarg && pic->in == IN_DATA_PUT_REF) {
               off = (size_t)pic->arg.u; assert(pic->id == 0);
-              if (off % 4 != 0 || off + 4 > chblen(&pd->data)) /* wasm32 */
-                exprintf("internal error: cannot patch data: bad offset %lu", (unsigned long)off);
-              memcpy(chbdata(&pd->data) + off, chbdata(&cb), 4); /* wasm32 */
+              if (off % 4 != 0 || off + 4 > cblen(&pd->data)) /* wasm32 */
+                eprintf("internal error: cannot patch data: bad offset %lu", (unsigned long)off);
+              memcpy(cbdata(&pd->data) + off, cbdata(&cb), 4); /* wasm32 */
               gotarg = false;
             } else {
-              exprintf("internal error in data patch");
+              eprintf("internal error in data patch");
             }
           }
-          chbfini(&cb);
+          cbfini(&cb);
         }
-        chbcat(&dseg, &pd->data);
+        cbcat(&dseg, &pd->data);
         curaddr = addr + buflen(&pd->data);
       }
       pme = bufnewbk(&dpmap);
@@ -4046,7 +4046,7 @@ size_t watify_wat_module(wat_module_t* pm)
           modid_t mi; dpme_t *pdpme; 
           mi.mod = pic->arg2.mod; mi.id = pic->id;
           pdpme = bufbsearch(&dpmap, &mi, &modid_cmp);
-          if (!pdpme) exprintf("internal error: cannot patch ref.data $%s:%s", 
+          if (!pdpme) eprintf("internal error: cannot patch ref.data $%s:%s", 
             symname(mi.mod), symname(mi.id));
           pic->in = IN_I32_CONST;
           pic->arg.i = (long long)pdpme->address + pic->arg.i;
@@ -4073,7 +4073,7 @@ size_t watify_wat_module(wat_module_t* pm)
         modid_t mi; dpme_t *pdpme; 
         mi.mod = pe->ic.arg2.mod; mi.id = pe->ic.id;
         pdpme = bufbsearch(&dpmap, &mi, &modid_cmp);
-        if (!pdpme) exprintf("internal error: cannot patch ref.data $%s:%s", 
+        if (!pdpme) eprintf("internal error: cannot patch ref.data $%s:%s", 
           symname(mi.mod), symname(mi.id));
         pe->ic.in = IN_I32_CONST;
         pe->ic.arg.i = (long long)pdpme->address + pe->ic.arg.i;
@@ -4105,7 +4105,7 @@ size_t watify_wat_module(wat_module_t* pm)
     pt->lt = LT_MINMAX;
   }
   
-  chbfini(&dseg);
+  cbfini(&dseg);
   dsmebfini(&dsmap);
   buffini(&dpmap);
   buffini(&table);
@@ -4168,7 +4168,7 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
     /* check for main */
     if (pmi->main != MAIN_ABSENT) {
       if (mainmod) 
-        exprintf("duplicate main() in %s and %s modules", 
+        eprintf("duplicate main() in %s and %s modules", 
           symname(mainmod), symname(pmi->name));
       mainmod = pmi->name; mt = pmi->main;
       for (j = 0; j < watieblen(&pmi->exports); ++j) {
@@ -4177,7 +4177,7 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
         if (pe->id == mainid) {
           assert(pe->mod == mainmod);
           if (mainj != (size_t)-1)
-            exprintf("duplicate main() in %s module", 
+            eprintf("duplicate main() in %s module", 
               symname(mainmod));
           mainj = j;
         } 
@@ -4190,10 +4190,10 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
         *(sym_t*)bufnewbk(&extmodnames) = pi->mod;
     }
     if (bufsearch(&curmodnames, &pmi->name, &sym_cmp) != NULL)
-      exprintf("duplicate module: %s", symname(pmi->name));
+      eprintf("duplicate module: %s", symname(pmi->name));
     else *(sym_t*)bufnewbk(&curmodnames) = pmi->name;
   }
-  if (!mainmod) logef("error: main() function not found\n"); /* fixme: should be exprintf */
+  if (!mainmod) logef("error: main() function not found\n"); /* fixme: should be eprintf */
   else logef("# main() found in '%s' module\n", symname(mainmod));
 
   /* add missing library modules */
@@ -4216,7 +4216,7 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
         logef("# found library dependence: '%s' module\n", symname(rtn));
         load_library_wat_module(rtn, (pnewm = wat_module_buf_newbk(pwb)));
         if (pnewm->main != MAIN_ABSENT)
-          exprintf("unexpected main() in library module '%s'", symname(rtn)); 
+          eprintf("unexpected main() in library module '%s'", symname(rtn)); 
         /* trace sub-dependencies */
         for (j = 0; j < watieblen(&pnewm->imports); ++j) {
           watie_t *pi = watiebref(&pnewm->imports, j);
@@ -4259,13 +4259,13 @@ void link_wat_modules(wat_module_buf_t *pwb, wat_module_t* pm)
     if (pe->iek != IEK_FUNC) continue;
     if (pe->id == startid) {
       if (startmod) 
-        exprintf("duplicate _start() function in module '%s' and '%s'",
+        eprintf("duplicate _start() function in module '%s' and '%s'",
           symname(startmod), symname(pe->mod));
       startmod = pe->mod;
       pe->exported = true;
     }
   }
-  if (!startmod) exprintf("_start() function not found");
+  if (!startmod) eprintf("_start() function not found");
   else logef("# found _start() function in '%s' module\n", symname(startmod));
 
   if (getverbosity() > 0) {
@@ -4295,7 +4295,7 @@ static unsigned lookup_func_idx(wasm_module_t *pbm, sym_t mod, sym_t id)
     entry_t *pe = entbref(&pbm->funcdefs, i);
     if (pe->mod == mod && pe->name == id) return (unsigned)i;
   }
-  exprintf("cannot locate function $%s:%s", symname(mod), symname(id));
+  eprintf("cannot locate function $%s:%s", symname(mod), symname(id));
   return 0;
 }
 
@@ -4306,7 +4306,7 @@ static unsigned lookup_glob_idx(wasm_module_t *pbm, sym_t mod, sym_t id)
     entry_t *pe = entbref(&pbm->globdefs, i);
     if (pe->mod == mod && pe->name == id) return (unsigned)i;
   }
-  exprintf("cannot locate global $%s:%s", symname(mod), symname(id));
+  eprintf("cannot locate global $%s:%s", symname(mod), symname(id));
   return 0;
 }
 
@@ -4318,7 +4318,7 @@ static unsigned lookup_var_idx(icbuf_t *picb, sym_t id)
     if (pic->in != IN_REGDECL) break;
     if (pic->id == id) return (unsigned)i;
   }
-  exprintf("cannot locate local $%s", symname(id));
+  eprintf("cannot locate local $%s", symname(id));
   return 0;
 }
 
@@ -4329,7 +4329,7 @@ static unsigned lookup_label(buf_t *plbb, sym_t id)
     sym_t *pid = bufref(plbb, n-i-1);
     if (*pid == id) return (unsigned)i;
   }
-  exprintf("cannot locate label $%s", symname(id));
+  eprintf("cannot locate label $%s", symname(id));
   return 0;
 }
 
@@ -4494,7 +4494,7 @@ void wat_to_wasm(wat_module_t *ptm, wasm_module_t *pbm)
         assert(!pe->align); assert(pe->ic.in == IN_I32_CONST);
         pdc = icbnewbk(&ps->code); *pdc = pe->ic; pdc->id = 0;
         icbnewbk(&ps->code)->in = IN_END; 
-        chbcpy(&ps->data, &pe->data);
+        cbcpy(&ps->data, &pe->data);
       } break;
       default:;
     }

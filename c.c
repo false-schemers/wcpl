@@ -493,10 +493,10 @@ static void asm_numerical_const(ts_t ts, numval_t *pval, inscode_t *pic)
 }
 
 /* produce simd128 constant instruction from literal */
-static void asm_simd128_const(ts_t ts, chbuf_t *pb, inscode_t *pic)
+static void asm_simd128_const(ts_t ts, cbuf_t *pb, inscode_t *pic)
 {
-  int i; unsigned char *p = (unsigned char *)chbdata(pb); 
-  assert(chblen(pb) == 16);
+  int i; unsigned char *p = (unsigned char *)cbdata(pb); 
+  assert(cblen(pb) == 16);
   pic->in = IN_V128_CONST; 
   pic->id = -(sym_t)ts; /* WAT hint fot format_inscode() &c. */
   pic->arg.u = pic->arg2.u = 0ULL; 
@@ -765,7 +765,7 @@ static sym_t intern_strlit(node_t *pn)
     assert(pn->ts == TS_STRING || pn->ts == TS_LSTRING);
     pd->mod = g_curmod;
     pd->id = internf("ds%d$", (int)n);
-    chbcpy(&pd->data, &pn->data); 
+    cbcpy(&pd->data, &pn->data); 
     pd->align = (pn->ts == TS_LSTRING) ? 4 /* wchar_t */ : 1 /* char */;
     pd->mut = MT_CONST;
     pn->name = pd->id;
@@ -1014,7 +1014,7 @@ static void check_static_assert(node_t *pn, buf_t *prib)
       n2eprintf(pen, pn, "unexpected lhs of static_assert comparison (static test expected)");
     if (res == 0) {
       if (!psn) neprintf(pn, "static_assert failed");
-      else neprintf(pn, "static_assert failed (%s)", chbdata(&psn->data));
+      else neprintf(pn, "static_assert failed (%s)", cbdata(&psn->data));
     }
   }
 }
@@ -1182,9 +1182,9 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
     acnt = asize/size;
     if (icnt-1 == acnt) --icnt; /* legal init: no final \0 */
     else if (icnt > acnt) neprintf(pdn, "too many characters for array");
-    memcpy(chbdata(&pd->data) + off, chbdata(&pdn->data), icnt*size);
+    memcpy(cbdata(&pd->data) + off, cbdata(&pdn->data), icnt*size);
   } else if (ts_numerical_or_enum(ptn->ts)) {
-    seval_t r; buf_t cb = mkchb();
+    seval_t r; buf_t cb = mkcb();
     if (!static_eval(pdn, NULL, &r) || !ts_numerical(r.ts)) 
       neprintf(pdn, "non-numerical-constant initializer");
     if (ts_arith_assign_compatible(ptn->ts, r.ts) || /* r.ts can be promoted up (no value check) */
@@ -1209,13 +1209,13 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
       case TS_DOUBLE: bindouble(r.val.d, &cb); break; 
       default: assert(false);
     }
-    memcpy(chbdata(&pd->data) + off, chbdata(&cb), chblen(&cb));
-    chbfini(&cb);
+    memcpy(cbdata(&pd->data) + off, cbdata(&cb), cblen(&cb));
+    cbfini(&cb);
   } else if (ptn->ts == TS_V128) {
     fold_simd_display(pdn, NULL);
     if (pdn->nt == NT_LITERAL && pdn->ts == TS_V128) {
-      assert(chblen(&pdn->data) == 16);
-      memcpy(chbdata(&pd->data) + off, chbdata(&pdn->data), chblen(&pdn->data));
+      assert(cblen(&pdn->data) == 16);
+      memcpy(cbdata(&pd->data) + off, cbdata(&pdn->data), cblen(&pdn->data));
     } else neprintf(pdn, "invalid constant initializer");
   } else if (ptn->ts == TS_PTR) {
     seval_t r;
@@ -1224,11 +1224,11 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
     }
     pd = watiebref(&g_curpwm->exports, pdidx); /* re-fetch after static_eval */
     if (!r.id) { /* NULL */
-      buf_t cb = mkchb();
+      buf_t cb = mkcb();
       if (r.val.i != 0) neprintf(pdn, "NULL initializer expected");
       binint(0, &cb); /* wasm32 */
-      memcpy(chbdata(&pd->data) + off, chbdata(&cb), chblen(&cb));
-      chbfini(&cb);
+      memcpy(cbdata(&pd->data) + off, cbdata(&cb), cblen(&cb));
+      cbfini(&cb);
     } else {
       const node_t *pitn, *pin = lookup_global(r.id);
       if (!pin) neprintf(pdn, "unknown name in address initializer");
@@ -1304,7 +1304,7 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
         pvn = ndref(pin, 1);
         if (fold_simd_display(pvn, NULL)) {
           assert(pvn->nt == NT_LITERAL && pvn->ts == TS_V128);
-          assert(chblen(&pvn->data) == 16);
+          assert(cblen(&pvn->data) == 16);
           asm_simd128_const((ts_t)pvn->val.i, &pvn->data, &pg->ic);
         } else if (!static_eval(pvn, NULL, &r)) {
           neprintf(pin, "non-constant initializer");
@@ -1614,7 +1614,7 @@ static bool fold_simd_display(node_t *pn, buf_t *prib)
       ndset(prn, NT_LITERAL, pn->pwsid, pn->startpos);
       prn->ts = TS_V128; assert(prn->data.esz == sizeof(char));
       prn->val.i = vets; /* kluge: val.i is used as type hint  */
-      chbclear(&prn->data); ok = true;
+      cbclear(&prn->data); ok = true;
       for (i = 1; i < n; ++i) {
         ok = arithmetic_eval(ndref(pn, i), prib, &nd) && ts_numerical(nd.ts) 
           && ts_arith_init_compatible(vets, nd.ts, &nd.val); 
@@ -1640,7 +1640,7 @@ static bool fold_simd_display(node_t *pn, buf_t *prib)
         } else break;
       }
     }
-    assert(!ok || chblen(&prn->data) == 16);
+    assert(!ok || cblen(&prn->data) == 16);
     if (ok) ndswap(pn, prn);
     ndfini(&nd), ndfini(&rn);
   }
@@ -3598,7 +3598,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
           acode_pushin_id_mod_iarg(pcn, IN_REF_DATA, id, g_curmod, 0);
         } break;
         case TS_V128: {
-          assert(chblen(&pn->data) == 16); 
+          assert(cblen(&pn->data) == 16); 
           pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), pn->ts);
           asm_simd128_const((ts_t)pn->val.i, &pn->data, icbnewbk(&pcn->data));
         } break;
@@ -4396,7 +4396,7 @@ static sym_t process_module(const char *fname, wat_module_t *pm)
     mod = pwscurmod(pw);
     closepws(pw);
   } else {
-    exprintf("cannot read module file: %s", fname);
+    eprintf("cannot read module file: %s", fname);
   }
   ndfini(&nd);
   return mod;
@@ -4634,7 +4634,7 @@ int main(int argc, char **argv)
     compile_module_to_wat(ifile_arg, &wm);
     if (ofile_arg) {
       FILE *pf = fopen(ofile_arg, "w");
-      if (!pf) exprintf("cannot open output file %s:", ofile_arg);
+      if (!pf) eprintf("cannot open output file %s:", ofile_arg);
       write_wat_module(&wm, pf);
       fclose(pf);
       logef("# object module written to %s\n", ofile_arg);
@@ -4668,14 +4668,14 @@ int main(int argc, char **argv)
       if (strsuf(ofile_arg, ".wasm")) {
         wasm_module_t wbm;
         pf = fopen(ofile_arg, "wb");
-        if (!pf) exprintf("cannot open output file %s:", ofile_arg);
+        if (!pf) eprintf("cannot open output file %s:", ofile_arg);
         wasm_module_init(&wbm);
         wat_to_wasm(&wm, &wbm);
         write_wasm_module(&wbm, pf);
         wasm_module_fini(&wbm);
       } else {
         pf = fopen(ofile_arg, "w");
-        if (!pf) exprintf("cannot open output file %s:", ofile_arg);
+        if (!pf) eprintf("cannot open output file %s:", ofile_arg);
         write_wat_module(&wm, pf);
       }
       fclose(pf);

@@ -31,7 +31,7 @@ int eoptich = 0;
 
 /* common utility functions */
 
-void exprintf(const char *fmt, ...)
+void eprintf(const char *fmt, ...)
 {
   va_list args;
 
@@ -50,37 +50,37 @@ void exprintf(const char *fmt, ...)
   exit(2); /* conventional value for failed execution */
 }
 
-void *exmalloc(size_t n)
+void *emalloc(size_t n)
 {
   void *p = malloc(n);
-  if (p == NULL) exprintf("malloc() failed:");
+  if (p == NULL) eprintf("malloc() failed:");
   return p;
 }
 
-void *excalloc(size_t n, size_t s)
+void *ecalloc(size_t n, size_t s)
 {
   void *p = calloc(n, s);
-  if (p == NULL) exprintf("calloc() failed:");
+  if (p == NULL) eprintf("calloc() failed:");
   return p;
 }
 
-void *exrealloc(void *m, size_t n)
+void *erealloc(void *m, size_t n)
 {
   void *p = realloc(m, n);
-  if (p == NULL) exprintf("realloc() failed:");
+  if (p == NULL) eprintf("realloc() failed:");
   return p;
 }
 
-char *exstrdup(const char *s)
+char *estrdup(const char *s)
 {
-  char *t = (char *)exmalloc(strlen(s)+1);
+  char *t = (char *)emalloc(strlen(s)+1);
   strcpy(t, s);
   return t;
 }
 
-char *exstrndup(const char* s, size_t n)
+char *estrndup(const char* s, size_t n)
 {
-  char *t = (char *)exmalloc(n+1);
+  char *t = (char *)emalloc(n+1);
   strncpy(t, s, n); t[n] = '\0';
   return t;
 }
@@ -477,7 +477,7 @@ void dsicpy(dstr_t* mem, const dstr_t* pds)
 {
   dstr_t ds = NULL;
   assert(mem); assert(pds);
-  if (*pds) strcpy((ds = exmalloc(strlen(*pds)+1)), *pds);
+  if (*pds) strcpy((ds = emalloc(strlen(*pds)+1)), *pds);
   *mem = ds;
 }
 
@@ -490,7 +490,7 @@ void dscpy(dstr_t* pds, const dstr_t* pdss)
 { 
   dstr_t ds = NULL;
   assert(pds); assert(pdss);
-  if (*pdss) strcpy((ds = exmalloc(strlen(*pdss)+1)), *pdss);
+  if (*pdss) strcpy((ds = emalloc(strlen(*pdss)+1)), *pdss);
   free(*pds); *pds = ds;
 }
 
@@ -498,7 +498,7 @@ void dssets(dstr_t* pds, const char *s)
 {
   dstr_t ds = NULL;
   assert(pds);
-  if (s) strcpy((ds = exmalloc(strlen(s)+1)), s);
+  if (s) strcpy((ds = emalloc(strlen(s)+1)), s);
   free(*pds); *pds = ds;
 }
 
@@ -530,7 +530,7 @@ buf_t* buficpy(buf_t* mem, const buf_t* pb) /* over non-inited */
   mem->fill = pb->fill;
   mem->buf = NULL;
   if (pb->end > 0) {
-    mem->buf = excalloc(pb->end, pb->esz);
+    mem->buf = ecalloc(pb->end, pb->esz);
     memcpy(mem->buf, pb->buf, pb->esz*pb->fill);
   }
   return mem;
@@ -554,7 +554,7 @@ buf_t mkbuf(size_t esz)
 
 buf_t* newbuf(size_t esz)
 {
-  buf_t* pb = (buf_t*)exmalloc(sizeof(buf_t));
+  buf_t* pb = (buf_t*)emalloc(sizeof(buf_t));
   bufinit(pb, esz);
   return pb;
 }
@@ -598,7 +598,7 @@ void bufgrow(buf_t* pb, size_t n)
     size_t oldsz = pb->end;
     size_t newsz = oldsz*2;
     if (oldsz + n > newsz) newsz += n;
-    pb->buf = exrealloc(pb->buf, newsz*pb->esz);
+    pb->buf = erealloc(pb->buf, newsz*pb->esz);
     pb->end = newsz;
   }
 }
@@ -889,39 +889,39 @@ void dsbfini(dsbuf_t* pb)
 
 /* char buffers */
 
-void chbput(const char *s, size_t n, chbuf_t* pb)
+void cbput(const char *s, size_t n, cbuf_t* pb)
 {
   size_t l = buflen(pb);
   bufresize(pb, l+n);
   memcpy(l+(char*)pb->buf, s, n);
 }
 
-void chbputs(const char *s, chbuf_t* pb)
+void cbputs(const char *s, cbuf_t* pb)
 {
   size_t n = strlen(s);
-  chbput(s, n, pb);
+  cbput(s, n, pb);
 }
 
-void chbputlc(unsigned long uc, chbuf_t* pb)
+void cbputlc(unsigned long uc, cbuf_t* pb)
 {
-  if (uc < 128) chbputc((unsigned char)uc, pb);
+  if (uc < 128) cbputc((unsigned char)uc, pb);
   else {
     char buf[5], *pc = (char *)utf8(uc, (unsigned char *)&buf[0]);
-    chbput(&buf[0], pc-&buf[0], pb);
+    cbput(&buf[0], pc-&buf[0], pb);
   }
 }
 
-void chbputwc(wchar_t wc, chbuf_t* pb)
+void cbputwc(wchar_t wc, cbuf_t* pb)
 {
   assert(WCHAR_MIN <= wc && wc <= WCHAR_MAX);
-  if (wc < 128) chbputc((unsigned char)wc, pb);
+  if (wc < 128) cbputc((unsigned char)wc, pb);
   else {
     char buf[5], *pc = (char *)utf8(wc, (unsigned char *)&buf[0]);
-    chbput(&buf[0], pc-&buf[0], pb);
+    cbput(&buf[0], pc-&buf[0], pb);
   }
 }
 
-void chbputd(int val, chbuf_t* pb)
+void cbputd(int val, cbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits (w/sign) */
   char *e = &buf[40], *p = e;
@@ -934,10 +934,10 @@ void chbputd(int val, chbuf_t* pb)
       while ((m /= 10) > 0);
     if (val < 0) *--p = '-';
   } else *--p = '0';
-  chbput(p, e-p, pb);
+  cbput(p, e-p, pb);
 }
 
-void chbputld(long val, chbuf_t* pb)
+void cbputld(long val, cbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits (w/sign) */
   char *e = &buf[40], *p = e;
@@ -950,10 +950,10 @@ void chbputld(long val, chbuf_t* pb)
       while ((m /= 10) > 0);
     if (val < 0) *--p = '-';
   } else *--p = '0';
-  chbput(p, e-p, pb);
+  cbput(p, e-p, pb);
 }
 
-void chbputt(ptrdiff_t val, chbuf_t* pb)
+void cbputt(ptrdiff_t val, cbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits (w/sign) */
   char *e = &buf[40], *p = e;
@@ -966,10 +966,10 @@ void chbputt(ptrdiff_t val, chbuf_t* pb)
       while ((m /= 10) > 0);
     if (val < 0) *--p = '-';
   } else *--p = '0';
-  chbput(p, e-p, pb);
+  cbput(p, e-p, pb);
 }
 
-void chbputu(unsigned val, chbuf_t* pb)
+void cbputu(unsigned val, cbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits */
   char *e = &buf[40], *p = e;
@@ -978,10 +978,10 @@ void chbputu(unsigned val, chbuf_t* pb)
     do *--p = (int)(m%10) + '0';
       while ((m /= 10) > 0);
   } else *--p = '0';
-  chbput(p, e-p, pb);
+  cbput(p, e-p, pb);
 }
 
-void chbputx(unsigned val, chbuf_t* pb)
+void cbputx(unsigned val, cbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits */
   char *e = &buf[40], *p = e;
@@ -990,10 +990,10 @@ void chbputx(unsigned val, chbuf_t* pb)
     do *--p = (int)(d = (m%16), d < 10 ? d + '0' : d-10 + 'a');
       while ((m /= 16) > 0);
   } else *--p = '0';
-  chbput(p, e-p, pb);
+  cbput(p, e-p, pb);
 }
 
-void chbputlu(unsigned long val, chbuf_t* pb)
+void cbputlu(unsigned long val, cbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits */
   char *e = &buf[40], *p = e;
@@ -1002,10 +1002,10 @@ void chbputlu(unsigned long val, chbuf_t* pb)
     do *--p = (int)(m%10) + '0';
       while ((m /= 10) > 0);
   } else *--p = '0';
-  chbput(p, e-p, pb);
+  cbput(p, e-p, pb);
 }
 
-void chbputllu(unsigned long long val, chbuf_t* pb)
+void cbputllu(unsigned long long val, cbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits */
   char *e = &buf[40], *p = e;
@@ -1014,10 +1014,10 @@ void chbputllu(unsigned long long val, chbuf_t* pb)
     do *--p = (int)(m%10) + '0';
       while ((m /= 10) > 0);
   } else *--p = '0';
-  chbput(p, e-p, pb);
+  cbput(p, e-p, pb);
 }
 
-void chbputz(size_t val, chbuf_t* pb)
+void cbputz(size_t val, cbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits */
   char *e = &buf[40], *p = e;
@@ -1026,10 +1026,10 @@ void chbputz(size_t val, chbuf_t* pb)
     do *--p = (int)(m%10) + '0';
       while ((m /= 10) > 0);
   } else *--p = '0';
-  chbput(p, e-p, pb);
+  cbput(p, e-p, pb);
 }
 
-void chbputll(long long val, chbuf_t* pb)
+void cbputll(long long val, cbuf_t* pb)
 {
   char buf[39+1]; /* enough up to 128 bits (w/sign) */
   char *e = &buf[40], *p = e;
@@ -1042,105 +1042,105 @@ void chbputll(long long val, chbuf_t* pb)
       while ((m /= 10) > 0);
     if (val < 0) *--p = '-';
   } else *--p = '0';
-  chbput(p, e-p, pb);
+  cbput(p, e-p, pb);
 }
 
-void chbputg(double v, chbuf_t* pb)
+void cbputg(double v, cbuf_t* pb)
 {
   char buf[100];
   if (v != v) strcpy(buf, "+nan"); 
   else if (v <= -HUGE_VAL) strcpy(buf, "-inf");
   else if (v >= HUGE_VAL)  strcpy(buf, "+inf");
   else sprintf(buf, "%.17g", v); /* see WCSSKAFPA paper */
-  chbputs(buf, pb);
+  cbputs(buf, pb);
 }
 
 /* minimalistic printf to char bufer */
-void chbputvf(chbuf_t* pb, const char *fmt, va_list ap)
+void cbputvf(cbuf_t* pb, const char *fmt, va_list ap)
 {
   assert(pb); assert(fmt);
   while (*fmt) {
     if (*fmt != '%' || *++fmt == '%') {
-      chbputc(*fmt++, pb);
+      cbputc(*fmt++, pb);
     } else if (fmt[0] == 's') {
       char *s = va_arg(ap, char*);
-      chbputs(s, pb); fmt += 1;
+      cbputs(s, pb); fmt += 1;
     } else if (fmt[0] == 'c') {
       int c = va_arg(ap, int);
-      chbputc(c, pb); fmt += 1;
+      cbputc(c, pb); fmt += 1;
     } else if (fmt[0] == 'l' && fmt[1] == 'c') {
       unsigned c = va_arg(ap, unsigned);
-      chbputlc(c, pb); fmt += 2;
+      cbputlc(c, pb); fmt += 2;
     } else if (fmt[0] == 'w' && fmt[1] == 'c') {
       wchar_t c = va_arg(ap, int); /* wchar_t promoted to int */
-      chbputwc(c, pb); fmt += 2;
+      cbputwc(c, pb); fmt += 2;
     } else if (fmt[0] == 'd') {
       int d = va_arg(ap, int);
-      chbputd(d, pb); fmt += 1;
+      cbputd(d, pb); fmt += 1;
     } else if (fmt[0] == 'x') {
       unsigned d = va_arg(ap, unsigned);
-      chbputx(d, pb); fmt += 1;
+      cbputx(d, pb); fmt += 1;
     } else if (fmt[0] == 'l' && fmt[1] == 'd') {
       long ld = va_arg(ap, long);
-      chbputld(ld, pb); fmt += 2;
+      cbputld(ld, pb); fmt += 2;
     } else if (fmt[0] == 'l' && fmt[1] == 'l' && fmt[2] == 'd') {
       long long lld = va_arg(ap, long long);
-      chbputll(lld, pb); fmt += 3;
+      cbputll(lld, pb); fmt += 3;
     } else if (fmt[0] == 't') {
       ptrdiff_t t = va_arg(ap, ptrdiff_t);
-      chbputt(t, pb); fmt += 1;
+      cbputt(t, pb); fmt += 1;
     } else if (fmt[0] == 'u') {
       unsigned u = va_arg(ap, unsigned);
-      chbputu(u, pb); fmt += 1;
+      cbputu(u, pb); fmt += 1;
     } else if (fmt[0] == 'l' && fmt[1] == 'u') {
       unsigned long lu = va_arg(ap, unsigned long);
-      chbputlu(lu, pb); fmt += 2;
+      cbputlu(lu, pb); fmt += 2;
     } else if (fmt[0] == 'l' && fmt[1] == 'l' && fmt[2] == 'u') {
       unsigned long long llu = va_arg(ap, unsigned long long);
-      chbputllu(llu, pb); fmt += 3;
+      cbputllu(llu, pb); fmt += 3;
     } else if (fmt[0] == 'z') {
       size_t z = va_arg(ap, size_t);
-      chbputz(z, pb); fmt += 1;
+      cbputz(z, pb); fmt += 1;
     } else if (fmt[0] == 'g') {
       double g = va_arg(ap, double);
-      chbputg(g, pb); fmt += 1;
+      cbputg(g, pb); fmt += 1;
     } else {
-      assert(0 && !!"unsupported chbputvf format directive");
+      assert(0 && !!"unsupported cbputvf format directive");
       break;
     } 
   }
 }
 
-void chbputf(chbuf_t* pb, const char *fmt, ...)
+void cbputf(cbuf_t* pb, const char *fmt, ...)
 {
   va_list args;
   assert(pb); assert(fmt);
   va_start(args, fmt);
-  chbputvf(pb, fmt, args);
+  cbputvf(pb, fmt, args);
   va_end(args);
 }
 
-void chbput4le(unsigned v, chbuf_t* pb)
+void cbput4le(unsigned v, cbuf_t* pb)
 {
-  chbputc(v & 0xFF, pb); v >>= 8;
-  chbputc(v & 0xFF, pb); v >>= 8;
-  chbputc(v & 0xFF, pb); v >>= 8;
-  chbputc(v & 0xFF, pb);
+  cbputc(v & 0xFF, pb); v >>= 8;
+  cbputc(v & 0xFF, pb); v >>= 8;
+  cbputc(v & 0xFF, pb); v >>= 8;
+  cbputc(v & 0xFF, pb);
 }
 
-void chbputtime(const char *fmt, const struct tm *tp, chbuf_t* pcb)
+void cbputtime(const char *fmt, const struct tm *tp, cbuf_t* pcb)
 {
   char buf[201]; /* always enough? */
   assert(fmt); assert(pcb);
-  if (tp != NULL && strftime(buf, 200, fmt, tp)) chbputs(buf, pcb);
+  if (tp != NULL && strftime(buf, 200, fmt, tp)) cbputs(buf, pcb);
 }
 
-void chbinsc(chbuf_t* pcb, size_t n, int c)
+void cbinsc(cbuf_t* pcb, size_t n, int c)
 {
   char *pc = bufins(pcb, n); *pc = c;
 }
 
-void chbinss(chbuf_t* pcb, size_t n, const char *s)
+void cbinss(cbuf_t* pcb, size_t n, const char *s)
 {
   while (*s) {
     char *pc = bufins(pcb, n); *pc = *s;
@@ -1148,53 +1148,53 @@ void chbinss(chbuf_t* pcb, size_t n, const char *s)
   }
 }
 
-char* chbset(chbuf_t* pb, const char *s, size_t n)
+char* cbset(cbuf_t* pb, const char *s, size_t n)
 {
   bufclear(pb);
-  chbput(s, n, pb);
-  return chbdata(pb);
+  cbput(s, n, pb);
+  return cbdata(pb);
 }
 
-char* chbsets(chbuf_t* pb, const char *s)
+char* cbsets(cbuf_t* pb, const char *s)
 {
   bufclear(pb);
-  chbputs(s, pb);
-  return chbdata(pb);
+  cbputs(s, pb);
+  return cbdata(pb);
 }
 
-char *chbsetf(chbuf_t* pb, const char *fmt, ...)
+char *cbsetf(cbuf_t* pb, const char *fmt, ...)
 {
   va_list args;
   assert(pb); assert(fmt);
   bufclear(pb);
   va_start(args, fmt);
-  chbputvf(pb, fmt, args);
+  cbputvf(pb, fmt, args);
   va_end(args);
-  return chbdata(pb);
+  return cbdata(pb);
 }
 
-char* chbdata(chbuf_t* pb)
+char* cbdata(cbuf_t* pb)
 {
   *(char*)bufnewbk(pb) = 0;
   pb->fill -= 1;
   return pb->buf; 
 }
 
-void chbcpy(chbuf_t* pb, const chbuf_t* pcb)
+void cbcpy(cbuf_t* pb, const cbuf_t* pcb)
 {
-  size_t n = chblen(pcb);
+  size_t n = cblen(pcb);
   bufresize(pb, n);
   memcpy((char*)pb->buf, (char*)pcb->buf, n);
 }
 
-void chbcat(chbuf_t* pb, const chbuf_t* pcb)
+void cbcat(cbuf_t* pb, const cbuf_t* pcb)
 {
-  size_t i = chblen(pb), n = chblen(pcb);
+  size_t i = cblen(pb), n = cblen(pcb);
   bufresize(pb, i+n);
   memcpy((char*)pb->buf+i, (char*)pcb->buf, n);
 }
 
-dstr_t chbclose(chbuf_t* pb)
+dstr_t cbclose(cbuf_t* pb)
 {
   dstr_t s;
   *(char*)bufnewbk(pb) = 0;
@@ -1202,13 +1202,13 @@ dstr_t chbclose(chbuf_t* pb)
   return s; 
 }
 
-int chbuf_cmp(const void *p1, const void *p2)
+int cbuf_cmp(const void *p1, const void *p2)
 {
-  chbuf_t *pcb1 = (chbuf_t *)p1, *pcb2 = (chbuf_t *)p2; 
+  cbuf_t *pcb1 = (cbuf_t *)p1, *pcb2 = (cbuf_t *)p2; 
   const unsigned char *pc1, *pc2;
   size_t n1, n2, i = 0;
   assert(pcb1); assert(pcb2);
-  n1 = chblen(pcb1), n2 = chblen(pcb2);
+  n1 = cblen(pcb1), n2 = cblen(pcb2);
   pc1 = pcb1->buf, pc2 = pcb2->buf;
   while (i < n1 && i < n2) {
     int d = (int)*pc1++ - (int)*pc2++;
@@ -1219,50 +1219,50 @@ int chbuf_cmp(const void *p1, const void *p2)
   return 0;
 }
 
-char *fgetlb(chbuf_t *pcb, FILE *fp)
+char *fgetlb(cbuf_t *pcb, FILE *fp)
 {
   char buf[256], *line; size_t len;
   assert(fp); assert(pcb);
-  chbclear(pcb);
+  cbclear(pcb);
   line = fgets(buf, 256, fp); /* sizeof(buf) */
   if (!line) return NULL;
   len = strlen(line);
   if (len > 0 && line[len-1] == '\n') {
     line[len-1] = 0;
     if (len > 1 && line[len-2] == '\r') line[len-2] = 0;
-    return chbsets(pcb, line);
+    return cbsets(pcb, line);
   } else for (;;) {
     if (len > 0 && line[len-1] == '\r') line[len-1] = 0;
-    chbputs(line, pcb);
+    cbputs(line, pcb);
     line = fgets(buf, 256, fp); /* sizeof(buf) */
     if (!line) break;
     len = strlen(line);
     if (len > 0 && line[len-1] == '\n') {
       line[len-1] = 0;
       if (len > 1 && line[len-2] == '\r') line[len-2] = 0;
-      chbputs(line, pcb);
+      cbputs(line, pcb);
       break;
     }
   } 
-  return chbdata(pcb);
+  return cbdata(pcb);
 }
 
 /* convert wchar_t string to utf-8 string
  * if rc = 0, return NULL on errors, else subst rc */
-char *wcsto8cb(const wchar_t *wstr, int rc, chbuf_t *pcb)
+char *wcsto8cb(const wchar_t *wstr, int rc, cbuf_t *pcb)
 {
   bool convok = true;
-  chbclear(pcb);
+  cbclear(pcb);
   while (*wstr) {
     unsigned c = (unsigned)*wstr++;
     if (c > 0x1FFFFF) {
-      if (rc) chbputc(rc, pcb);
+      if (rc) cbputc(rc, pcb);
       else { convok = false; break; }
     }
-    chbputlc(c, pcb);
+    cbputlc(c, pcb);
   }
   if (!convok) return NULL;
-  return chbdata(pcb);
+  return cbdata(pcb);
 }
 
 
@@ -1319,7 +1319,7 @@ unsigned long *s8ctoucb(const char *str, unsigned long rc, buf_t *pb)
 }
 
 /* grow pcb to get to the required alignment */
-void binalign(chbuf_t* pcb, size_t align)
+void binalign(cbuf_t* pcb, size_t align)
 {
   size_t addr = buflen(pcb), n;
   assert(align == 1 || align == 2 || align == 4 || align == 8 || align == 16);
@@ -1328,67 +1328,67 @@ void binalign(chbuf_t* pcb, size_t align)
 }
 
 /* lay out numbers as little-endian binary into cbuf */
-void binchar(int c, chbuf_t* pcb) /* align=1 */
+void binchar(int c, cbuf_t* pcb) /* align=1 */
 {
-  chbputc(c, pcb);
+  cbputc(c, pcb);
 }
 
-void binshort(int s, chbuf_t* pcb) /* align=2 */
+void binshort(int s, cbuf_t* pcb) /* align=2 */
 {
   binalign(pcb, 2);
-  chbputc((s >> 0) & 0xFF, pcb);
-  chbputc((s >> 8) & 0xFF, pcb);
+  cbputc((s >> 0) & 0xFF, pcb);
+  cbputc((s >> 8) & 0xFF, pcb);
 }
 
-void binint(int i, chbuf_t* pcb) /* align=4 */
+void binint(int i, cbuf_t* pcb) /* align=4 */
 {
   binalign(pcb, 4);
-  chbputc((i >> 0)  & 0xFF, pcb);
-  chbputc((i >> 8)  & 0xFF, pcb);
-  chbputc((i >> 16) & 0xFF, pcb);
-  chbputc((i >> 24) & 0xFF, pcb);
+  cbputc((i >> 0)  & 0xFF, pcb);
+  cbputc((i >> 8)  & 0xFF, pcb);
+  cbputc((i >> 16) & 0xFF, pcb);
+  cbputc((i >> 24) & 0xFF, pcb);
 }
 
-void binllong(long long ll, chbuf_t* pcb) /* align=8 */
+void binllong(long long ll, cbuf_t* pcb) /* align=8 */
 {
   binalign(pcb, 8);
-  chbputc((ll >> 0)  & 0xFF, pcb);
-  chbputc((ll >> 8)  & 0xFF, pcb);
-  chbputc((ll >> 16) & 0xFF, pcb);
-  chbputc((ll >> 24) & 0xFF, pcb);
-  chbputc((ll >> 32) & 0xFF, pcb);
-  chbputc((ll >> 40) & 0xFF, pcb);
-  chbputc((ll >> 48) & 0xFF, pcb);
-  chbputc((ll >> 56) & 0xFF, pcb);
+  cbputc((ll >> 0)  & 0xFF, pcb);
+  cbputc((ll >> 8)  & 0xFF, pcb);
+  cbputc((ll >> 16) & 0xFF, pcb);
+  cbputc((ll >> 24) & 0xFF, pcb);
+  cbputc((ll >> 32) & 0xFF, pcb);
+  cbputc((ll >> 40) & 0xFF, pcb);
+  cbputc((ll >> 48) & 0xFF, pcb);
+  cbputc((ll >> 56) & 0xFF, pcb);
 }
 
-void binuchar(unsigned uc, chbuf_t* pcb) /* align=1 */
+void binuchar(unsigned uc, cbuf_t* pcb) /* align=1 */
 {
-  chbputc((int)uc, pcb);
+  cbputc((int)uc, pcb);
 }
 
-void binushort(unsigned us, chbuf_t* pcb) /* align=2 */
+void binushort(unsigned us, cbuf_t* pcb) /* align=2 */
 {
   binshort((int)us, pcb);
 }
 
-void binuint(unsigned ui, chbuf_t* pcb) /* align=4 */
+void binuint(unsigned ui, cbuf_t* pcb) /* align=4 */
 {
   binint((int)ui, pcb);
 }
 
-void binullong(unsigned long long ull, chbuf_t* pcb) /* align=8 */
+void binullong(unsigned long long ull, cbuf_t* pcb) /* align=8 */
 {
   binllong((long long)ull, pcb);
 }
 
-void binfloat(float f, chbuf_t* pcb) /* align=4 */
+void binfloat(float f, cbuf_t* pcb) /* align=4 */
 {
   union { int i; float f; } inf; inf.f = f;
   binint(inf.i, pcb); 
 }
 
-void bindouble(double d, chbuf_t* pcb) /* align=8 */
+void bindouble(double d, cbuf_t* pcb) /* align=8 */
 {
   union { long long ll; double d; } ind; ind.d = d;
   binllong(ind.ll, pcb); 
@@ -1418,8 +1418,8 @@ sym_t intern(const char *name)
   size_t i, j; int sym;
   if (name == NULL) return (sym_t)0;
   if (g_symt.sz == 0) { /* init */
-    g_symt.a = excalloc(64, sizeof(char*));
-    g_symt.v = excalloc(64, sizeof(char**));
+    g_symt.a = ecalloc(64, sizeof(char*));
+    g_symt.v = ecalloc(64, sizeof(char**));
     g_symt.sz = 64, g_symt.maxu = 64 / 2;
     i = hashs(name) & (g_symt.sz-1);
   } else {
@@ -1428,8 +1428,8 @@ sym_t intern(const char *name)
       if (strcmp(name, *g_symt.v[i]) == 0) return (sym_t)(g_symt.v[i]-g_symt.a+1);
     if (g_symt.u == g_symt.maxu) { /* rehash */
       size_t nsz = g_symt.sz * 2;
-      char **na = excalloc(nsz, sizeof(char*));
-      char ***nv = excalloc(nsz, sizeof(char**));
+      char **na = ecalloc(nsz, sizeof(char*));
+      char ***nv = ecalloc(nsz, sizeof(char**));
       for (i = 0; i < g_symt.sz; i++)
         if (g_symt.v[i]) {
           for (j = hashs(*g_symt.v[i]) & (nsz-1); nv[j]; j = (j-1) & (nsz-1)) ;
@@ -1441,20 +1441,20 @@ sym_t intern(const char *name)
     }
   }
   *(g_symt.v[i] = g_symt.a + g_symt.u) = 
-    strcpy(exmalloc(strlen(name)+1), name);
+    strcpy(emalloc(strlen(name)+1), name);
   sym = (int)((g_symt.u)++);
   return (sym_t)(sym+1);
 }
 
 sym_t internf(const char *fmt, ...)
 {
-  va_list args; sym_t s; chbuf_t cb; 
-  assert(fmt); chbinit(&cb);
+  va_list args; sym_t s; cbuf_t cb; 
+  assert(fmt); cbinit(&cb);
   va_start(args, fmt);
-  chbputvf(&cb, fmt, args);
+  cbputvf(&cb, fmt, args);
   va_end(args);
-  s = intern(chbdata(&cb));
-  chbfini(&cb);
+  s = intern(cbdata(&cb));
+  cbfini(&cb);
   return s;
 }
 
@@ -1660,7 +1660,7 @@ void setprogname(const char *str)
   char *pname;
   assert(str);
   str = getfname(str);
-  pname = exstrndup(str, spanfbase(str));
+  pname = estrndup(str, spanfbase(str));
   g_progname = pname;
 }
 
@@ -1675,7 +1675,7 @@ const char *usage(void)
 /* setusage: set stored usage string */
 void setusage(const char *str)
 {
-  g_usage = exstrdup(str);
+  g_usage = estrdup(str);
 }
 
 /* eusage: report wrong usage */
