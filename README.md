@@ -109,6 +109,8 @@ cc -o wcpl [wcpl].c
 - system headers included as `#include <foo>` can have the following extensions: (none), `.h`, `.wh`
 - system headers are looked up in directories given via `-I` option and `WCPL_INCLUDE_PATH` environment variable
 - also, system headers are looked up in `include` sub-directories of library directories as specified above
+- all bundled libraries (see `lib` folder) are embedded inside the executable, so they need no `-L`/`-I` options
+- embedded library files are logged as belonging to `res://` pseudo-directory (a compressed archive inside `l.c`)
 - user headers included as `#include "foo"` can have the following extensions: (none), `.h`, `.wh`
 - user headers are looked up first in current directory, then in system directories as stated above
 - user object modules should be provided explicitly as command line arguments
@@ -170,7 +172,7 @@ Fortunately, some advanced optimizations can be applied to WASM output post-fact
 One tool that can be used for this purpose is `wasm-opt` from `bynaryen`*** project:
 
 ```
-$ wcpl -L lib/ -o foo.wasm foo.c
+$ wcpl -o foo.wasm foo.c
 $ wasm-opt -o foo-opt.wasm -O3 foo.wasm
 ```
 
@@ -182,8 +184,8 @@ runtime may look something like this:
 
 ```
 $ cc -o wcpl [wcpl].c
-$ ./wcpl -q -L lib/ -o wcpl.wasm [wcpl].c
-$ wasmtime --dir=. -- wcpl.wasm -q -L lib/ -o wcpl1.wasm [wcpl].c
+$ ./wcpl -q -o wcpl.wasm [wcpl].c
+$ wasmtime --dir=. -- wcpl.wasm -q -o wcpl1.wasm [wcpl].c
 $ diff -s wcpl.wasm wcpl1.wasm
 Files wcpl.wasm and wcpl1.wasm are identical
 ```
