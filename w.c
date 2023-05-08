@@ -2275,7 +2275,7 @@ static void freesws(sws_t *pw)
 {
   if (pw) {
     free(pw->infile);
-    if (pw->close != &fclose || pw->input != stdin) (*pw->close)(pw->input);
+    if (pw->close != (fclose_t)&fclose || pw->input != stdin) (*pw->close)(pw->input);
     cbfini(&pw->chars);
     cbfini(&pw->token);
     free(pw);

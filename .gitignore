@@ -53,3 +53,7 @@ dkms.conf
 
 # misc
 save/
+wcpl
+wcpl0
+wcpl0.wasm
+wcpl1.wasm

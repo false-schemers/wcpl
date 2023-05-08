@@ -145,7 +145,7 @@ void closepws(pws_t *pw)
 {
   if (pw) {
     if (pw->input != NULL) {
-      if (pw->close != &fclose || pw->input != stdin) (*pw->close)(pw->input);
+      if (pw->close != (fclose_t)&fclose || pw->input != stdin) (*pw->close)(pw->input);
       pw->input = NULL;
     }
     cbclear(&pw->incb);
