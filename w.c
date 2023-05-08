@@ -2219,14 +2219,16 @@ typedef enum wt_tag {
 /* scanner workspace */
 typedef struct sws {
   dstr_t infile;      /* current input file name or "-" */
-  FILE *input;        /* current input stream */
+  void *input;        /* current input stream */
+  fgetlb_t getlb;     /* function to read from it */
+  fclose_t close;     /* and close it afterwards */
   int lno;            /* current line no. (0-based) */
   bool inateof;       /* current input is exausted */  
-  cbuf_t chars;      /* line buffer of chars */
+  cbuf_t chars;       /* line buffer of chars */
   int curi;           /* current input position in line */
   bool gottk;         /* lookahead token is available */
   wt_t ctk;           /* lookahead token type */
-  cbuf_t token;      /* lookahead token char data */
+  cbuf_t token;       /* lookahead token char data */
   char *tokstr;       /* lookahead token string */
   int posl;           /* lno of la token start */
   int posi;           /* posi of la token start */
@@ -2235,16 +2237,29 @@ typedef struct sws {
 /* alloc scanner workspace for infile */
 sws_t *newsws(const char *infile)
 {
-  FILE *fp;
-  fp = streql(infile, "-") ? stdin : fopen(infile, "r");
+  FILE *fp = NULL; MEM *mp = NULL;
+  const char *mpath; sws_t *pw = NULL;
+  if (streql(infile, "-")) fp = stdin;
+  else if ((mpath = strprf(infile, "res://")) != NULL) mp = mopen(mpath);
+  else fp = fopen(infile, "r");
   if (fp) {
-    sws_t *pw = emalloc(sizeof(sws_t));
-    pw->infile = estrdup(infile);
+    pw = emalloc(sizeof(sws_t));
     pw->input = fp;
+    pw->getlb = (fgetlb_t)&fgetlb;
+    pw->close = (fclose_t)&fclose;
+    fget8bom(pw->input);
+  } else if (mp) {
+    pw = emalloc(sizeof(sws_t));
+    pw->input = mp;
+    pw->getlb = (fgetlb_t)&mgetlb;
+    pw->close = (fclose_t)&mclose;
+  }
+  /* init all remaining fields */
+  if (pw) {
+    pw->infile = estrdup(infile);
     pw->lno = 0;
     pw->inateof = false;
     bufinit(&pw->chars, sizeof(char));
-    fget8bom(pw->input);
     pw->curi = 0; 
     pw->gottk = false;
     pw->ctk = WT_EOF;
@@ -2252,16 +2267,15 @@ sws_t *newsws(const char *infile)
     pw->tokstr = NULL;
     pw->posl = 0;
     pw->posi = 0;
-    return pw;
   }
-  return NULL;
+  return pw;
 }
 
 static void freesws(sws_t *pw)
 {
   if (pw) {
     free(pw->infile);
-    if (pw->input && pw->input != stdin) fclose(pw->input);
+    if (pw->close != &fclose || pw->input != stdin) (*pw->close)(pw->input);
     cbfini(&pw->chars);
     cbfini(&pw->token);
     free(pw);
@@ -2274,7 +2288,7 @@ static int fetchline(sws_t *pw, char **ptbase, int *pendi)
   cbuf_t *pp = &pw->chars; int c = EOF;
   cbclear(pp);
   if (!pw->inateof) {
-    char *line = fgetlb(pp, pw->input);
+    char *line = (*pw->getlb)(pp, pw->input);
     if (!line) {
       pw->inateof = true;
     } else {

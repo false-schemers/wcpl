@@ -64,22 +64,23 @@ pws_t *pws_from_modname(bool sys, sym_t mod)
   return pws;
 }
 
-
 /* parser workspaces */
 struct pws {
   int id;             /* sequential id of this pws or -1 */
   dstr_t infile;      /* current input file name or "-" */
   sym_t curmod;       /* current module name or 0 */
-  FILE *input;        /* current input stream */
+  void *input;        /* current input stream */
+  fgetlb_t getlb;     /* function to read from it */
+  fclose_t close;     /* and close it afterwards */
   bool inateof;       /* current input is exausted */  
-  cbuf_t incb;      /* input buffer for parser */  
+  cbuf_t incb;        /* input buffer for parser */  
   buf_t lsposs;       /* line start positions */  
   size_t discarded;   /* count of discarded chars */  
-  cbuf_t chars;      /* line buffer of chars */
+  cbuf_t chars;       /* line buffer of chars */
   int curi;           /* current input position in buf */
   bool gottk;         /* lookahead token is available */
   tt_t ctk;           /* lookahead token type */
-  cbuf_t token;      /* lookahead token char data */
+  cbuf_t token;       /* lookahead token char data */
   char *tokstr;       /* lookahead token string */
   int pos;            /* absolute pos of la token start */
   int cclevel;        /* nesting of active cc blocks */
@@ -100,20 +101,33 @@ static buf_t g_pwsbuf;
 /* alloc parser workspace for infile */
 pws_t *newpws(const char *infile)
 {
-  FILE *fp;
-  fp = streql(infile, "-") ? stdin : fopen(infile, "r");
+  FILE *fp = NULL; MEM *mp = NULL;
+  const char *mpath; pws_t *pw = NULL;
+  if (streql(infile, "-")) fp = stdin;
+  else if ((mpath = strprf(infile, "res://")) != NULL) mp = mopen(mpath);
+  else fp = fopen(infile, "r");
   if (fp) {
-    pws_t *pw = emalloc(sizeof(pws_t));
+    pw = emalloc(sizeof(pws_t));
+    pw->input = fp;
+    pw->getlb = (fgetlb_t)&fgetlb;
+    pw->close = (fclose_t)&fclose;
+    fget8bom(pw->input);
+  } else if (mp) {
+    pw = emalloc(sizeof(pws_t));
+    pw->input = mp;
+    pw->getlb = (fgetlb_t)&mgetlb;
+    pw->close = (fclose_t)&mclose;
+  }
+  /* init all remaining fields */
+  if (pw) {
     pw->id = (int)buflen(&g_pwsbuf);
     pw->infile = estrdup(infile);
     pw->curmod = streql(infile, "-") ? intern("_") : modname_from_path(infile);
-    pw->input = fp;
     pw->inateof = false;
     cbinit(&pw->incb);
     bufinit(&pw->lsposs, sizeof(size_t));
     pw->discarded = 0;
     bufinit(&pw->chars, sizeof(char));
-    fget8bom(pw->input);
     pw->curi = 0; 
     pw->gottk = false;
     pw->ctk = TT_EOF;
@@ -122,17 +136,17 @@ pws_t *newpws(const char *infile)
     pw->pos = 0;
     pw->cclevel = 0;
     *(pws_t**)bufnewbk(&g_pwsbuf) = pw;
-    return pw;
   }
-  return NULL;
+  return pw;
 }
 
 /* close existing workspace, leaving only data used for error reporting */
 void closepws(pws_t *pw)
 {
   if (pw) {
-    if (pw->input && pw->input != stdin) {
-      fclose(pw->input); pw->input = NULL;
+    if (pw->input != NULL) {
+      if (pw->close != &fclose || pw->input != stdin) (*pw->close)(pw->input);
+      pw->input = NULL;
     }
     cbclear(&pw->incb);
     cbclear(&pw->token);
@@ -142,8 +156,8 @@ void closepws(pws_t *pw)
 static void freepws(pws_t *pw)
 {
   if (pw) {
+    closepws(pw);
     free(pw->infile);
-    if (pw->input && pw->input != stdin) fclose(pw->input);
     cbfini(&pw->incb);
     buffini(&pw->lsposs);
     cbfini(&pw->chars);
@@ -212,7 +226,7 @@ static int fetchline(pws_t *pw, char **ptbase, int *pendi)
 {
   cbuf_t *pp = &pw->chars; int c = EOF;
   if (!pw->inateof) {
-    char *line = fgetlb(&pw->incb, pw->input);
+    char *line = (*pw->getlb)(&pw->incb, pw->input);
     if (!line) {
       pw->inateof = true;
     } else {

@@ -154,6 +154,8 @@ typedef buf_t cbuf_t;
 #define freecb(pb) (freebuf(pb))
 #define cblen(pb) (buflen(pb))
 #define cbclear(pb) (bufclear(pb))
+#define cbempty(pb) (buflen(pb) == 0)
+#define cballoc(pb, n) ((char*)bufalloc(pb, n))
 #define cbputc(c, pb) (*(char*)bufnewbk(pb) = (char)(c))
 extern void cbput(const char *s, size_t n, cbuf_t* pcb);
 extern void cbputs(const char *s, cbuf_t* pcb);
@@ -227,3 +229,17 @@ extern char *getfname(const char *path);
 extern size_t spanfbase(const char* path);
 /* returns trailing file extension ("" or ".foo") */
 extern char* getfext(const char* path);
+
+/* lightweight input abstraction */
+typedef char* (*fgetlb_t)(cbuf_t *pcb, void *dp);
+typedef int (*fclose_t)(void *dp);
+
+/* reading from in-memory archive */
+typedef struct mem {
+  const char *base, *end;
+  const char *curp;
+  bool inheap;
+} MEM;
+extern MEM *mopen(const char *path);
+extern char *mgetlb(cbuf_t *pcb, MEM *mp);
+extern int mclose(MEM *mp);

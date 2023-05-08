@@ -33,7 +33,7 @@ size_t  g_argvbsz;  /* argv buf size in bytes */
 /* initialize wcpl environment */
 void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl, size_t sarg, size_t aarg)
 {
-  size_t i;
+  size_t i; char *ipath;
   g_optlvl = optlvl; 
   g_ibases = newbuf(sizeof(sym_t));
   for (i = 0; i < dsblen(pincv); ++i) {
@@ -41,6 +41,8 @@ void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl, size_t sarg, size_t 
     *(sym_t*)bufnewbk(g_ibases) = intern(*pds);
   }
   g_lbases = newbuf(sizeof(sym_t));
+  /* as a last resort, loook in internal in-memory archive */
+  ipath = "res://lib/"; dsbpushbk(plibv, &ipath);
   for (i = 0; i < dsblen(plibv); ++i) {
     dstr_t *pds = dsbref(plibv, i);
     int sepchar = strsuf(*pds, "\\") ? '\\' : '/';
@@ -4614,7 +4616,7 @@ int main(int argc, char **argv)
       case 'L':  eoarg = eoptarg; dsbpushbk(&libv, &eoarg); break;
       case 's':  s_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'a':  a_arg = strtoul(eoptarg, NULL, 0); break; 
-      case 'h':  eusage("WCPL 1.03 built on " __DATE__);
+      case 'h':  eusage("WCPL 1.04 built on " __DATE__);
     }
   }
 
