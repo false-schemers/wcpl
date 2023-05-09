@@ -136,7 +136,7 @@ static bool ts_numerical(ts_t ts)
 
 static bool ts_numerical_or_enum(ts_t ts) 
 {
-  return TS_BOOL <= ts && ts <= TS_DOUBLE || ts == TS_ENUM;
+  return (TS_BOOL <= ts && ts <= TS_DOUBLE) || ts == TS_ENUM;
 }
 
 static bool ts_bulk(ts_t ts) 
@@ -1172,7 +1172,7 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
         neprintf(pdn, "initializer is too long");
     }
   } else if (ptn->ts == TS_ARRAY && pdn->nt == NT_LITERAL) {
-    node_t *petn, *pecn; size_t asize, size, align, acnt, icnt;
+    node_t *petn, *pecn; size_t asize, size, align, acnt, icnt = 0;
     assert(ndlen(ptn) == 2);
     measure_type(ptn, ptn, &asize, &align, 0);
     petn = ndref(ptn, 0), pecn = ndref(ptn, 1);
@@ -2697,11 +2697,11 @@ static bool asm_binary(ts_t ts, tt_t op, icbuf_t *pdata)
   return true;
 }
 
-/* push instruction to pdata's front */
+/* push instruction to pdata's front
 static void asm_pushfr(icbuf_t *pdata, inscode_t *pic)
 {
   *icbnewfr(pdata) = *pic;
-}
+} */
 
 /* push instruction to pdata's end */
 static void asm_pushbk(icbuf_t *pdata, inscode_t *pic)
@@ -3068,7 +3068,7 @@ static node_t *common_ptr_type(node_t *patn1, node_t *patn2)
 /* compile x ? y : z operator */
 static node_t *compile_cond(node_t *prn, node_t *pan1, node_t *pan2, node_t *pan3)
 {
-  node_t *patn1 = acode_type(pan1), *patn2 = acode_type(pan2), *patn3 = acode_type(pan3); 
+  node_t *patn2 = acode_type(pan2), *patn3 = acode_type(pan3); 
   node_t nt = mknd(), *pcn = npnewcode(prn), *pctn = NULL; bool use_select;
   if (ts_numerical(patn2->ts) && ts_numerical(patn3->ts)) 
     pctn = ndsettype(&nt, ts_arith_common(patn2->ts, patn3->ts));
@@ -3393,7 +3393,6 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
 static node_t *compile_acapp(node_t *prn, node_t *pacn, buf_t *pab)
 {
   node_t *pcn = npnewcode(prn), *pftn = acode_type(pacn); size_t i;
-  size_t alen = ndlen(pftn);
   if (pftn->ts != TS_PTR || ndref(pftn, 0)->ts != TS_FUNCTION) 
     n2eprintf(ndref(prn, 0), prn, "can't apply asm() of non-function-pointer type");
   pftn = ndref(pftn, 0);
@@ -3645,7 +3644,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
               acode_pushin_id_mod(pan, IN_GLOBAL_SET, g_sp_id, g_crt_mod);
               acode_pushin_id_mod(pan, IN_GLOBAL_GET, g_sp_id, g_crt_mod);
             } else { /* calc frame size dynamically */
-              sym_t sname = rpalloc(VT_I32), pname = rpalloc(VT_I32); /* wasm32 */
+              sym_t sname = rpalloc(VT_I32); /* wasm32 */
               pic = icbnewfr(&pan->data); pic->in = IN_REGDECL; pic->id = sname; pic->arg.u = VT_I32;
               if (!ts_numerical(ptni->ts) || ts_arith_common(ptni->ts, TS_ULONG) != TS_ULONG)
                 neprintf(pn, "invalid alloca() intrinsic's argument");
@@ -4123,7 +4122,7 @@ static void fundef_peephole(node_t *pcn, int optlvl)
   } while (nmods > 0 && --optlvl > 0);
 }
 
-/* compile single expression on top level */
+/* compile single expression on top level
 static node_t *expr_compile_top(node_t *pn)
 {
   buf_t rib = mkbuf(sizeof(ri_t));
@@ -4146,7 +4145,7 @@ static node_t *expr_compile_top(node_t *pn)
   }
   buffini(&rib);
   return pcn;
-}
+} */
 
 
 /* convert function param/result type node to a valtype */
@@ -4298,7 +4297,7 @@ static void process_top_node(sym_t mmod, node_t *pn, wat_module_t *pm)
   /* ignore typedefs (they are already processed) */  
   if (pn->nt == NT_TYPEDEF) {
     if (getverbosity() > 0) {
-      size_t size = 0, align = 0;
+      /* size_t size = 0, align = 0; */
       dump_node(pn, stderr); assert(ndlen(pn) == 1);
       /* measure_type(ndref(pn, 0), pn, &size, &align, 0);
       fprintf(stderr, "size: %d, align: %d\n", (int)size, (int)align); */

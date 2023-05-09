@@ -251,6 +251,7 @@ static int fetchline(pws_t *pw, char **ptbase, int *pendi)
   return c;  
 }
 
+#if 0
 /* readjust input after previous read; return true unless at EOF */
 static bool clearinput(pws_t *pw)
 {
@@ -279,6 +280,7 @@ static bool clearinput(pws_t *pw)
   }
   return false;
 }
+#endif
 
 /* report error, possibly printing location information */
 static void vrprintf(pws_t *pw, int startpos, const char *fmt, va_list args)
@@ -2410,7 +2412,7 @@ void patch_macro_template(buf_t *pids, ndbuf_t *ppars, node_t *pn)
       assert(pcnt >= n-1);
       for (i = 1; i+1 < ndlen(pn); i += 2) {
         node_t *pcn = ndref(pn, i), *pen = ndref(pn, i+1);
-        if (pcn->nt == NT_NULL || pcn->nt == NT_LITERAL && pcn->ts == TS_INT && pcn->val.i == (int)pcnt) {
+        if (pcn->nt == NT_NULL || (pcn->nt == NT_LITERAL && pcn->ts == TS_INT && pcn->val.i == (int)pcnt)) {
           patch_macro_template(pids, ppars, pen);
           presn = pen; break;
         }
@@ -2806,7 +2808,6 @@ static bool postfix_operator_ahead(pws_t *pw)
 
 static void parse_postfix_expr(pws_t *pw, node_t *pn)
 {
-  int startpos = peekpos(pw);
   parse_concat_expr(pw, pn);
   /* cast type (t) can't be postfixed */
   if (pn->nt == NT_TYPE) return;
@@ -2869,7 +2870,7 @@ static void parse_unary_expr(pws_t *pw, node_t *pn)
 
 static long long parse_asm_signed(pws_t *pw)
 {
-  node_t xnd = mknd(), lnd = mknd(); bool ok = false;
+  node_t xnd = mknd(), lnd = mknd();
   int startpos = peekpos(pw);
   parse_primary_expr(pw, &xnd);
   if (arithmetic_eval(&xnd, NULL, &lnd) && lnd.nt == NT_LITERAL) {
@@ -2889,7 +2890,7 @@ static long long parse_asm_signed(pws_t *pw)
 
 static unsigned long long parse_asm_unsigned(pws_t *pw, unsigned long long maxval)
 {
-  node_t xnd = mknd(), lnd = mknd(); bool ok = false;
+  node_t xnd = mknd(), lnd = mknd();
   int startpos = peekpos(pw);
   parse_primary_expr(pw, &xnd);
   if (arithmetic_eval(&xnd, NULL, &lnd) && lnd.nt == NT_LITERAL) {
@@ -2914,7 +2915,7 @@ static unsigned long long parse_asm_unsigned(pws_t *pw, unsigned long long maxva
 
 static double parse_asm_double(pws_t *pw)
 {
-  node_t xnd = mknd(), lnd = mknd(); bool ok = false;
+  node_t xnd = mknd(), lnd = mknd();
   int startpos = peekpos(pw);
   parse_primary_expr(pw, &xnd);
   if (arithmetic_eval(&xnd, NULL, &lnd) && lnd.nt == NT_LITERAL) {
@@ -3179,7 +3180,6 @@ void patch_display_array_sizes(node_t *psn, const node_t *ptn)
 
 static void parse_cast_expr(pws_t *pw, node_t *pn)
 {
-  int startpos = peekpos(pw);
   parse_unary_expr(pw, pn);
   if (pn->nt == NT_TYPE) {
     node_t nd = mknd();
