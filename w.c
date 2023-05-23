@@ -22,7 +22,7 @@
 static FILE *g_wasmout = NULL; /* current binary output stream */
 static cbuf_t *g_curbuf = NULL; /* current destination or NULL */
 static cbuf_t *g_sectbuf = NULL; /* current section or NULL */
-static cbuf_t *g_ssecbuf = NULL; /* current subsection or NULL */
+/* static cbuf_t *g_ssecbuf = NULL; current subsection or NULL */
 static cbuf_t *g_codebuf = NULL; /* current code or NULL */
 static unsigned g_sectcnt = 0; /* section element count */
 
@@ -82,6 +82,7 @@ static void wasm_section_end(void)
   freecb(psb);
 }
 
+#if 0
 static void wasm_subsection_start(unsigned ssi)
 {
   assert(g_ssecbuf == NULL);
@@ -101,6 +102,7 @@ static void wasm_subsection_end(void)
   cbput(cbdata(psb), cblen(psb), g_curbuf);
   freecb(psb);
 }
+#endif
 
 static void wasm_code_start(void)
 {
@@ -683,6 +685,7 @@ static void wasm_elems(esegbuf_t *pesb)
   wasm_section_end();
 }
 
+#if 0
 static void wasm_datacount(dsegbuf_t *pdsb)
 {
   size_t i;
@@ -693,6 +696,7 @@ static void wasm_datacount(dsegbuf_t *pdsb)
   }  
   wasm_section_end();
 }
+#endif
 
 static void wasm_codes(entbuf_t *pfdb)
 {
@@ -2114,7 +2118,7 @@ static void wat_export_datas(watiebuf_t *pdb)
 
 static void wat_export_tables(watiebuf_t *pfb)
 {
-  size_t i, j, tc = 0;
+  size_t i, j;
   for (i = 0; i < watieblen(pfb); ++i) {
     watie_t *pt = watiebref(pfb, i);
     size_t tlen;
@@ -3406,7 +3410,7 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
       } break;
       case INSIG_MEMARG_LANEIDX: {
         unsigned offset = parse_offset(pw), align = parse_align(pw);
-        unsigned a = 0; unsigned long long lidxv = 0;
+        unsigned a = 0;
         pic->arg2.ux2[0] = offset;
         switch ((int)align) { /* fixme: use ntz? */
           case 1:  a = 0; break;
