@@ -487,6 +487,7 @@ void init_symbols(void)
   intern_symbol("va_etc", TT_INTR_NAME, INTR_VAETC);
   intern_symbol("va_arg", TT_INTR_NAME, INTR_VAARG);
   intern_symbol("static_assert", TT_INTR_NAME, INTR_SASSERT);
+  intern_symbol("defined", TT_INTR_NAME, INTR_DEFINED);
   intern_symbol("__VA_ARGS__", TT_MACRO_NAME, (int)ndblen(&g_nodes)); /* C99 */
   pn = ndbnewbk(&g_nodes); ndset(pn, NT_INTRCALL, -1, -1); pn->intr = INTR_VAETC;
   wrap_node(pn, NT_MACRODEF); pn->name = intern("__VA_ARGS__");
@@ -499,7 +500,7 @@ void init_symbols(void)
   pn->ts = TS_STRING; cbputtime("%X", gmtime(&now), &pn->data);
   cbputc(0, &pn->data); wrap_node(pn, NT_MACRODEF); pn->name = intern("__TIME__");
   intern_symbol("__WCPL__", TT_MACRO_NAME, (int)ndblen(&g_nodes));
-  pn = ndsetilit(ndbnewbk(&g_nodes), TS_INT, 1);
+  pn = ndsetilit(ndbnewbk(&g_nodes), TS_INT, 1); /* major version */
   wrap_node(pn, NT_MACRODEF); pn->name = intern("__WCPL__");
 }
 
@@ -1797,10 +1798,23 @@ static tt_t lex(pws_t *pw, cbuf_t *pcb)
 #undef readchar
 #undef unreadchar
 
+/* fetch next token, as-is */ 
+static tt_t peekt_ws(pws_t *pw)
+{
+  if (!pw->gottk) {
+    pw->pos = (int)pw->discarded + pw->curi; 
+    pw->ctk = lex(pw, &pw->token); 
+    pw->gottk = true; 
+    pw->tokstr = cbdata(&pw->token); 
+  }
+  return pw->ctk; 
+}
+
+/* fetch next non-whitespace token */ 
 static tt_t peekt(pws_t *pw) 
 { 
   if (!pw->gottk) {
-    do { /* fetch next non-whitespace token */ 
+    do {
       pw->pos = (int)pw->discarded + pw->curi; 
       pw->ctk = lex(pw, &pw->token); 
       if (pw->ctk == TT_EOF && !pw->inateof) 
@@ -1828,7 +1842,7 @@ static void dropt(pws_t *pw)
   pw->gottk = false; 
 } 
 
-/* expect and rean non-quoted-literal token tk */ 
+/* expect and read non-quoted-literal token tk */ 
 static void expect(pws_t *pw, tt_t tt, const char *ts) 
 { 
   tt_t ctk = peekt(pw); 
@@ -2760,6 +2774,18 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           expect(pw, TT_RPAR, ")"); 
           if ((intr == INTR_ALLOCA && n != 1) || (intr == INTR_SASSERT && !(n == 1 || n == 2)))  
            reprintf(pw, startpos, "unexpected arguments for %s", intr_name(pn->intr));
+        } break;
+        case INTR_DEFINED: { /* (expr ...) */
+          tt_t idt; int i = 0;
+          expect(pw, TT_LPAR, "(");
+          idt = peekt(pw);
+          if (idt == TT_MACRO_NAME) i = 1;
+          else if (idt == TT_IDENTIFIER) i = 0;
+          else reprintf(pw, startpos, "macro name or identifier expected");
+          dropt(pw);
+          expect(pw, TT_RPAR, ")");
+          pn->nt = NT_LITERAL; pn->intr = INTR_NONE;
+          pn->ts = TS_INT; pn->val.i = i;
         } break;
         default: assert(false);
       }
@@ -3986,6 +4012,11 @@ static void parse_define_directive(pws_t *pw, int startpos)
     dropt(pw);
     if (peekt(pw) != TT_MACRO_NAME) {
       reprintf(pw, peekpos(pw), "undef name is not a macro");
+    } else if (streql(pw->tokstr, "__WCPL__") || streql(pw->tokstr, "__DATE__")
+            || streql(pw->tokstr, "__TIME__") || streql(pw->tokstr, "NULL")
+            || streql(pw->tokstr, "true")     || streql(pw->tokstr, "false")
+            || streql(pw->tokstr, "__VA_ARGS__")) {
+      reprintf(pw, peekpos(pw), "%s macro cannot be undefined or redefined", pw->tokstr);
     } else {
       /* definition will still remain in g_nodes, but name won't */ 
       unintern_symbol(pw->tokstr);
@@ -4043,46 +4074,89 @@ static void parse_include_directive(pws_t *pw, node_t *pn, int startpos)
   cbfini(&cb);
 }
 
-/* returns false if stopped on #endif, true if stopped on #else (both consumed) */
-static bool parse_inactive_cc_block(pws_t *pw) 
+
+/* the only cc test macro is __WCPL__ */
+static void parse_cc_test_macro(pws_t *pw)
 {
-  bool bol = false, gotelse = false; 
-  int level = 0;
-  while (true) {
-    if (!pw->gottk) { /* raw peek */
-      pw->pos = (int)pw->discarded + pw->curi; 
-      pw->ctk = lex(pw, &pw->token); 
-      pw->gottk = true; 
-      pw->tokstr = cbdata(&pw->token); 
+  if (ahead(pw, "__WCPL__")) dropt(pw);
+  else reprintf(pw, peekpos(pw), "__WCPL__ expected in condition"); 
+}
+
+/* returns true if cc condition is true, false otherwise; keeps \n token */
+static bool parse_cc_cond(pws_t *pw)
+{
+  { bool res = true, gotlf = false;
+    if (ahead(pw, "0")) { 
+      dropt(pw); res = false; 
+    } else if (ahead(pw, "1")) {
+      dropt(pw);
+    } else {
+      if (ahead(pw, "!")) { dropt(pw); res = !res; }
+      if (ahead(pw, "defined")) dropt(pw); else goto err;
+      expect(pw, TT_LPAR, "(");
+      parse_cc_test_macro(pw);
+      expect(pw, TT_RPAR, ")");
     }
-    switch (pw->ctk) {
+    while (!gotlf && peekt_ws(pw) == TT_WHITESPACE) {
+      if (pw->tokstr[0] == '\n') gotlf = true;
+      else dropt(pw); /* don't eat \n token! */
+    }
+    if (gotlf) return res;
+    err:;
+  }
+  reprintf(pw, peekpos(pw), "invalid or unsupported #if condition"); 
+  return false;
+}
+
+/* returns true if cc 'if' test is true, false otherwise */
+static bool parse_cc_if_directive(pws_t *pw)
+{
+  bool cnd;
+  if (ahead(pw, "ifdef") || ahead(pw, "ifndef")) {
+    cnd = ahead(pw, "ifdef"); 
+    dropt(pw); parse_cc_test_macro(pw);
+  } else {
+    expect(pw, TT_IF_KW, "if");
+    cnd = parse_cc_cond(pw);
+    dropt(pw); /* eat \n token! */
+  }
+  return cnd;
+}
+
+/* returns false if stopped on #endif, true otherwise (all consumed) */
+static bool parse_cc_inactive(pws_t *pw, bool gotactive) 
+{
+  bool bol = false; int level = 0;
+  while (true) {
+    switch (peekt_ws(pw)) { /* raw peek */
       case TT_EOF:
         if (pw->inateof) reprintf(pw, pw->pos, "missing #endif"); /* real eof */
         else if (pw->curi < (int)cblen(&pw->chars)) pw->curi += 1; /* try to step over it */
         else reprintf(pw, pw->pos, "can't skip token inside inactive cc block");
         bol = false; dropt(pw); continue;
       case TT_WHITESPACE:
-        if (pw->tokstr[0] == '\n') bol = true;
-        dropt(pw); continue;
+        bol = (pw->tokstr[0] == '\n'); dropt(pw); continue;
       case TT_HASH:
         if (bol) {
+          int startpos = pw->pos;
           dropt(pw);
           if (ahead(pw, "if") || ahead(pw, "ifdef") || ahead(pw, "ifndef")) {
             ++level; 
           } else if (ahead(pw, "elif")) {
-            if (!level) reprintf(pw, pw->pos, "unexpected #elif outside of inactive cc block");
+            if (!level && !gotactive) { dropt(pw); if (parse_cc_cond(pw)) { dropt(pw); return true; } }
           } else if (ahead(pw, "else")) {
-            if (!level) { gotelse = true; dropt(pw); break; }
+            if (!level && !gotactive) { dropt(pw); return true; }
           } else if (ahead(pw, "endif")) {
-            if (!level) { dropt(pw); break; } else --level;
+            if (!level) { dropt(pw); return false; } else --level;
           }
-        }
+        } 
+        /* fall thru */
       default: 
         bol = false; dropt(pw); continue;
     }
     break;
   }
-  return gotelse;
+  return false;
 }
 
 /* parse single top-level declaration/definition/directive */
@@ -4105,22 +4179,13 @@ bool parse_top_form(pws_t *pw, node_t *pn)
         ndset(pn, NT_BLOCK, pw->id, startpos);
       } else if (ahead(pw, "include")) {
         parse_include_directive(pw, pn, startpos); 
-      } else if (ahead(pw, "ifdef")) {
-        dropt(pw); expect(pw, TT_MACRO_NAME, "__WCPL__");
-        pw->cclevel++; /* nothing to skip, go ahead as usual */ 
-      } else if (ahead(pw, "ifndef")) {
-        dropt(pw); expect(pw, TT_MACRO_NAME, "__WCPL__");
-        if (parse_inactive_cc_block(pw)) pw->cclevel++;
-      } else if (ahead(pw, "if")) {
-        bool skip; dropt(pw); skip = ahead(pw, "0"); expect(pw, TT_INT, "0 or 1");
-        if (!skip || parse_inactive_cc_block(pw)) pw->cclevel++;
-      } else if (ahead(pw, "else")) {
-        if (!pw->cclevel) reprintf(pw, startpos, "#else without a matching opening directive");
-        dropt(pw); if (!parse_inactive_cc_block(pw)) pw->cclevel--; 
-        else reprintf(pw, startpos, "duplicate #else"); 
+      } else if (ahead(pw, "ifdef") || ahead(pw, "ifndef") || ahead(pw, "if")) {
+        if (parse_cc_if_directive(pw) || parse_cc_inactive(pw, false)) pw->cclevel++;
+      } else if (ahead(pw, "elif") || ahead(pw, "else")) { 
+        if (!pw->cclevel) reprintf(pw, startpos, "unexpected #%s", pw->tokstr);
+        dropt(pw); if (!parse_cc_inactive(pw, true)) pw->cclevel--; 
       } else if (ahead(pw, "endif")) {
-        if (!pw->cclevel--) reprintf(pw, startpos, "#endif without a match");
-        dropt(pw);
+        dropt(pw); if (!pw->cclevel--) reprintf(pw, startpos, "unexpected #endif");
       } else {
         reprintf(pw, startpos, "invalid or unsupported preprocessor directive");
       }
@@ -4313,6 +4378,7 @@ const char *intr_name(intr_t intr)
     case INTR_VAETC: s = "va_etc"; break; 
     case INTR_VAARG: s = "va_arg"; break; 
     case INTR_SASSERT: s = "static_assert"; break; 
+    case INTR_DEFINED: s = "defined"; break; 
     default: assert(false);
   }
   return s;

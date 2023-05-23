@@ -3729,6 +3729,9 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
           pcn = npnewcode(pn);
           ndsettype(ndnewbk(pcn), TS_VOID);
         } break;
+        case INTR_DEFINED: {
+          neprintf(pn, "defined() used outside of conditional compilation directive");
+        } break;
         default: assert(false);
       }
     } break;
