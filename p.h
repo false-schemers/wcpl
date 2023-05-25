@@ -162,6 +162,7 @@ extern void ndbclear(ndbuf_t* pb);
 #define ndbins(pb, i, pn) (ndicpy(bufins(pb, i), pn))
 #define ndbinsnew(pb, i) (ndinit(bufins(pb, i)))
 #define ndbpushbk(pb, pn) (ndicpy(bufnewbk(pb), pn))
+#define ndbpopbk(pb) (ndfini(bufpopbk(pb)))
 #define ndbrem(pb, i) do { ndbuf_t *_pb = pb; size_t _i = i; ndfini(bufref(_pb, _i)); bufrem(_pb, _i); } while(0)
 #define ndlen(pn) (ndblen(&(pn)->body))
 #define ndref(pn, i) (ndbref(&(pn)->body, i))

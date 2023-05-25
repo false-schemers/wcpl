@@ -2373,7 +2373,7 @@ static void parse_enum_body(pws_t *pw, node_t *pn);
 static void parse_sru_body(pws_t *pw, ts_t sru, node_t *pn);
 static sym_t parse_declarator(pws_t *pw, node_t *ptn);
 static sc_t parse_decl(pws_t *pw, ndbuf_t *pnb);
-static void parse_stmt(pws_t *pw, node_t *pn);
+static void parse_stmt(pws_t *pw, node_t *pn, ndbuf_t *pnb);
 
 bool node_is_etc(const node_t *pn)
 {
@@ -2496,7 +2496,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
   switch (tk) {
     case TT_LPAR: {     
       dropt(pw);
-      if (type_specifier_ahead(pw)) {
+      if (type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) {
         sym_t id;  
         parse_base_type(pw, pn);
         id = parse_declarator(pw, pn); 
@@ -2676,7 +2676,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
         case INTR_SIZEOF: case INTR_ALIGNOF: case INTR_COUNTOF: { /* (type/expr) */
           node_t *ptn = ndnewbk(pn);
           expect(pw, TT_LPAR, "(");
-          if (type_specifier_ahead(pw)) {
+          if (type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) {
             parse_base_type(pw, ptn);
             if (parse_declarator(pw, ptn)) 
               reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
@@ -2706,7 +2706,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
         case INTR_OFFSETOF: { /* (type, id) */
           node_t *ptn = ndnewbk(pn);
           expect(pw, TT_LPAR, "(");
-          if (type_specifier_ahead(pw)) {
+          if (type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) {
             parse_base_type(pw, ptn);
             if (parse_declarator(pw, ptn)) 
               reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
@@ -2723,7 +2723,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
           node_t *pgn = ndnewbk(pn); bool bytype = true;
           tt_t vse = TT_RPAR;
           expect(pw, TT_LPAR, "(");
-          if (type_specifier_ahead(pw)) {
+          if (type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) {
             parse_base_type(pw, pgn);
             if (parse_declarator(pw, pgn)) 
               reprintf(pw, startpos, "unexpected identifier in abstract type specifier");
@@ -3457,8 +3457,8 @@ static void parse_sru_body(pws_t *pw, ts_t sru, node_t *pn)
   }
 }
 
-/* base types are limited to scalars/named types */
-static void parse_base_type(pws_t *pw, node_t *pn)
+/* atomic types are limited to scalars/named types */
+static void parse_atomic_type(pws_t *pw, node_t *pn)
 {
   int v = 0, c = 0, s = 0, i = 0, l = 0, f = 0, d = 0;
   int sg = 0, ug = 0, en = 0, si = 0, st = 0, un = 0, ty = 0;   
@@ -3491,7 +3491,7 @@ static void parse_base_type(pws_t *pw, node_t *pn)
   if (!!l + f + d > 1)
     reprintf(pw, pw->pos, "invalid type specifier: unsupported type"); 
   if (v + c + s + i + !!l + f + d + en + si + st + un + ty != 1 || sg + ug > 1)
-    reprintf(pw, pw->pos, "invalid type specifier: missing or conflicting keywords"); 
+    reprintf(pw, pw->pos, "invalid type specifier: missing or conflicting type name keywords"); 
   if (f + d + en + si + st + un + ty > 0 && sg + ug > 0)
     reprintf(pw, pw->pos, "invalid type specifier: unexpected signedness keyword"); 
   ndset(pn, NT_TYPE, pw->id, pos);
@@ -3516,6 +3516,34 @@ static void parse_base_type(pws_t *pw, node_t *pn)
   else assert(false);
 }
 
+/* base type is either an atomic type or a multival type */
+static void parse_base_type(pws_t *pw, node_t *pn)
+{
+  if (peekt(pw) == TT_LBRC) {
+    node_t tnd = mknd();
+    ndset(pn, NT_TYPE, pw->id, pw->pos);
+    pn->ts = TS_ETC;
+    dropt(pw);
+    while (peekt(pw) != TT_RBRC) {
+      node_t *pdn = ndset(ndnewbk(pn), NT_VARDECL, pw->id, peekpos(pw));
+      node_t *pti = ndset(ndnewbk(pdn), NT_TYPE, pw->id, peekpos(pw));
+      if (tnd.nt != NT_TYPE || type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) 
+        parse_base_type(pw, &tnd);
+      ndcpy(pti, &tnd);
+      pdn->name = parse_declarator(pw, pti); /* 0 if id is missing */
+      if (peekt(pw) != TT_COMMA) break;
+      dropt(pw);
+    }
+    expect(pw, TT_RBRC, "}");
+    if (ndlen(pn) == 0) pn->ts = TS_VOID;
+    /* else if (ndlen(pn) == 1) lift_arg0(pn); */
+    ndfini(&tnd);
+  } else {
+    parse_atomic_type(pw, pn);
+  }
+}
+
+
 static void parse_primary_declarator(pws_t *pw, node_t *pn)
 {
   switch (peekt(pw)) {
@@ -3523,7 +3551,7 @@ static void parse_primary_declarator(pws_t *pw, node_t *pn)
       ndset(pn, NT_IDENTIFIER, pw->id, peekpos(pw)); 
       pn->name = getid(pw);
     } break;
-    case TT_COMMA: case TT_LBRK: case TT_RPAR: case TT_COLON: {
+    case TT_COMMA: case TT_LBRK: case TT_RPAR: case TT_COLON: case TT_RBRC: {
       /* identifier is missing: allow here, but check in the caller */
       ndset(pn, NT_NULL, pw->id, peekpos(pw)); 
     } break;
@@ -3561,6 +3589,7 @@ static void parse_postfix_declarator(pws_t *pw, node_t *pn)
         ndfini(&nd);
       } break;      
       case TT_LPAR: {
+        node_t tnd = mknd();
         ndbuf_t ndb; ndbinit(&ndb); 
         dropt(pw);
         while (peekt(pw) != TT_RPAR) {
@@ -3571,7 +3600,9 @@ static void parse_postfix_declarator(pws_t *pw, node_t *pn)
             dropt(pw);
             break;
           } else {
-            parse_base_type(pw, pti);
+            if (tnd.nt != NT_TYPE || type_specifier_ahead(pw) || peekt(pw) == TT_LBRC)
+              parse_base_type(pw, &tnd);
+            ndcpy(pti, &tnd);
             pdn->name = parse_declarator(pw, pti); /* 0 if id is missing */
             if (peekt(pw) != TT_COMMA) break;
             dropt(pw);
@@ -3580,6 +3611,7 @@ static void parse_postfix_declarator(pws_t *pw, node_t *pn)
         expect(pw, TT_RPAR, ")");
         wrap_type_function(pn, &ndb);
         ndbfini(&ndb); 
+        ndfini(&tnd);
       } break;
       default:
         reprintf(pw, pw->pos, "valid declarator postfix expected");    
@@ -3671,7 +3703,7 @@ static void parse_initializer(pws_t *pw, node_t *pn)
   }
 }
 
-static void parse_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t *pnb)
+static void parse_atomic_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t *pnb)
 {
   /* declarator (= expr/{display})? */
   node_t *pn = ndbnewbk(pnb), *pni, *psn, tn; sym_t id;
@@ -3707,6 +3739,29 @@ static void parse_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t
   ndfini(&tn);
 }
 
+static void parse_init_declarator(pws_t *pw, sc_t sc, node_t *ptn, ndbuf_t *pnb)
+{
+  if (ptn->ts == TS_ETC && peekt(pw) == TT_ASN) {
+    size_t i; node_t nd = mknd();
+    ndset(&nd, NT_ASSIGN, pw->id, pw->pos);
+    for (i = 0; i < ndlen(ptn); ++i) {
+      node_t *pni = ndref(ptn, i);
+      if (pni->nt != NT_VARDECL || !pni->name)
+        neprintf(pni, "invalid multiple-value declaration");
+      ndcpy(ndbnewbk(pnb), pni);
+      ndset(ndnewbk(&nd), NT_IDENTIFIER, pni->pwsid, pni->startpos)->name = pni->name;
+    }
+    dropt(pw);
+    nd.op = TT_ASN;
+    parse_initializer(pw, ndnewbk(&nd));
+    ndswap(&nd, ndbnewbk(pnb)); 
+    ndfini(&nd);
+    ndclear(ptn); /* can't serve as base type any longer */
+  } else {
+    parse_atomic_init_declarator(pw, sc, ptn, pnb);
+  }
+}
+
 static sc_t parse_decl(pws_t *pw, ndbuf_t *pnb)
 {
   sc_t sc = SC_NONE;
@@ -3720,13 +3775,15 @@ static sc_t parse_decl(pws_t *pw, ndbuf_t *pnb)
     }
     dropt(pw);
   }
-  if (type_specifier_ahead(pw)) {
+  if (type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) {
     node_t tnd = mknd();
     parse_base_type(pw, &tnd);
-    while (peekt(pw) != TT_SEMICOLON && peekt(pw) != TT_LBRC) {
+    while (peekt(pw) != TT_SEMICOLON && peekt(pw) != TT_LBRC && peekt(pw) != TT_RBRC) {
       parse_init_declarator(pw, sc, &tnd, pnb);
       if (peekt(pw) != TT_COMMA) break;
       else dropt(pw);
+      if (tnd.nt != NT_TYPE || type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) 
+        parse_base_type(pw, &tnd);
     }
     ndfini(&tnd);
   } else {
@@ -3744,13 +3801,31 @@ static void parse_switch_clause(pws_t *pw, node_t *pn)
     if (ctk == TT_CASE_KW) parse_expr(pw, ndnewbk(pn));
     expect(pw, TT_COLON, ":");
     while ((ctk = peekt(pw)) != TT_RBRC && ctk != TT_CASE_KW && ctk != TT_DEFAULT_KW)
-      parse_stmt(pw, ndnewbk(pn));
+      parse_stmt(pw, ndnewbk(pn), NULL);
   } else {
     reprintf(pw, pw->pos, "case or default clause expected");
   }
 }
 
-static void parse_stmt(pws_t *pw, node_t *pn)
+/* pn is last node of pnb and contains decls; pw is after } */
+static void parse_starting_with_mvdecl(pws_t *pw, node_t *pn, ndbuf_t *pnb)
+{
+  node_t tnd = mknd();
+  ndswap(&tnd, pn); ndbpopbk(pnb); pn = NULL;
+  tnd.nt = NT_TYPE; tnd.ts = TS_ETC;
+  if (ndlen(&tnd) == 0) tnd.ts = TS_VOID;
+  /* else if (ndlen(&tnd) == 1) lift_arg0(&tnd); */
+  while (peekt(pw) != TT_SEMICOLON && peekt(pw) != TT_LBRC && peekt(pw) != TT_RBRC) {
+    parse_init_declarator(pw, SC_NONE, &tnd, pnb);
+    if (peekt(pw) != TT_COMMA) break;
+    else dropt(pw);
+    if (tnd.nt != NT_TYPE || type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) 
+      parse_base_type(pw, &tnd);
+  }
+  ndfini(&tnd);
+}
+
+static void parse_stmt(pws_t *pw, node_t *pn, ndbuf_t *pnb)
 {
   switch (peekt(pw)) {
     case TT_SEMICOLON: {
@@ -3773,15 +3848,24 @@ static void parse_stmt(pws_t *pw, node_t *pn)
           else reprintf(pw, startpos, "unexpected block label position");
         } else if (storage_class_specifier_ahead(pw) || type_specifier_ahead(pw)) {
           sc_t sc = parse_decl(pw, &pn->body);
+          /* auto and register are accepted and ignored */
           if (sc == SC_EXTERN || sc == SC_STATIC)
             reprintf(pw, pw->pos, "block-level extern/static declarations are not supported"); 
-          /* auto and register are accepted and ignored */
+          if (peekt(pw) == TT_RBRC && pnb != NULL) {
+            /* this is not a block -- this is a multiple value decl! */
+            dropt(pw); parse_starting_with_mvdecl(pw, pn, pnb);
+            return;
+          }
           expect(pw, TT_SEMICOLON, ";"); /* no block-level function definitions */
         } else {
-          parse_stmt(pw, ndnewbk(pn)); 
+          parse_stmt(pw, ndnewbk(pn), &pn->body); 
         }
       }
       expect(pw, TT_RBRC, "}");
+      if (pnb != NULL && peekt(pw) == TT_ASN) {
+        /* this is not a block -- this is a multiple value decl! */
+        parse_starting_with_mvdecl(pw, pn, pnb);
+      }
     } break;
     case TT_IF_KW: {
       ndset(pn, NT_IF, pw->id, pw->pos);
@@ -3789,10 +3873,10 @@ static void parse_stmt(pws_t *pw, node_t *pn)
       expect(pw, TT_LPAR, "(");
       parse_expr(pw, ndnewbk(pn));
       expect(pw, TT_RPAR, ")");
-      parse_stmt(pw, ndnewbk(pn));
+      parse_stmt(pw, ndnewbk(pn), NULL);
       if (peekt(pw) == TT_ELSE_KW) {
         dropt(pw);
-        parse_stmt(pw, ndnewbk(pn));  
+        parse_stmt(pw, ndnewbk(pn), NULL);  
       }
     } break;
     case TT_SWITCH_KW: {
@@ -3811,12 +3895,12 @@ static void parse_stmt(pws_t *pw, node_t *pn)
       expect(pw, TT_LPAR, "(");
       parse_expr(pw, ndnewbk(pn));
       expect(pw, TT_RPAR, ")");
-      parse_stmt(pw, ndnewbk(pn));
+      parse_stmt(pw, ndnewbk(pn), NULL);
     } break;
     case TT_DO_KW: {
       ndset(pn, NT_DO, pw->id, pw->pos);
       dropt(pw);
-      parse_stmt(pw, ndnewbk(pn));
+      parse_stmt(pw, ndnewbk(pn), NULL);
       expect(pw, TT_WHILE_KW, "while");
       expect(pw, TT_LPAR, "(");
       parse_expr(pw, ndnewbk(pn));
@@ -3844,7 +3928,7 @@ static void parse_stmt(pws_t *pw, node_t *pn)
       if (peekt(pw) != TT_RPAR) parse_expr(pw, ndnewbk(pn));
       else ndset(ndnewbk(pn), NT_NULL, pw->id, pw->pos); 
       expect(pw, TT_RPAR, ")");
-      parse_stmt(pw, ndnewbk(pn));
+      parse_stmt(pw, ndnewbk(pn), NULL);
       if (ndref(pn, 0)->nt == NT_BLOCK) {
         node_t nd; ndinit(&nd); ndswap(&nd, ndref(pn, 0));
         ndswap(pn, ndnewbk(&nd)); ndswap(pn, &nd);
@@ -3864,7 +3948,10 @@ static void parse_stmt(pws_t *pw, node_t *pn)
     case TT_RETURN_KW: {
       ndset(pn, NT_RETURN, pw->id, pw->pos);
       dropt(pw);
-      if (peekt(pw) != TT_SEMICOLON) parse_expr(pw, ndnewbk(pn));
+      if (peekt(pw) != TT_SEMICOLON) {
+        if (peekt(pw) != TT_LBRC) parse_expr(pw, ndnewbk(pn));
+        else parse_initializer(pw, ndnewbk(pn));
+      }
       expect(pw, TT_SEMICOLON, ";");
     } break;
     case TT_GOTO_KW: {
@@ -3884,7 +3971,7 @@ static void parse_stmt(pws_t *pw, node_t *pn)
 
 static void parse_top_decl(pws_t *pw, node_t *pn)
 {
-  if (storage_class_specifier_ahead(pw) || type_specifier_ahead(pw)) {
+  if (storage_class_specifier_ahead(pw) || type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) {
     sc_t sc;
     ndset(pn, NT_BLOCK, pw->id, pw->pos);
     pn->name = pw->curmod;
@@ -3897,7 +3984,7 @@ static void parse_top_decl(pws_t *pw, node_t *pn)
         node_t nd = mknd(), *pbn;
         ndswap(ndref(pn, 0), &nd);
         nd.nt = NT_FUNDEF;
-        parse_stmt(pw, (pbn = ndnewbk(&nd)));
+        parse_stmt(pw, (pbn = ndnewbk(&nd)), NULL);
         if (pbn->name) neprintf(pbn, "unexpected label on top function block");   
         ndswap(pn, &nd);
         ndfini(&nd);
@@ -3918,7 +4005,7 @@ static void parse_top_typedef(pws_t *pw, node_t *pn)
   int startpos = peekpos(pw);
   expect(pw, TT_TYPEDEF_KW, "typedef");
   ndset(pn, NT_TYPEDEF, pw->id, startpos);
-  if (type_specifier_ahead(pw)) {
+  if (type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) {
     node_t *ptn = ndnewbk(pn);
     parse_base_type(pw, ptn);
     pn->name = parse_declarator(pw, ptn);
@@ -3990,7 +4077,7 @@ static void parse_define_directive(pws_t *pw, int startpos)
     }  
     /* righ-hand-side expression or do-block-while-0 */    
     if (peekt(pw) == TT_DO_KW) {
-      dropt(pw); parse_stmt(pw, ndnewbk(pn));
+      dropt(pw); parse_stmt(pw, ndnewbk(pn), NULL);
       expect(pw, TT_WHILE_KW, "while");
       expect(pw, TT_LPAR, "(");
       if (peekt(pw) == TT_INT && streql(pw->tokstr, "0")) dropt(pw);
