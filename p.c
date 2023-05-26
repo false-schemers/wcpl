@@ -3535,8 +3535,7 @@ static void parse_base_type(pws_t *pw, node_t *pn)
       dropt(pw);
     }
     expect(pw, TT_RBRC, "}");
-    if (ndlen(pn) == 0) pn->ts = TS_VOID;
-    /* else if (ndlen(pn) == 1) lift_arg0(pn); */
+    if (ndlen(pn) < 2) neprintf(pn, "mv declaration should have at least 2 values");
     ndfini(&tnd);
   } else {
     parse_atomic_type(pw, pn);
@@ -3703,21 +3702,21 @@ static void parse_initializer(pws_t *pw, node_t *pn)
   }
 }
 
-static void parse_atomic_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t *pnb)
+static bool parse_atomic_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, ndbuf_t *pnb)
 {
   /* declarator (= expr/{display})? */
   node_t *pn = ndbnewbk(pnb), *pni, *psn, tn; sym_t id;
   ndicpy(&tn, ptn);
   ndset(pn, NT_VARDECL, pw->id, pw->pos);
   pn->name = id = parse_declarator(pw, &tn);
-  if (id == 0) reprintf(pw, pw->pos, "declared identifier is missing");
-  pn->name = id; pn->sc = sc;
+  pn->sc = sc;
   ndcpy(ndnewbk(pn), &tn); 
   if (peekt(pw) != TT_ASN) {
     ndfini(&tn);
-    return;
+    return id != 0;
   }
   dropt(pw);
+  if (id == 0) reprintf(pw, pw->pos, "declared identifier is missing");
   pn = ndbnewbk(pnb);
   ndset(pn, NT_ASSIGN, pw->id, pw->pos);
   pn->op = TT_ASN;
@@ -3737,10 +3736,12 @@ static void parse_atomic_init_declarator(pws_t *pw, sc_t sc, const node_t *ptn, 
     wrap_expr_cast(psn, ndcpy(&tn, ptn)); 
   }
   ndfini(&tn);
+  return true;
 }
 
-static void parse_init_declarator(pws_t *pw, sc_t sc, node_t *ptn, ndbuf_t *pnb)
+static bool parse_init_declarator(pws_t *pw, sc_t sc, node_t *ptn, ndbuf_t *pnb)
 {
+  bool gotid = true;
   if (ptn->ts == TS_ETC && peekt(pw) == TT_ASN) {
     size_t i; node_t nd = mknd();
     ndset(&nd, NT_ASSIGN, pw->id, pw->pos);
@@ -3758,8 +3759,9 @@ static void parse_init_declarator(pws_t *pw, sc_t sc, node_t *ptn, ndbuf_t *pnb)
     ndfini(&nd);
     ndclear(ptn); /* can't serve as base type any longer */
   } else {
-    parse_atomic_init_declarator(pw, sc, ptn, pnb);
+    gotid = parse_atomic_init_declarator(pw, sc, ptn, pnb);
   }
+  return gotid;
 }
 
 static sc_t parse_decl(pws_t *pw, ndbuf_t *pnb)
@@ -3776,14 +3778,17 @@ static sc_t parse_decl(pws_t *pw, ndbuf_t *pnb)
     dropt(pw);
   }
   if (type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) {
-    node_t tnd = mknd();
+    node_t tnd = mknd(); int noidpos = -1;
     parse_base_type(pw, &tnd);
-    while (peekt(pw) != TT_SEMICOLON && peekt(pw) != TT_LBRC && peekt(pw) != TT_RBRC) {
-      parse_init_declarator(pw, sc, &tnd, pnb);
-      if (peekt(pw) != TT_COMMA) break;
-      else dropt(pw);
-      if (tnd.nt != NT_TYPE || type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) 
+    while (peekt(pw) != TT_SEMICOLON && peekt(pw) != TT_LBRC) {
+      bool gotid = parse_init_declarator(pw, sc, &tnd, pnb);
+      if (!gotid && noidpos < 0) noidpos = tnd.startpos;
+      if (peekt(pw) == TT_COMMA) dropt(pw); else break;
+      if (type_specifier_ahead(pw) || peekt(pw) == TT_LBRC) 
         parse_base_type(pw, &tnd);
+    } 
+    if (peekt(pw) != TT_RBRC && noidpos >= 0) {
+      reprintf(pw, noidpos, "missing variable name");
     }
     ndfini(&tnd);
   } else {
@@ -3811,10 +3816,9 @@ static void parse_switch_clause(pws_t *pw, node_t *pn)
 static void parse_starting_with_mvdecl(pws_t *pw, node_t *pn, ndbuf_t *pnb)
 {
   node_t tnd = mknd();
+  if (ndlen(pn) < 2) neprintf(pn, "mv declaration should have at least 2 values");
   ndswap(&tnd, pn); ndbpopbk(pnb); pn = NULL;
   tnd.nt = NT_TYPE; tnd.ts = TS_ETC;
-  if (ndlen(&tnd) == 0) tnd.ts = TS_VOID;
-  /* else if (ndlen(&tnd) == 1) lift_arg0(&tnd); */
   while (peekt(pw) != TT_SEMICOLON && peekt(pw) != TT_LBRC && peekt(pw) != TT_RBRC) {
     parse_init_declarator(pw, SC_NONE, &tnd, pnb);
     if (peekt(pw) != TT_COMMA) break;
