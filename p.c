@@ -3429,9 +3429,12 @@ static void parse_sru_body(pws_t *pw, ts_t sru, node_t *pn)
     dropt(pw);
     while (peekt(pw) != TT_RBRC) {
       sc_t sc = parse_decl(pw, &pn->body);
-      if (sc != SC_NONE)
+      if (sc != SC_NONE) {
         reprintf(pw, pn->startpos, "unexpected storage declarations in struct/union"); 
-      expect(pw, TT_SEMICOLON, ";"); /* no block-level function definitions */
+      }
+      if (peekt(pw) != TT_RBRC) { /* WCPL relaxed decls: final ; is optional */
+        expect(pw, TT_SEMICOLON, ";"); /* no block-level function definitions */
+      }
     }
     expect(pw, TT_RBRC, "}");
   }  
@@ -3829,6 +3832,34 @@ static void parse_starting_with_mvdecl(pws_t *pw, node_t *pn, ndbuf_t *pnb)
   ndfini(&tnd);
 }
 
+/* not one of , ; { } if switch do while for break continue goto */
+static bool assignment_expr_ahead(pws_t *pw)
+{
+  switch (peekt(pw)) {
+    case TT_COMMA: case TT_SEMICOLON: case TT_LBRC: case TT_RBRC:
+    case TT_IF_KW: case TT_SWITCH_KW: case TT_DO_KW: case TT_WHILE_KW:
+    case TT_FOR_KW: case TT_BREAK_KW: case TT_CONTINUE_KW: case TT_GOTO_KW:
+    case TT_RETURN_KW: case TT_EOF:
+      return false;
+  }
+  return true;
+}
+
+/* pn is last node of pnb and contains potential lvals; pw is after } */
+static void parse_starting_with_mvlval(pws_t *pw, node_t *pn, ndbuf_t *pnb)
+{
+  node_t tnd = mknd();
+  if (ndlen(pn) < 2) neprintf(pn, "less than 2 values in left-hand-side of mv assignment");
+  /* pn is a subnode of a BLOCK at the end of pnb */
+  ndswap(&tnd, pn); ndbpopbk(pnb); 
+  pn = ndbnewbk(pnb); ndswap(&tnd, pn);
+  expect(pw, TT_ASN, "=");
+  pn->nt = NT_ASSIGN; pn->op = TT_ASN;
+  parse_conditional_expr(pw, ndnewbk(pn));
+  expect(pw, TT_SEMICOLON, ";");   
+  ndfini(&tnd);
+}
+
 static void parse_stmt(pws_t *pw, node_t *pn, ndbuf_t *pnb)
 {
   switch (peekt(pw)) {
@@ -3860,9 +3891,27 @@ static void parse_stmt(pws_t *pw, node_t *pn, ndbuf_t *pnb)
             dropt(pw); parse_starting_with_mvdecl(pw, pn, pnb);
             return;
           }
-          expect(pw, TT_SEMICOLON, ";"); /* no block-level function definitions */
+          expect(pw, TT_SEMICOLON, ";");
+        } else if (ndlen(pn) > 0) {
+          parse_stmt(pw, ndnewbk(pn), &pn->body);
         } else {
-          parse_stmt(pw, ndnewbk(pn), &pn->body); 
+          node_t *psn = ndnewbk(pn);
+          ndset(psn, NT_COMMA, pw->id, pw->pos);
+          while (assignment_expr_ahead(pw)) { 
+            parse_assignment_expr(pw, ndnewbk(psn));
+            if (peekt(pw) != TT_COMMA) break;
+            dropt(pw);
+          }
+          if (peekt(pw) == TT_RBRC && pnb != NULL) {
+            /* this is not a block -- this is a multiple value lval! */
+            dropt(pw); parse_starting_with_mvlval(pw, psn, pnb);
+            return;
+          } else if (ndlen(psn) > 0) {
+            expect(pw, TT_SEMICOLON, ";");
+            if (ndlen(psn) == 1) lift_arg0(psn);
+          } else {
+            parse_stmt(pw, psn, &pn->body);
+          }
         }
       }
       expect(pw, TT_RBRC, "}");

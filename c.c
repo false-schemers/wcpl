@@ -1290,7 +1290,8 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
       bufresize(&pd->data, size); /* fills with zeroes */
       pd->align = (int)align;
       if (pin) {
-        assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
+        assert(pin->nt == NT_ASSIGN);
+        if (ndlen(pin) != 2) neprintf(pin, "unexpected multi-value initializer");
         assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
         pd = initialize_bulk_data(pdidx, pd, 0, ptn, ndref(pin, 1));
       }
@@ -1301,7 +1302,8 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
       pg->mod = mmod; pg->id = pdn->name;
       pg->exported = !hide;
       if (pin) {
-        seval_t r; node_t *pvn; assert(pin->nt == NT_ASSIGN && ndlen(pin) == 2);
+        seval_t r; node_t *pvn; assert(pin->nt == NT_ASSIGN);
+        if (ndlen(pin) != 2) neprintf(pin, "unexpected multi-value initializer");
         assert(ndref(pin, 0)->nt == NT_IDENTIFIER && ndref(pin, 0)->name == pdn->name);
         pvn = ndref(pin, 1);
         if (fold_simd_display(pvn, NULL)) {
@@ -2111,13 +2113,21 @@ static void fundef_wasmify(node_t *pdn)
     node_t *pdni = ndref(ptn, i), *ptni = pdni; sym_t name = 0; ts_t cast = TS_VOID; 
     if (pdni->nt == NT_VARDECL) name = ptni->name, ptni = ndref(pdni, 0); 
     switch (ptni->ts) {
-      case TS_ETC: { /* last */
-        vi_t *pvi = bufnewbk(&vib);
-        assert(i+1 == ndlen(ptn));
-        ndset(pdni, NT_VARDECL, pdni->pwsid, pdni->startpos);
-        pdni->name = intern("ap$");
-        ptni = ndinsbk(pdni, NT_TYPE); ptni->ts = TS_ULLONG; wrap_type_pointer(ptni);
-        pvi->name = pvi->reg = pdni->name; pvi->sc = SC_REGISTER;
+      case TS_ETC: { 
+        if (i == 0) {
+          /* mv return type */
+          assert(ndlen(ptni) > 1);
+          neprintf(pdni, "NYI: cannot wasmify multiple return values");
+        } else {
+          /* last ... */
+          vi_t *pvi = bufnewbk(&vib);
+          assert(ndlen(ptni) == 0);
+          assert(i+1 == ndlen(ptn));
+          ndset(pdni, NT_VARDECL, pdni->pwsid, pdni->startpos);
+          pdni->name = intern("ap$");
+          ptni = ndinsbk(pdni, NT_TYPE); ptni->ts = TS_ULLONG; wrap_type_pointer(ptni);
+          pvi->name = pvi->reg = pdni->name; pvi->sc = SC_REGISTER;
+        }
       } break; 
       case TS_VOID: /* ok if alone */ 
         assert(i == 0); /* we have checked earlier: this is return type */
@@ -3820,29 +3830,34 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
       pcn = compile_cond(pn, pan1, pan2, pan3);
     } break;
     case NT_ASSIGN: {
-      node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
-      node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL, *pvn = ndref(pn, 1);
-      node_t *pan = expr_compile(pln, prib, NULL), *pan2 = NULL;
-      pcn = NULL;
-      if (pn->op == TT_ASN && ptn == NULL && ts_bulk(acode_type(pan)->ts)) { 
-        if (pvn->nt == NT_CALL) { /* pass pan reference as extra arg */
-          size_t i; buf_t apb = mkbuf(sizeof(node_t*));
-          node_t *pfn = expr_compile(ndref(pvn, 0), prib, NULL);
-          for (i = 1; i < ndlen(pvn); ++i) 
-            *(node_t**)bufnewbk(&apb) = expr_compile(ndref(pvn, i), prib, NULL);
-          /* compile_call will return NULL if it is given lval and it is not bulk */
-          pcn = compile_call(pvn, pfn, &apb, compile_addrof(pln, pan)); 
-          buffini(&apb);
-        } else { /* try regular bulk assignment */
-          pan2 = expr_compile(pvn, prib, NULL);
-          pcn = compile_bulkasn(pn, pan, pan2); /* returns NULL on failure */
+      if (ndlen(pn) > 2) {
+        neprintf(pn, "NYI: multi-value assignment");
+      } else {
+        node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
+        node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL, *pvn = ndref(pn, 1);
+        node_t *pan = expr_compile(pln, prib, NULL), *pan2 = NULL;
+        assert(ndlen(pn) == 2);
+        pcn = NULL;
+        if (pn->op == TT_ASN && ptn == NULL && ts_bulk(acode_type(pan)->ts)) { 
+          if (pvn->nt == NT_CALL) { /* pass pan reference as extra arg */
+            size_t i; buf_t apb = mkbuf(sizeof(node_t*));
+            node_t *pfn = expr_compile(ndref(pvn, 0), prib, NULL);
+            for (i = 1; i < ndlen(pvn); ++i) 
+              *(node_t**)bufnewbk(&apb) = expr_compile(ndref(pvn, i), prib, NULL);
+            /* compile_call will return NULL if it is given lval and it is not bulk */
+            pcn = compile_call(pvn, pfn, &apb, compile_addrof(pln, pan)); 
+            buffini(&apb);
+          } else { /* try regular bulk assignment */
+            pan2 = expr_compile(pvn, prib, NULL);
+            pcn = compile_bulkasn(pn, pan, pan2); /* returns NULL on failure */
+          }
         }
-      }
-      if (!pcn) { /* failed? must be scalar assignment */
-        tt_t op; /* TT_PLUS from TT_PLUS_ASN etc. */
-        if (!pan2) pan2 = expr_compile(pvn, prib, NULL);
-        op = (tt_t)((pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? (int)pn->op - 1 : 0);
-        pcn = compile_asncombo(pn, pan, ptn, op, pan2, false); 
+        if (!pcn) { /* failed? must be scalar assignment */
+          tt_t op; /* TT_PLUS from TT_PLUS_ASN etc. */
+          if (!pan2) pan2 = expr_compile(pvn, prib, NULL);
+          op = (tt_t)((pn->op >= TT_PLUS_ASN && pn->op <= TT_SHR_ASN) ? (int)pn->op - 1 : 0);
+          pcn = compile_asncombo(pn, pan, ptn, op, pan2, false); 
+        }
       }
     } break;
     case NT_COMMA: {

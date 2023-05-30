@@ -101,7 +101,7 @@ typedef enum nt {
   NT_PREFIX,      /* op x */
   NT_INFIX,       /* x op y */
   NT_COND,        /* x ? y : z */
-  NT_ASSIGN,      /* x op= y */
+  NT_ASSIGN,      /* x op= y  or {...} = y */
   NT_COMMA,       /* x, y */
   NT_ACODE,       /* (t)asm(...) */
   NT_BLOCK,       /* {...} {l: ...} {... l:} */
