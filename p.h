@@ -113,7 +113,7 @@ typedef enum nt {
   NT_DO,          /* do x while (y) */
   NT_FOR,         /* for (a; b; c) t */
   NT_GOTO,        /* goto l */
-  NT_RETURN,      /* return x */
+  NT_RETURN,      /* return or return x */
   NT_BREAK,       /* break */
   NT_CONTINUE,    /* continue */
   NT_TYPE,        /* t */

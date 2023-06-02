@@ -571,6 +571,16 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
     assert(ndlen(ptn1) == 2 && ndlen(ptn2) == 2);
     return same_type(ndref(ptn1, 0), ndref(ptn2, 0))
         && same_numlit(ndref(ptn1, 1), ndref(ptn2, 1));
+  } else if (ptn1->ts == TS_ETC) {
+    size_t i;
+    if (ndlen(ptn1) != ndlen(ptn2)) return false;
+    for (i = 0; i < ndlen(ptn1); ++i) {
+      node_t *pn1 = ndref(ptn1, i), *pn2 = ndref(ptn2, i);
+      if (pn1->nt == NT_VARDECL && ndlen(pn1) == 1) pn1 = ndref(pn1, 0); 
+      if (pn2->nt == NT_VARDECL && ndlen(pn2) == 1) pn2 = ndref(pn2, 0); 
+      if (pn1->nt != NT_TYPE || pn2->nt != NT_TYPE || 
+          !same_type(pn1, pn2)) return false;
+    }
   }
   return true;
 }

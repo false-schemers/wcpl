@@ -621,7 +621,7 @@ void measure_type(const node_t *ptn, node_t *prn, size_t *psize, size_t *palign,
       n2eprintf(ptn, prn, "can't allocate/measure void type");
       break;
     case TS_ETC: 
-      n2eprintf(ptn, prn, "can't allocate data for ... yet");
+      n2eprintf(ptn, prn, "can't allocate/measure multiple values type");
       break;
     case TS_V128:
       *psize = *palign = 16; 
@@ -1079,7 +1079,7 @@ static node_t *vardef_check_type(node_t *ptn)
 /* check if this function type is legal in WCPL */
 static void fundef_check_type(node_t *ptn)
 {
-  size_t i;
+  size_t i, j;
   assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
   for (i = 0; i < ndlen(ptn); ++i) {
     node_t *ptni = ndref(ptn, i); 
@@ -1114,10 +1114,32 @@ static void fundef_check_type(node_t *ptn)
         if (i > 0) neprintf(ptni, "not supported: union as function parameter type");
         break;
       case TS_ETC:
-        if (i+1 != ndlen(ptn)) neprintf(ptni, "nonfinal ... in function parameter list");
+        if (i == 0) {
+          assert(ndlen(ptni) >= 2);
+          for (j = 0; j < ndlen(ptni); ++j) {
+            node_t *ptnj = ndref(ptni, j); 
+            assert(ptnj->nt == NT_VARDECL && ndlen(ptnj) == 1 || ptnj->nt == NT_TYPE);
+            if (ptnj->nt == NT_VARDECL) ptnj = ndref(ptnj, 0); assert(ptnj->nt == NT_TYPE);
+            switch (ptnj->ts) {
+              case TS_ENUM:   case TS_V128:   case TS_BOOL:  
+              case TS_CHAR:   case TS_UCHAR:  case TS_SHORT: case TS_USHORT: 
+              case TS_INT:    case TS_UINT:   case TS_LONG:  case TS_ULONG:   
+              case TS_LLONG:  case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE:
+              case TS_PTR: break;
+              default:
+                neprintf(ptnj, "multiple return values of this type are not supported: %s", 
+                  ts_name(ptnj->ts));
+            }
+          }
+        } else if (i+1 == ndlen(ptn)) {
+          assert(ndlen(ptni) == 0);
+        } else {
+          neprintf(ptni, "nonfinal ... in function parameter list");
+        }
         break; 
       default:
-        neprintf(ptni, "function arguments of this type are not supported: %s", ts_name(ptni->ts));
+        neprintf(ptni, "function arguments of this type are not supported: %s", 
+          ts_name(ptni->ts));
     }
   }
 }
@@ -2116,8 +2138,23 @@ static void fundef_wasmify(node_t *pdn)
       case TS_ETC: { 
         if (i == 0) {
           /* mv return type */
+          size_t j;
           assert(ndlen(ptni) > 1);
-          neprintf(pdni, "NYI: cannot wasmify multiple return values");
+          for (j = 0; j < ndlen(ptni); ++j) {
+            node_t *ptnj = ndref(ptni, j); 
+            if (ptnj->nt == NT_VARDECL) ptnj = ndref(ptnj, 0);
+            switch (ptnj->ts) {
+              case TS_BOOL:  case TS_ENUM:
+              case TS_CHAR:  case TS_UCHAR:  case TS_SHORT: case TS_USHORT: 
+              case TS_INT:   case TS_UINT:   case TS_LONG:  case TS_ULONG:  
+              case TS_LLONG: case TS_ULLONG: case TS_FLOAT: case TS_DOUBLE: 
+              case TS_V128:  case TS_PTR:  
+                break;
+              default:
+                neprintf(ptnj, "multiple return values of type %s are not supported", 
+                  ts_name(ptnj->ts));
+            }
+          }
         } else {
           /* last ... */
           vi_t *pvi = bufnewbk(&vib);
@@ -2167,7 +2204,8 @@ static void fundef_wasmify(node_t *pdn)
         } /* else fall through */ 
       }
       default:
-        neprintf(pdni, "function arguments of type %s are not supported", ts_name(ptni->ts));
+        neprintf(pdni, "function arguments of type %s are not supported", 
+          ts_name(ptni->ts));
     }
   }
 
@@ -2883,6 +2921,16 @@ static node_t *acode_swapin(node_t *pcn, node_t *pan)
   return acode_pushin(pcn, IN_PLACEHOLDER);
 }
 
+/* move contents of pan code to the end of pcn code */
+static void acode_pushin_drops(node_t *pcn, node_t *ptn)
+{
+  if (ptn->ts == TS_ETC) {
+    size_t n = ndlen(ptn); assert(n >= 2);
+    while (n-- > 0) acode_pushin(pcn, IN_DROP);
+  } else if (ptn->ts != TS_VOID) {
+    acode_pushin(pcn, IN_DROP);
+  }
+}
 
 /* compiler helpers; prn is original reference node for errors */
 
@@ -2896,8 +2944,11 @@ static node_t *compile_cast(node_t *prn, const node_t *ptn, node_t *pan)
   }
   pcn = npnewcode(prn); ndcpy(ndnewbk(pcn), ptn);
   acode_swapin(pcn, pan);
-  if (ptn->ts == TS_VOID) acode_pushin(pcn, IN_DROP);
-  else asm_cast(ptn, patn, &pcn->data);
+  if (ptn->ts == TS_VOID) {
+    acode_pushin_drops(pcn, patn);
+  } else {
+    asm_cast(ptn, patn, &pcn->data);
+  }
   return pcn;
 }
 
@@ -3208,7 +3259,30 @@ static node_t *compile_subscript(node_t *prn, node_t *pana, node_t *pani)
   return NULL; /* never */
 }
 
-/* compile ++x --x x++ x-- and assignments; ptn is cast type or NULL */
+/* compile simple var assignment with value pvn of type ptn at the pop of the stack */
+static node_t *compile_asnvar(node_t *prn, node_t *pan, node_t *ptn)
+{
+  if (acode_rval_get(pan)) {
+    /* pan is a single IN_GLOBAL_GET/IN_LOCAL_GET instruction */
+    inscode_t lic, sic;
+    /* make value node with correct type but no code (value is already on stack) */
+    node_t *pvn = npnewcode(pan); ndpushbk(pvn, ptn);
+    asm_popbk(&pan->data, &lic); /* old val is no longer on stack */
+    if (!assign_compatible(acode_type(pan), ptn))
+      neprintf(prn, "can't modify lval: unexpected type on the right");
+    if (!same_type(acode_type(pan), ptn)) 
+      pvn = compile_cast(prn, acode_type(pan), pvn); 
+    acode_swapin(pan, pvn);
+    asm_instr_load_to_store(&lic, &sic);
+    asm_pushbk(&pan->data, &sic); 
+    return pan;    
+  } else {
+    neprintf(prn, "cannot compile assignment (lval should be a variable)");
+  }
+  return NULL; /* not really */
+}
+
+/* compile ++x --x x++ x-- and assignments; pctn is cast type or NULL */
 static node_t *compile_asncombo(node_t *prn, node_t *pan, node_t *pctn, tt_t op, node_t *pvn, bool post)
 {
   /* convert pan in place and return it */
@@ -3293,9 +3367,10 @@ static node_t *compile_call(node_t *prn, node_t *pfn, buf_t *pab, node_t *pdn)
     if (ndlen(pftn) > buflen(pab)+2)
       n2eprintf(ndref(prn, 0), prn, "%d-or-more-parameter function called with %d arguments",
         (int)ndlen(pftn)-2, (int)buflen(pab));
-  } else if (ndlen(pftn) != buflen(pab)+1)
+  } else if (ndlen(pftn) != buflen(pab)+1) {
     n2eprintf(ndref(prn, 0), prn, "%d-parameter function called with %d arguments",
       (int)ndlen(pftn)-1, (int)buflen(pab));
+  }
   if (ts_bulk(ndref(pftn, 0)->ts)) {
     if (!pdn) n2eprintf(ndref(prn, 0), prn, "no lval to accept bulk return value"); 
     /* adjust to bulk return convention */
@@ -3433,12 +3508,13 @@ static node_t *compile_acapp(node_t *prn, node_t *pacn, buf_t *pab)
   return pcn;
 }
 
-/* compile statement (i.e. drop value if any) */
+/* compile statement (i.e. drop values if any) */
 static node_t *compile_stm(node_t *pcn)
 {
   node_t *ptni = acode_type(pcn);
   if (ptni->ts != TS_VOID) {
-    acode_pushin(pcn, IN_DROP);
+    acode_pushin_drops(pcn, ptni);
+    bufclear(&ptni->body);
     ndsettype(ptni, TS_VOID);
   }
   return pcn;
@@ -3548,7 +3624,11 @@ static node_t *compile_return(node_t *prn, node_t *pan, const node_t *ptn, sym_t
 {
   node_t *pcn = npnewcode(prn); ndsettype(ndnewbk(pcn), TS_VOID);
   assert(ptn && ptn->nt == NT_TYPE);
-  if (pan) { /* got argument */
+  if (pan && ptn->ts == TS_ETC) { /* got mv */
+    node_t *patn = acode_type(pan);
+    if (!same_type(ptn, patn)) n2eprintf(pcn, ptn, "unexpected return types");
+    acode_swapin(pcn, pan);
+  } else if (pan) { /* got argument */
     node_t *patn = acode_type(pan);
     if (!assign_compatible(ptn, patn)) neprintf(prn, "unexpected returned type");
     if (!same_type(ptn, patn)) pan = compile_cast(prn, ptn, pan);
@@ -3830,9 +3910,26 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
       pcn = compile_cond(pn, pan1, pan2, pan3);
     } break;
     case NT_ASSIGN: {
-      if (ndlen(pn) > 2) {
-        neprintf(pn, "NYI: multi-value assignment");
-      } else {
+      if (ndlen(pn) > 2) { /* multi-value assignment */
+        size_t n = ndlen(pn), i;
+        node_t *pvn = ndref(pn, --n), *panv, *ptnv;
+        assert(pn->op == TT_ASN);
+        if (pvn->nt != NT_CALL) neprintf(pvn, "not a call expression");
+        panv = expr_compile(pvn, prib, NULL);
+        ptnv = acode_type(panv);
+        if (ptnv->ts != TS_ETC || ndlen(ptnv) != n) neprintf(pvn, "result count mismatch");
+        /* no chained assignment: no values left on stack */
+        pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_VOID);
+        acode_swapin(pcn, panv); /* leaves n values on stack */
+        for (i = n; i > 0; --i) { /* last val is on top */
+          node_t *pni = ndref(pn, i-1), *pci = expr_compile(pni, prib, NULL);
+          node_t *pti = ndref(ptnv, i-1), *pcni;
+          if (pti->nt == NT_VARDECL && ndlen(pti) == 1) pti = ndref(pti, 0);
+          assert(pti->nt == NT_TYPE && ts_to_blocktype(pti->ts) != VT_UNKN);
+          pcni = compile_asnvar(pni, pci, pti);
+          acode_swapin(pcn, pcni);
+        }
+      } else { /* single-value (combo) assignment */
         node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
         node_t *ptn = (pn0->nt == NT_CAST) ? ndref(pn0, 0) : NULL, *pvn = ndref(pn, 1);
         node_t *pan = expr_compile(pln, prib, NULL), *pan2 = NULL;
@@ -3864,11 +3961,11 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
       size_t i; pcn = npnewcode(pn); assert(ndlen(pn) > 0);
       for (i = 0; i < ndlen(pn); ++i) {
         node_t *pcni = expr_compile(ndref(pn, i), prib, NULL);
-        node_t *ptni = acode_type(pcni); bool drop = false;
+        node_t *ptni = acode_type(pcni); size_t dropc = 0;
         if (i == ndlen(pn) - 1) ndcpy(ndinsnew(pcn, 0), ptni);
-        else drop = ptni->ts != TS_VOID;
+        else dropc = (ptni->ts == TS_ETC) ? ndlen(ptni) : (ptni->ts != TS_VOID);
         acode_swapin(pcn, pcni);
-        if (drop) acode_pushin(pcn, IN_DROP);
+        if (dropc > 0) while (dropc--) acode_pushin_drops(pcn, ptni);
       }
     } break;
     case NT_ACODE: {
@@ -3924,7 +4021,30 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
     case NT_RETURN: {
       node_t *pan = NULL;
       assert(ret);
-      if (ndlen(pn) == 1) pan = expr_compile(ndref(pn, 0), prib, NULL);
+      if (ndlen(pn) == 1) {
+        node_t *psn = ndref(pn, 0);
+        if (psn->nt == NT_DISPLAY && ret->ts == TS_ETC) {
+          size_t n = ndlen(ret), i;
+          if (n+1 != ndlen(psn)) n2eprintf(psn, ret, "return value count mismatch");
+          pan = npnewcode(pn); assert(n >= 2);
+          ndcpy(ndnewbk(pan), ret);
+          for (i = 0; i < n; ++i) {
+            node_t *psni = ndref(psn, i+1); /* 1st elt is cast type */
+            node_t *pani = expr_compile(psni, prib, NULL);
+            node_t *ptni = acode_type(pani);
+            const node_t *prti = ndcref(ret, i);
+            if (prti->nt == NT_VARDECL && ndlen(prti) == 1) prti = ndcref(prti, 0);
+            assert(prti->nt == NT_TYPE);
+            if (!assign_compatible(prti, ptni)) neprintf(psni, "unexpected returned type");
+            if (!same_type(prti, ptni)) pani = compile_cast(psn, prti, pani);
+            acode_swapin(pan, pani);
+          }
+        } else if (psn->nt == NT_DISPLAY) {
+          neprintf(psn, "unexpected multiple values return");
+        } else {
+          pan = expr_compile(psn, prib, NULL);
+        }
+      }
       pcn = compile_return(pn, pan, ret, pn->name);
     } break;
     case NT_BREAK:
@@ -4187,12 +4307,23 @@ static void tn2vt(node_t *ptn, vtbuf_t *pvtb)
 /* convert function type to a function signature */
 funcsig_t *ftn2fsig(node_t *ptn, funcsig_t *pfs)
 {
-  size_t i; node_t *ptni;
+  size_t i; node_t *ptni; valtype_t vt;
   assert(ptn->nt == NT_TYPE && ptn->ts == TS_FUNCTION);
   bufclear(&pfs->partypes);
   bufclear(&pfs->restypes);
   ptni = ndref(ptn, 0); assert(ptn->nt == NT_TYPE);
-  if (ts_bulk(ptni->ts)) { /* passed as pointer in 1st arg */
+  if (ptni->ts == TS_ETC) { /* multiple return vals */
+    assert(ndlen(ptni) >= 2);
+    for (i = 0; i < ndlen(ptni); ++i) {
+      node_t *ptnii = ndref(ptni, i); 
+      if (ptnii->nt == NT_VARDECL) { assert(ndlen(ptnii) == 1); ptnii = ndref(ptnii, 0); }
+      assert(ptnii->nt == NT_TYPE);
+      vt = ts2vt(ptnii->ts);
+      if (vt == VT_UNKN)
+        neprintf(ptnii, "return values of this type are not supported");
+      *vtbnewbk(&pfs->restypes) = vt;
+    }
+  } else if (ts_bulk(ptni->ts)) { /* passed as pointer in 1st arg */
     /* fixme: should depend on wasm32/wasm64 model */
     *vtbnewbk(&pfs->partypes) = VT_I32; /* restypes stays empty */  
   } else {
