@@ -3922,12 +3922,28 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
         pcn = npnewcode(pn); ndsettype(ndnewbk(pcn), TS_VOID);
         acode_swapin(pcn, panv); /* leaves n values on stack */
         for (i = n; i > 0; --i) { /* last val is on top */
-          node_t *pni = ndref(pn, i-1), *pci = expr_compile(pni, prib, NULL);
-          node_t *pti = ndref(ptnv, i-1), *pcni;
+          node_t *pni = ndref(pn, i-1), *pci, *pcni;
+          node_t *pti = ndref(ptnv, i-1); valtype_t vt;
           if (pti->nt == NT_VARDECL && ndlen(pti) == 1) pti = ndref(pti, 0);
-          assert(pti->nt == NT_TYPE && ts_to_blocktype(pti->ts) != VT_UNKN);
-          pcni = compile_asnvar(pni, pci, pti);
-          acode_swapin(pcn, pcni);
+          assert(pti->nt == NT_TYPE);
+          vt = ts2vt(pti->ts); assert(vt != VT_UNKN);
+          if (pni->nt == NT_IDENTIFIER) {
+            pci = expr_compile(pni, prib, NULL);
+            pcni = compile_asnvar(pni, pci, pti);
+            acode_swapin(pcn, pcni);
+          } else {
+            inscode_t *pic; node_t *pvi;
+            sym_t vname = rpalloc(VT_I32); 
+            pic = icbnewfr(&pcn->data); pic->in = IN_REGDECL;
+            pic->id = vname; pic->arg.u = vt;
+            acode_pushin_id(pcn, IN_LOCAL_SET, vname);
+            pci = expr_compile(pni, prib, NULL);
+            pvi = compile_idref(pni, 0, vname, pti);
+            pcni = compile_asncombo(pni, pci, NULL, 0, pvi, false);
+            acode_swapin(pcn, pcni);
+            /* compile_asncombo() leaves val on stack: drop it */
+            acode_pushin(pcn, IN_DROP);
+          }
         }
       } else { /* single-value (combo) assignment */
         node_t *pn0 = ndref(pn, 0), *pln = (pn0->nt == NT_CAST) ? ndref(pn0, 1) : pn0;
