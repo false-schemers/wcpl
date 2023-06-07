@@ -3926,7 +3926,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
           node_t *pti = ndref(ptnv, i-1); valtype_t vt;
           if (pti->nt == NT_VARDECL && ndlen(pti) == 1) pti = ndref(pti, 0);
           assert(pti->nt == NT_TYPE);
-          vt = ts2vt(pti->ts); assert(vt != VT_UNKN);
+          if ((vt = ts2vt(pti->ts)) == VT_UNKN) neprintf(pti, "unexpected mv type");
           if (pni->nt == NT_IDENTIFIER) {
             pci = expr_compile(pni, prib, NULL);
             pcni = compile_asnvar(pni, pci, pti);
@@ -4035,7 +4035,7 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
       pcn = compile_branch(pn, NULL, pn->name);
     } break; 
     case NT_RETURN: {
-      node_t *pan = NULL;
+      node_t *pan = NULL, *ptn;
       assert(ret);
       if (ndlen(pn) == 1) {
         node_t *psn = ndref(pn, 0);
@@ -4057,6 +4057,43 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
           }
         } else if (psn->nt == NT_DISPLAY) {
           neprintf(psn, "unexpected multiple values return");
+        } else if (psn->nt == NT_CALL && ret->ts == TS_ETC) {
+          pan = expr_compile(psn, prib, NULL);
+          ptn = acode_type(pan);
+          if (ptn->ts != TS_ETC || ndlen(ret) != ndlen(ptn)) {
+            n2eprintf(psn, ret, "return values type/count mismatch");
+          } else if (!same_type(ptn, ret)) {
+            /* try to promote results to match ret type */
+            size_t n = ndlen(ret), i; valtype_t vt;
+            buf_t sb = mkbuf(sizeof(sym_t));
+            /* pop the stack into fresh locals */
+            for (i = n; i > 0; --i) { /* in reverse to match stack pop order */
+              inscode_t *pic; sym_t vname;
+              const node_t *ptni = ndref(ptn, i-1), *reti = ndcref(ret, i-1);
+              if (ptni->nt == NT_VARDECL && ndlen(ptni) == 1) ptni = ndcref(ptni, 0);
+              if (reti->nt == NT_VARDECL && ndlen(reti) == 1) reti = ndcref(reti, 0);
+              if ((vt = ts2vt(ptni->ts)) == VT_UNKN) neprintf(ptni, "unexpected mv type");
+              vname = rpalloc(vt); *(sym_t*)bufnewfr(&sb) = vname; /* @front! */
+              pic = icbnewfr(&pan->data); pic->in = IN_REGDECL;
+              pic->id = vname; pic->arg.u = vt;
+              acode_pushin_id(pan, IN_LOCAL_SET, vname);
+            }
+            /* put back locals into stack with possible promotion */
+            for (i = 0; i < n; ++i) { /* in direct stack push order */
+              sym_t vname = *(sym_t*)bufref(&sb, i); node_t *pvn;
+              const node_t *ptni = ndref(ptn, i), *reti = ndcref(ret, i);
+              if (ptni->nt == NT_VARDECL && ndlen(ptni) == 1) ptni = ndcref(ptni, 0);
+              if (reti->nt == NT_VARDECL && ndlen(reti) == 1) reti = ndcref(reti, 0);
+              if (!assign_compatible(reti, ptni))
+                neprintf(reti, "can't modify lval: unexpected type on the right");
+              pvn = compile_idref(psn, 0, vname, ptni);
+              if (!same_type(reti, ptni)) pvn = compile_cast(psn, reti, pvn); 
+              acode_swapin(pan, pvn);
+            }
+            /* patch pan type */
+            ndcpy(acode_type(pan), ret);
+            buffini(&sb);
+          }
         } else {
           pan = expr_compile(psn, prib, NULL);
         }
