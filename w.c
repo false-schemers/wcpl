@@ -4507,12 +4507,43 @@ void wat_to_wasm(wat_module_t *ptm, wasm_module_t *pbm)
         }
       } break;
       case IEK_DATA: {
-        dseg_t *ps = dsegbnewbk(&pbm->datadefs, DS_ACTIVE); 
-        inscode_t *pdc;
+        /* Split the blob at long runs of zero bytes rather than storing
+         * them.  Linear memory starts zeroed, so a run of zeroes needs
+         * no bytes in the module -- only its address space, and that is
+         * already covered, because the memory section's page count comes
+         * from the data layout's end address (finalize_wat_module), not
+         * from what is written here.  Each piece keeps its own
+         * i32.const offset; several active data segments are ordinary
+         * wasm, and wasm_datas writes as many as there are.
+         *
+         * Without this a zero-filled array costs its full size in the
+         * file.  A Scheme runtime declaring its 64 MiB root stack as
+         * `size=67108864' turned a 330 KB program into a 67 MB module,
+         * 64 MB of it a single run of zeroes. */
+        unsigned char *db = pe->data.buf;
+        size_t dn = pe->data.fill, at = 0;
         assert(!pe->align); assert(pe->ic.in == IN_I32_CONST);
-        pdc = icbnewbk(&ps->code); *pdc = pe->ic; pdc->id = 0;
-        icbnewbk(&ps->code)->in = IN_END; 
-        cbcpy(&ps->data, &pe->data);
+        while (at < dn) {
+          size_t beg, end, zat;
+          while (at < dn && db[at] == 0) ++at;
+          if (at >= dn) break;
+          beg = at; end = at;
+          while (at < dn) {
+            if (db[at] != 0) { ++at; end = at; continue; }
+            zat = at;
+            while (at < dn && db[at] == 0) ++at;
+            /* a short gap is cheaper to store than a second segment */
+            if (at - zat >= 1024) break;
+          }
+          {
+            dseg_t *ps = dsegbnewbk(&pbm->datadefs, DS_ACTIVE);
+            inscode_t *pdc = icbnewbk(&ps->code);
+            *pdc = pe->ic; pdc->id = 0;
+            pdc->arg.u = pe->ic.arg.u + beg;
+            icbnewbk(&ps->code)->in = IN_END;
+            cbput((const char *)(db + beg), end - beg, &ps->data);
+          }
+        }
       } break;
       default:;
     }
