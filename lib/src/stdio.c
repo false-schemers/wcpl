@@ -40,6 +40,14 @@ static void closeall(void)
   }
 }
 
+static void flushall(void)
+{
+  FILE *fpi;
+  for (fpi = &_iob[0]; fpi < &_iob[FOPEN_MAX]; ++fpi) {
+    if (fpi->flags & _IOWRT) fflush(fpi);
+  }
+}
+
 static void initialize(void)
 {
   if (!initialized) {
@@ -47,6 +55,7 @@ static void initialize(void)
     if (isatty(STDIN_FILENO)) stdin->flags |= _IOLBF; 
     if (isatty(STDOUT_FILENO)) stdout->flags |= _IOLBF; 
     atexit(&closeall);
+    __assert_flush = &flushall; /* don't lose output on assert failure */
     initialized = true;
   }
 }
@@ -810,6 +819,7 @@ static double _atod(in_fct_t in, void *data, const size_t maxlen, int width, siz
   }
   buf[len] = 0; errno = 0;
   res = strtod(buf, &end);
+  if (errno == ERANGE) errno = 0; /* inf, subnormal or 0 is still a match */
   if (*end != 0) errno = EILSEQ;
   return res;
 }
@@ -1076,8 +1086,6 @@ int vsnscanf(const char *buf, size_t count, const char *format, va_list va)
 /* default precision for hexadecimal doubles */
 #define PRINTF_DEFAULT_HEXFL_PRECISION  13U 
 
-/* largest float suitable to print with %f */
-#define PRINTF_MAX_FLOAT  1e9
 
 /* internal flag definitions */
 #define FLAGS_ZEROPAD   (1U <<  0U)
@@ -1091,7 +1099,6 @@ int vsnscanf(const char *buf, size_t count, const char *format, va_list va)
 #define FLAGS_LONG      (1U <<  8U)
 #define FLAGS_LONG_LONG (1U <<  9U)
 #define FLAGS_PRECISION (1U << 10U)
-#define FLAGS_ADAPT_EXP (1U << 11U)
 
 /* output function type */
 typedef void (*out_fct_t)(char c, void *data, size_t idx, size_t maxlen);
@@ -1185,167 +1192,85 @@ static size_t _ntoa_long_long(out_fct_t out, void *data, size_t idx, size_t maxl
   return _ntoa_format(out, data, idx, maxlen, buf, len, negative, (unsigned int)base, prec, width, flags);
 }
 
-/* powers of 10 for _ftoa's 9 digits of precision */
-static const double pow10[] = { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000 };
-
-/* forward declaration so that _ftoa can switch to exp notation for values > PRINTF_MAX_FLOAT */
-static size_t _etoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags);
-
-/* internal ftoa for fixed decimal floating point */
-static size_t _ftoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags)
+/* emit n copies of c */
+static size_t _out_rep(out_fct_t out, void *data, size_t idx, size_t maxlen, char c, size_t n)
 {
-  char buf[PRINTF_FTOA_BUFFER_SIZE];
-  size_t len  = 0U; double diff = 0.0;
-  
-  if (value != value)   /* NAN */
-    return _out_rev(out, data, idx, maxlen, "nan", 3, width, flags);
-  if (value < -DBL_MAX) /* -INF */
-    return _out_rev(out, data, idx, maxlen, "fni-", 4, width, flags);
-  if (value > DBL_MAX)  /* +INF */
-    return _out_rev(out, data, idx, maxlen, (flags & FLAGS_PLUS) ? "fni+" : "fni", (flags & FLAGS_PLUS) ? 4U : 3U, width, flags);
-  /* fall back to etoa for very large values */
-  if ((value > PRINTF_MAX_FLOAT) || (value < -PRINTF_MAX_FLOAT)) {
-    return _etoa(out, data, idx, maxlen, value, prec, width, flags);
-  }
-  bool negative = false;
-  if (value < 0) { negative = true; value = -value; }
-  if (!(flags & FLAGS_PRECISION)) {
-    prec = PRINTF_DEFAULT_FLOAT_PRECISION;
-  }
-  /* limit precision to 9, cause a prec >= 10 can lead to overflow errors */
-  while ((len < PRINTF_FTOA_BUFFER_SIZE) && (prec > 9U)) {
-    buf[len++] = '0';
-    --prec;
-  }
-  
-  int whole = (int)value;
-  double tmp = (value - whole) * pow10[prec];
-  unsigned long frac = (unsigned long)tmp;
-  diff = tmp - frac;
-  if (diff > 0.5) {
-    ++frac;
-    /* handle rollover, e.g. case 0.99 with prec 1 is 1.0 */
-    if (frac >= pow10[prec]) {
-      frac = 0;
-      ++whole;
-    }
-  } else if (diff < 0.5) {
-  } else if ((frac == 0U) || (frac & 1U)) {
-    /* if halfway, round up if odd OR if last digit is 0 */
-    ++frac;
-  }
-  if (prec == 0U) {
-    diff = value - (double)whole;
-    if ((!(diff < 0.5) || (diff > 0.5)) && (whole & 1)) {
-      /* exactly 0.5 and ODD, then round up:  1.5 -> 2, but 2.5 -> 2 */
-      ++whole;
-    }
-  } else {
-    unsigned int count = prec;
-    /* now do fractional part, as an unsigned number */
-    while (len < PRINTF_FTOA_BUFFER_SIZE) {
-      --count;
-      buf[len++] = (char)(48U + (frac % 10U));
-      if (!(frac /= 10U)) break;
-    }
-    /* add extra 0s */
-    while ((len < PRINTF_FTOA_BUFFER_SIZE) && (count-- > 0U)) {
-      buf[len++] = '0';
-    }
-    if (len < PRINTF_FTOA_BUFFER_SIZE) {
-      /* add decimal dot */
-      buf[len++] = '.';
-    }
-  }
-
-  /* do whole part, number is reversed */
-  while (len < PRINTF_FTOA_BUFFER_SIZE) {
-    buf[len++] = (char)(48 + (whole % 10));
-    if (!(whole /= 10)) break;
-  }
-  if (!(flags & FLAGS_LEFT) && (flags & FLAGS_ZEROPAD)) {
-    if (width && (negative || (flags & (FLAGS_PLUS | FLAGS_SPACE)))) --width;
-    while ((len < width) && (len < PRINTF_FTOA_BUFFER_SIZE)) buf[len++] = '0';
-  }
-  if (len < PRINTF_FTOA_BUFFER_SIZE) {
-    if (negative) buf[len++] = '-';
-    else if (flags & FLAGS_PLUS) buf[len++] = '+';
-    else if (flags & FLAGS_SPACE) buf[len++] = ' ';
-  }
-
-  return _out_rev(out, data, idx, maxlen, buf, len, width, flags);
+  while (n-- > 0) (*out)(c, data, idx++, maxlen);
+  return idx;
 }
 
-/* internal ftoa variant for exponential floating-point type, contributed by Martijn Jasperse <m.jasperse@gmail.com> */
-static size_t _etoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags)
+/* %e, %f, %g (fmt is 'e', 'f' or 'g') per C11 7.21.6.1.  Digits come from
+ * _fptodigits: correctly rounded up to 17 significant digits; positions past
+ * the 17th significant digit (only reachable with large precisions or %f of
+ * huge values) print as 0, and are trimmed by %g like any trailing zero */
+static size_t _dtoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags, int fmt)
 {
-  if ((value != value) || (value > DBL_MAX) || (value < -DBL_MAX)) {
-    return _ftoa(out, data, idx, maxlen, value, prec, width, flags);
-  }
-  const bool negative = value < 0; if (negative) value = -value;
-  if (!(flags & FLAGS_PRECISION)) prec = PRINTF_DEFAULT_FLOAT_PRECISION;
-
-  /* determine the decimal exponent
-   * based on the algorithm by David Gay (https://www.ampl.com/netlib/fp/dtoa.c) */
+  char dig[20], ebuf[8], sign = 0; unsigned long long d = 0; 
+  int nd = 0, e = 0, x = 0, lnz = -1, i, f, elen = 0; 
+  size_t len, pad; bool expform = (fmt == 'e'), dot;
   union { uint64_t U; double F; } conv; conv.F = value;
-  int exp2 = (int)((conv.U >> 52U) & 0x07FFU) - 1023;  /* effectively log2 */
-  conv.U = (conv.U & ((1ULL << 52U) - 1U)) | (1023ULL << 52U);  /* drop the exponent so conv.F is now in [1,2) */
-  /* now approximate log10 from the log2 integer part and an expansion of ln around 1.5 */
-  int expval = (int)(0.1760912590558 + exp2 * 0.301029995663981 + (conv.F - 1.5) * 0.289529654602168);
-  /* now we want to compute 10^expval but we want to be sure it won't overflow */
-  exp2 = (int)(expval * 3.321928094887362 + 0.5);
-  const double z  = expval * 2.302585092994046 - exp2 * 0.6931471805599453;
-  const double z2 = z * z;
-  conv.U = (uint64_t)(exp2 + 1023) << 52U;
-  /* compute exp(z) using continued fractions, see 
-   * https://en.wikipedia.org/wiki/Exponential_function#Continued_fractions_for_ex */
-  conv.F *= 1 + 2 * z / (2 - z + (z2 / (6 + (z2 / (10 + z2 / 14)))));
-  /* correct for rounding errors */
-  if (value < conv.F) { --expval; conv.F /= 10; }
-
-  /* the exponent format is "%+03d" and largest value is "307", so set aside 4-5 characters */
-  unsigned int minwidth = ((expval < 100) && (expval > -100)) ? 4U : 5U;
-
-  /* in "%g" mode, "prec" is the number of *significant figures* not decimals */
-  if (flags & FLAGS_ADAPT_EXP) {
-    /* do we want to fall-back to "%f" mode? */
-    if ((value >= 1e-4) && (value < 1e6)) {
-      if ((int)prec > expval) prec = (unsigned)((int)prec - expval - 1);
-      else prec = 0;
-      flags |= FLAGS_PRECISION; /* make sure _ftoa respects precision */
-      /* no characters in exponent */
-      minwidth = 0U; expval = 0;
-    } else {
-      /* we use one sigfig for the whole part */
-      if ((prec > 0) && (flags & FLAGS_PRECISION)) --prec;
+  if (conv.U >> 63) { sign = '-'; value = -value; }
+  else if (flags & FLAGS_PLUS) sign = '+';
+  else if (flags & FLAGS_SPACE) sign = ' ';
+  if (value != value || value > DBL_MAX) { /* nan, inf: no zero padding */
+    const char *s = (value != value) ? ((flags & FLAGS_UPPERCASE) ? "NAN" : "nan")
+                                     : ((flags & FLAGS_UPPERCASE) ? "INF" : "inf");
+    len = 3 + (sign != 0); pad = width > len ? width - len : 0;
+    if (!(flags & FLAGS_LEFT)) idx = _out_rep(out, data, idx, maxlen, ' ', pad);
+    if (sign) (*out)(sign, data, idx++, maxlen);
+    while (*s) (*out)(*s++, data, idx++, maxlen);
+    if (flags & FLAGS_LEFT) idx = _out_rep(out, data, idx, maxlen, ' ', pad);
+    return idx;
+  }
+  if (!(flags & FLAGS_PRECISION)) prec = PRINTF_DEFAULT_FLOAT_PRECISION;
+  if (prec > 100000U) prec = 100000U; /* keep int arithmetic safe */
+  if (fmt == 'g' && prec == 0) prec = 1;
+  /* get the digits: value ~ 0.dig * 10^(e+1) */
+  if (value != 0.0) {
+    if (fmt == 'f') nd = _fptodigits(value, 1, (int)prec, &d, &e);
+    else nd = _fptodigits(value, 0, fmt == 'e' ? ((int)prec < 17 ? (int)prec + 1 : 17) 
+                                               : ((int)prec < 17 ? (int)prec : 17), &d, &e);
+    for (i = nd - 1; i >= 0; --i) { dig[i] = (char)('0' + d % 10); d /= 10; }
+    for (i = nd - 1; i >= 0; --i) if (dig[i] != '0') { lnz = i; break; }
+    if (lnz < 0) e = 0; /* rounded to 0 */
+  }
+  /* choose the style and the number of fractional digits f */
+  f = (int)prec;
+  if (fmt == 'g') {
+    if ((int)prec > e && e >= -4) { expform = false; f = (int)prec - 1 - e; }
+    else { expform = true; f = (int)prec - 1; }
+    if (!(flags & FLAGS_HASH)) { /* trim trailing zeros */
+      int last = expform ? lnz : lnz - e; /* last nonzero fractional digit */
+      if (f > last) f = last > 0 ? last : 0;
     }
   }
-
-  unsigned int fwidth = width;
-  if (width > minwidth) { /* we didn't fall-back so subtract the characters required for the exponent */
-    fwidth -= minwidth;
-  } else { /* not enough characters, so go back to default sizing */
-    fwidth = 0U;
+  dot = f > 0 || (flags & FLAGS_HASH);
+  if (expform) {
+    unsigned int ax = (unsigned int)(e < 0 ? -e : e);
+    x = e; e = 0; /* mantissa: one digit before the dot */
+    do { ebuf[elen++] = (char)('0' + ax % 10); ax /= 10; } while (ax > 0);
+    if (elen < 2) ebuf[elen++] = '0';
   }
-  if ((flags & FLAGS_LEFT) && minwidth) { /* if we're padding on the right, DON'T pad the floating part */
-    fwidth = 0U;
+  len = (sign != 0) + (e < 0 ? 1 : (size_t)e + 1) + dot + (size_t)f + (expform ? 2 + (size_t)elen : 0);
+  pad = width > len ? width - len : 0;
+  /* output */
+  if (!(flags & FLAGS_LEFT) && !(flags & FLAGS_ZEROPAD)) idx = _out_rep(out, data, idx, maxlen, ' ', pad);
+  if (sign) (*out)(sign, data, idx++, maxlen);
+  if (!(flags & FLAGS_LEFT) && (flags & FLAGS_ZEROPAD)) idx = _out_rep(out, data, idx, maxlen, '0', pad);
+  /* digit k (k = 0 is the first) sits at decimal position 10^(e-k) */
+  if (e < 0) (*out)('0', data, idx++, maxlen);
+  else for (i = 0; i <= e; ++i) (*out)(i < nd ? dig[i] : '0', data, idx++, maxlen);
+  if (dot) (*out)('.', data, idx++, maxlen);
+  for (i = 1; i <= f; ++i) {
+    int k = e + i;
+    (*out)((k >= 0 && k < nd) ? dig[k] : '0', data, idx++, maxlen);
   }
-
-  /* rescale the float value */
-  if (expval) value /= conv.F;
-
-  /* output the floating part */
-  const size_t start_idx = idx;
-  idx = _ftoa(out, data, idx, maxlen, negative ? -value : value, prec, fwidth, flags & ~FLAGS_ADAPT_EXP);
-  /* output the exponent part */
-  if (minwidth) {
+  if (expform) {
     (*out)((flags & FLAGS_UPPERCASE) ? 'E' : 'e', data, idx++, maxlen);
-    idx = _ntoa_long(out, data, idx, maxlen, (expval < 0) ? -expval : expval, expval < 0, 10, 0, minwidth-1, FLAGS_ZEROPAD | FLAGS_PLUS);
-    if (flags & FLAGS_LEFT) { /* right-pad spaces */ 
-      while (idx - start_idx < width) (*out)(' ', data, idx++, maxlen);
-    }
+    (*out)(x < 0 ? '-' : '+', data, idx++, maxlen);
+    while (elen > 0) (*out)(ebuf[--elen], data, idx++, maxlen);
   }
-
+  if (flags & FLAGS_LEFT) idx = _out_rep(out, data, idx, maxlen, ' ', pad);
   return idx;
 }
 
@@ -1353,7 +1278,7 @@ static size_t _etoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double
 static size_t _atoa(out_fct_t out, void *data, size_t idx, size_t maxlen, double value, unsigned int prec, unsigned int width, unsigned int flags)
 {
   if ((value != value) || (value > DBL_MAX) || (value < -DBL_MAX)) {
-    return _ftoa(out, data, idx, maxlen, value, prec, width, flags);
+    return _dtoa(out, data, idx, maxlen, value, prec, width, flags, 'f');
   }
   const bool negative = value < 0.0; if (negative) value = -value;
   if (!(flags & FLAGS_PRECISION)) prec = PRINTF_DEFAULT_HEXFL_PRECISION;
@@ -1537,13 +1462,13 @@ static int _vsnprintf(out_fct_t out, void *data, const size_t maxlen, const char
       } break;
       case 'f': case 'F': {
         if (*format == 'F') flags |= FLAGS_UPPERCASE;
-        idx = _ftoa(out, data, idx, maxlen, va_arg(va, double), precision, width, flags);
+        idx = _dtoa(out, data, idx, maxlen, va_arg(va, double), precision, width, flags, 'f');
         ++format;
       } break;
       case 'e': case 'E': case 'g': case 'G': {
-        if (*format == 'g' || *format == 'G') flags |= FLAGS_ADAPT_EXP;
         if (*format == 'E' || *format == 'G') flags |= FLAGS_UPPERCASE;
-        idx = _etoa(out, data, idx, maxlen, va_arg(va, double), precision, width, flags);
+        idx = _dtoa(out, data, idx, maxlen, va_arg(va, double), precision, width, flags,
+                    (*format == 'g' || *format == 'G') ? 'g' : 'e');
         ++format;
       } break;
       case 'c': {

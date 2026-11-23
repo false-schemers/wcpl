@@ -49,3 +49,5 @@ extern size_t wcstombs(char *s, const wchar_t *pwcs, size_t n);
 
 /* internal library bailout w/message */
 extern void _panicf(const char *fmt, ...);
+/* internal: decimal digits of v > 0 for printf (see stdlib.c) */
+extern int _fptodigits(double v, int fixed, int n, unsigned long long *pd, int *pe);

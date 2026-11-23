@@ -84,6 +84,7 @@ struct pws {
   char *tokstr;       /* lookahead token string */
   int pos;            /* absolute pos of la token start */
   int cclevel;        /* nesting of active cc blocks */
+  bool inmacrodef;    /* parsing the body of a #define */
 }; /* pws_t */
 
 int pwsid(pws_t *pw)
@@ -135,6 +136,7 @@ pws_t *newpws(const char *infile)
     pw->tokstr = NULL;
     pw->pos = 0;
     pw->cclevel = 0;
+    pw->inmacrodef = false;
     *(pws_t**)bufnewbk(&g_pwsbuf) = pw;
   }
   return pw;
@@ -523,6 +525,17 @@ bool same_numlit(const node_t *pcn1, const node_t *pcn2)
   return false;
 }
 
+/* array dimensions are equivalent if either is unspecified or both
+ * evaluate to the same constant (literal types may differ: 3 vs 3u) */
+static bool same_array_dim(const node_t *pcn1, const node_t *pcn2)
+{
+  node_t *pn1 = (node_t*)pcn1, *pn2 = (node_t*)pcn2; int i1, i2;
+  if (pn1->nt == NT_NULL || pn2->nt == NT_NULL) return true;
+  if (same_numlit(pn1, pn2)) return true;
+  return arithmetic_eval_to_int(pn1, NULL, &i1)
+      && arithmetic_eval_to_int(pn2, NULL, &i2) && i1 == i2;
+}
+
 /* simple comparison of NT_TYPE nodes for equivalence */
 bool same_type(const node_t *pctn1, const node_t *pctn2)
 {
@@ -570,7 +583,7 @@ bool same_type(const node_t *pctn1, const node_t *pctn2)
     /* allow incomplete array to be equivalent to a complete one */
     assert(ndlen(ptn1) == 2 && ndlen(ptn2) == 2);
     return same_type(ndref(ptn1, 0), ndref(ptn2, 0))
-        && same_numlit(ndref(ptn1, 1), ndref(ptn2, 1));
+        && same_array_dim(ndref(ptn1, 1), ndref(ptn2, 1));
   }
   return true;
 }
@@ -2114,6 +2127,16 @@ node_t *wrap_type_pointer(node_t *pn)
 node_t *wrap_type_array(node_t *pn, node_t *pi)
 {
   node_t nd = mknd();
+  /* fold constant dimension to int literal so that types with equal
+   * dimensions compare equal; non-constant ones are left for later */
+  if (pi->nt != NT_NULL && !(pi->nt == NT_LITERAL && pi->ts == TS_INT && pi->val.i > 0)) {
+    int count = 0;
+    if (arithmetic_eval_to_int(pi, NULL, &count)) {
+      if (count <= 0) neprintf(pi, "array size should be positive");
+      ndset(pi, NT_LITERAL, pi->pwsid, pi->startpos);
+      pi->ts = TS_INT; pi->val.i = count;
+    }
+  }
   ndset(&nd, NT_TYPE, pn->pwsid, pn->startpos);
   nd.ts = TS_ARRAY;
   ndswap(pn, ndnewbk(&nd));
@@ -2402,6 +2425,29 @@ static bool no_etcpars(ndbuf_t *ppars)
   return true;
 }
 
+/* __LINE__ and __FILE__ are kept as identifiers inside #define bodies
+ * and replaced by literals where they are used, so that inside a macro
+ * they refer to the place of the macro's use, as in C */
+static sym_t line_sym = 0, file_sym = 0;
+static void line_file_subst(pws_t *pw, node_t *pn, int usepos)
+{
+  if (!line_sym) line_sym = intern("__LINE__"), file_sym = intern("__FILE__");
+  if (pn->nt == NT_IDENTIFIER && (pn->name == line_sym || pn->name == file_sym)) {
+    node_t nd = mknd(); int ln = 0, off = 0;
+    ndset(&nd, NT_LITERAL, pn->pwsid, pn->startpos);
+    if (pn->name == line_sym) {
+      pos2lnoff(pw, usepos, &ln, &off);
+      nd.ts = TS_INT; nd.val.i = ln;
+    } else {
+      nd.ts = TS_STRING; cbputs(pw->infile, &nd.data); cbputc(0, &nd.data);
+    }
+    ndswap(pn, &nd); ndfini(&nd);
+  } else {
+    size_t i;
+    for (i = 0; i < ndlen(pn); ++i) line_file_subst(pw, ndref(pn, i), usepos);
+  }
+}
+
 void patch_macro_template(buf_t *pids, ndbuf_t *ppars, node_t *pn)
 {
   size_t n = buflen(pids), i; sym_t *pi = bufdata(pids); 
@@ -2547,18 +2593,21 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
     case TT_FLOAT: {
       char *ns = pw->tokstr; double d;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      if (errno = 0, d = strtod(ns, NULL), !errno) {
+      /* underflow (subnormal or 0) is fine, as in C; overflow is not */
+      if (errno = 0, d = strtod(ns, NULL), d != HUGE_VAL && d != -HUGE_VAL
+          && (double)(float)d != HUGE_VAL && (double)(float)d != -HUGE_VAL) {
         pn->val.f = (float)d;
-      } else reprintf(pw, startpos, "invalid float literal"); 
+      } else reprintf(pw, startpos, "float literal overflow"); 
       pn->ts = TS_FLOAT;
       dropt(pw);
     } break;
     case TT_DOUBLE: {
       char *ns = pw->tokstr; double d;
       ndset(pn, NT_LITERAL, pw->id, startpos); 
-      if (errno = 0, d = strtod(ns, NULL), !errno) {
+      /* underflow (subnormal or 0) is fine, as in C; overflow is not */
+      if (errno = 0, d = strtod(ns, NULL), d != HUGE_VAL && d != -HUGE_VAL) {
         pn->val.d = d;
-      } else reprintf(pw, startpos, "invalid double literal"); 
+      } else reprintf(pw, startpos, "double literal overflow"); 
       pn->ts = TS_DOUBLE;
       dropt(pw);
     } break;
@@ -2607,6 +2656,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
     case TT_IDENTIFIER: {
       ndset(pn, NT_IDENTIFIER, pw->id, startpos); 
       pn->name = getid(pw);
+      if (!pw->inmacrodef) line_file_subst(pw, pn, startpos);
     } break;
     case TT_ELLIPSIS: { /* same as va_etc() */
       dropt(pw);
@@ -2661,6 +2711,7 @@ static void parse_primary_expr(pws_t *pw, node_t *pn)
         patch_macro_template(&ids, &pars, pn);
         buffini(&ids); ndbfini(&pars); 
       } else assert(false);
+      if (!pw->inmacrodef) line_file_subst(pw, pn, startpos);
       /* use current loc info on outer level */
       pn->pwsid = pw->id; pn->startpos = startpos;
     } break;
@@ -3919,13 +3970,24 @@ static void parse_top_typedef(pws_t *pw, node_t *pn)
   expect(pw, TT_TYPEDEF_KW, "typedef");
   ndset(pn, NT_TYPEDEF, pw->id, startpos);
   if (type_specifier_ahead(pw)) {
-    node_t *ptn = ndnewbk(pn);
-    parse_base_type(pw, ptn);
-    pn->name = parse_declarator(pw, ptn);
+    /* typedef T a, *b, c[4]; -- each declarator gets its own copy of T;
+     * pn keeps the first one, all are registered as type names */
+    node_t btn = mknd(); bool first = true;
+    parse_base_type(pw, &btn);
+    while (true) {
+      node_t tn = mknd(); sym_t name; int dpos = peekpos(pw);
+      ndcpy(&tn, &btn);
+      name = parse_declarator(pw, &tn);
+      if (!name) reprintf(pw, dpos, "missing new type name in typedef");
+      intern_symbol(symname(name), TT_TYPE_NAME, (int)ndblen(&g_nodes));
+      ndcpy(ndbnewbk(&g_nodes), &tn);
+      if (first) { pn->name = name; ndswap(ndnewbk(pn), &tn); first = false; }
+      ndfini(&tn);
+      if (peekt(pw) != TT_COMMA) break;
+      dropt(pw);
+    }
     expect(pw, TT_SEMICOLON, ";");
-    if (!pn->name) reprintf(pw, startpos, "missing new type name in typedef");
-    intern_symbol(symname(pn->name), TT_TYPE_NAME, (int)ndblen(&g_nodes));
-    ndcpy(ndbnewbk(&g_nodes), ptn);    
+    ndfini(&btn);
   } else {
     reprintf(pw, pw->pos, "type specifier expected");
   }
@@ -3989,6 +4051,7 @@ static void parse_define_directive(pws_t *pw, int startpos)
       expect(pw, TT_RPAR, ")");
     }  
     /* righ-hand-side expression or do-block-while-0 */    
+    pw->inmacrodef = true;
     if (peekt(pw) == TT_DO_KW) {
       dropt(pw); parse_stmt(pw, ndnewbk(pn));
       expect(pw, TT_WHILE_KW, "while");
@@ -3999,6 +4062,7 @@ static void parse_define_directive(pws_t *pw, int startpos)
     } else { 
       parse_primary_expr(pw, ndnewbk(pn));
     }
+    pw->inmacrodef = false;
     /* save macro definition for future use */
     if (lookup_symbol(symname(pn->name), NULL) != TT_IDENTIFIER) {
       reprintf(pw, startpos, "macro name is already in use");

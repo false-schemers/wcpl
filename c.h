@@ -16,6 +16,7 @@ extern sym_t   g_hb_id;    /* id for heap base global */
 extern size_t  g_sdbaddr;  /* static data allocation start */
 extern size_t  g_stacksz;  /* stack size in bytes */
 extern size_t  g_argvbsz;  /* argv buf size in bytes */
+extern bool    g_ndebug;   /* -DNDEBUG: use library's include/NDEBUG/ headers */
 
 /* static eval value */
 typedef struct seval {

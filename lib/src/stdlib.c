@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <ctype.h>
 #include <math.h>
+#include <limits.h>
 #include <unistd.h>
 #include <wasi/api.h>
 #include <sys/crt.h>
@@ -130,141 +131,256 @@ long long atoll(const char *s)
   return neg ? n : -n;
 }
 
-/* poor man's strtod: rounding errors are possible in decimal, hex is exact */
+/* Decimal <-> binary conversion core, shared by strtod and printf's
+ * %e/%f/%g.  Values are carried as double-doubles (hi + lo, ~106 bits),
+ * so scaling by a power of ten is accurate to ~2^-100 relative: results
+ * are correctly rounded except within ~1e-30 (relative) of a halfway
+ * point, where the last digit/bit may be off by one. */
 
-#define MAX_BASE10_EXPONENT 511 /* largest possible base 10 exponent */
-#define MAX_BASE10_DIGS 18 /* more than this won't affect the result */
-static double powers_of_10[] = { 10., 100., 1.0e4, 1.0e8, 1.0e16, 1.0e32, 1.0e64, 1.0e128, 1.0e256 };
+typedef struct dd { double hi, lo; } dd_t;
 
-static double strtod_dec(const char *s, const char *pc, bool neg, char **endp)
+/* 10^(2^i) and 10^-(2^i), i=0..8, as double-double (hi, lo) pairs */
+static const double p10dd[18] = {
+  0x1.4000000000000p+3, 0x0.0p+0,
+  0x1.9000000000000p+6, 0x0.0p+0,
+  0x1.3880000000000p+13, 0x0.0p+0,
+  0x1.7d78400000000p+26, 0x0.0p+0,
+  0x1.1c37937e08000p+53, 0x0.0p+0,
+  0x1.3b8b5b5056e17p+106, -0x1.3107f00000000p+52,
+  0x1.84f03e93ff9f5p+212, -0x1.2ac340948e389p+157,
+  0x1.27748f9301d32p+425, -0x1.901cc86649e4ap+371,
+  0x1.54fdd7f73bf3cp+850, -0x1.7222446fe4670p+795 };
+static const double n10dd[18] = {
+  0x1.999999999999ap-4, -0x1.999999999999ap-58,
+  0x1.47ae147ae147bp-7, -0x1.eb851eb851eb8p-63,
+  0x1.a36e2eb1c432dp-14, -0x1.6a161e4f765fep-68,
+  0x1.5798ee2308c3ap-27, -0x1.03023df2d4c94p-82,
+  0x1.cd2b297d889bcp-54, 0x1.5b4c2ebe68799p-109,
+  0x1.9f623d5a8a733p-107, -0x1.a2cc10f3892d4p-161,
+  0x1.50ffd44f4a73dp-213, 0x1.a53f2398d747bp-268,
+  0x1.bba08cf8c979dp-426, -0x1.afa9c1a60497dp-480,
+  0x1.8062864ac6f43p-851, 0x1.39fa911155ff0p-906 };
+
+static const uint64_t ip10[18] = { 
+  1ULL, 10ULL, 100ULL, 1000ULL, 10000ULL, 100000ULL, 1000000ULL, 
+  10000000ULL, 100000000ULL, 1000000000ULL, 10000000000ULL, 
+  100000000000ULL, 1000000000000ULL, 10000000000000ULL, 
+  100000000000000ULL, 1000000000000000ULL, 10000000000000000ULL, 
+  100000000000000000ULL };
+
+/* exact product a*b = p->hi + p->lo (Dekker, no FMA needed) */
+static void two_prod(double a, double b, dd_t *p)
 {
-  bool negexp = false;
-  double fraction, exponent, *pd;
-  int c, exp = 0, fracexp = 0;
-  int mantsz = 0, dotpos = -1, expsz = -1;
-  const char *pexp;
-
-  while (true) {
-    if (!isdigit(c = *pc)) {
-      if ((c != '.') || (dotpos >= 0)) break;
-      dotpos = mantsz;
-    }
-    ++pc; ++mantsz;
-  }
-  pexp = pc; pc -= mantsz;
-  if (dotpos < 0) dotpos = mantsz; 
-  else --mantsz;
-  if (mantsz > MAX_BASE10_DIGS) mantsz = MAX_BASE10_DIGS;
-  fracexp = dotpos - mantsz;
-  if (mantsz == 0) {
-    if (endp != NULL) *endp = (char*)s;
-    return 0.0;
-  } else {
-    long long frac = 0LL;
-    while (mantsz-- > 0) {
-      if ((c = *pc++) == '.') c = *pc++;
-      frac = 10LL * frac + (c - '0');
-    }
-    fraction = (double)frac;
-  }
-  pc = pexp;
-  if ((*pc == 'E') || (*pc == 'e')) {
-    expsz = 0;
-    if (*++pc == '-') { ++pc; negexp = true; }
-    else if (*pc == '+') ++pc;
-    while (isdigit(*pc)) {
-      exp = exp * 10 + (*pc++ - '0');
-      ++expsz;
-    }
-  }
-  if (expsz == 0) {
-    if (endp != NULL) *endp = (char*)s;
-    return 0.0;
-  }
-  if (negexp) exp = fracexp - exp;
-  else exp = fracexp + exp;
-  if (exp < 0) { negexp = true; exp = -exp; } 
-  else negexp = false;
-  if (exp > MAX_BASE10_EXPONENT) {
-    if (endp != NULL) *endp = (char *)pc;
-    errno = ERANGE;
-    return neg ? -HUGE_VAL : HUGE_VAL;
-  }
-  exponent = 1.0;
-  for (pd = &powers_of_10[0]; exp != 0; exp >>= 1, ++pd) {
-    if (exp & 1) exponent *= *pd;
-  }
-  if (negexp) fraction /= exponent;
-  else fraction *= exponent;
-
-  if (endp != NULL) *endp = (char *)pc;
-  return neg ? -fraction : fraction;
+  double c, ah, al, bh, bl, x = a * b;
+  c = 134217729.0 * a; ah = c - (c - a); al = a - ah;
+  c = 134217729.0 * b; bh = c - (c - b); bl = b - bh;
+  p->hi = x; p->lo = ((ah * bh - x) + ah * bl + al * bh) + al * bl;
 }
 
-#define MAX_BASE2_EXPONENT 1024 /* largest possible base 2 exponent */
-#define MAX_BASE16_DIGS 15 /* more than this won't affect the result */
+/* *pa *= (bhi + blo), renormalized */
+static void dd_mul(dd_t *pa, double bhi, double blo)
+{
+  dd_t p; double s;
+  two_prod(pa->hi, bhi, &p);
+  p.lo += pa->hi * blo + pa->lo * bhi;
+  s = p.hi + p.lo; pa->lo = p.lo - (s - p.hi); pa->hi = s;
+}
 
+/* *pa *= 10^n, |n| < 512 */
+static void dd_mul_p10(dd_t *pa, int n)
+{
+  const double *t = n < 0 ? &n10dd[0] : &p10dd[0]; int i;
+  if (n < 0) n = -n;
+  for (i = 8; i >= 0; --i) if ((n >> i) & 1) dd_mul(pa, t[2*i], t[2*i+1]);
+}
+
+/* nearest integer to dd value 0 <= v < 2^63, ties to even; v within 
+ * v*rtol of a tie counts as a tie, to absorb dd rounding errors */
+static uint64_t dd_round(dd_t *pv, double rtol)
+{
+  uint64_t i = (uint64_t)pv->hi; double f = pv->hi - (double)i, t, tol; /* exact */
+  while (f + pv->lo < 0.0) { --i; f += 1.0; }
+  while (f + pv->lo >= 1.0) { ++i; f -= 1.0; }
+  /* compare f + lo with 1/2 without rounding lo away: f - 0.5 is exact 
+   * near the tie, so t is accurate where it matters */
+  t = (f - 0.5) + pv->lo; tol = pv->hi * rtol;
+  if (t > tol || (t >= -tol && (i & 1) != 0)) ++i;
+  return i;
+}
+
+/* *ps = v * 10^n as dd; v > 0 finite, |n| < 512, result in normal range */
+static void dd_scale(double v, int n, dd_t *ps)
+{
+  int k = 0;
+  ps->hi = v; ps->lo = 0.0;
+  if (v < 0x1p-900) { ps->hi = v * 0x1p+128; k = 1; }
+  else if (v > 0x1p+900) { ps->hi = v * 0x1p-128; k = 2; }
+  dd_mul_p10(ps, n);
+  if (k == 1) { ps->hi *= 0x1p-128; ps->lo *= 0x1p-128; }
+  else if (k == 2) { ps->hi *= 0x1p+128; ps->lo *= 0x1p+128; }
+}
+
+/* v > 0 finite: nd (1..17) significant digits -> *pd, 
+ * decimal exponent of the first digit -> *pe */
+static void dd_digits(double v, int nd, uint64_t *pd, int *pe)
+{
+  union { uint64_t u; double d; } c; int e2, e, it, dir; dd_t s; uint64_t d;
+  /* e: estimate of floor(log10(v)) from the binary exponent */
+  if (v < 0x1p-1022) { c.d = v * 0x1p+64; e2 = (int)((c.u >> 52) & 0x7FF) - 1023 - 64; } 
+  else { c.d = v; e2 = (int)((c.u >> 52) & 0x7FF) - 1023; }
+  e = (e2 * 78913) >> 18; /* 78913/2^18 ~ log10(2) */
+  /* adjust e until 10^(nd-1) <= s < 10^nd; move in one direction only: 
+   * a reversal means v is a power of 10 that scaled to a hair under the 
+   * bound, which the rounding and carry below handle */
+  for (it = 0, dir = 0; it < 4; ++it) {
+    double P = (double)ip10[nd], Q = (double)ip10[nd-1];
+    dd_scale(v, nd - 1 - e, &s);
+    if (s.hi > P || (s.hi == P && s.lo >= 0.0)) { if (dir < 0) break; dir = 1; ++e; continue; }
+    if (s.hi < Q || (s.hi == Q && s.lo < 0.0)) { if (dir > 0) break; dir = -1; --e; continue; }
+    break;
+  }
+  /* exact decimal ties (2.5 to 1 digit, 0.125 to 2, ...) come out of the
+   * dd arithmetic with ~2^-100 relative error; genuine near-ties that 
+   * close are far beyond what 17 digits can show */
+  d = dd_round(&s, 0x1p-90);
+  if (d >= ip10[nd]) { d = ip10[nd-1]; ++e; }
+  *pd = d; *pe = e;
+}
+
+/* v > 0 finite.  If fixed is 0, round v to n (1..17) significant digits;
+ * otherwise round it to n (>= 0) digits after the decimal point, but to 17
+ * significant digits at most.  The digits go to *pd, the decimal exponent
+ * of the first digit to *pe; returns the number of digits in *pd (0 if v
+ * rounds to 0 in fixed mode). */
+int _fptodigits(double v, int fixed, int n, unsigned long long *pd, int *pe)
+{
+  int nd = n, e;
+  if (fixed) {
+    dd_digits(v, 17, pd, &e); /* to get the exact decimal exponent */
+    nd = e + 1 + n;
+    if (nd >= 17) { *pe = e; return 17; }
+    if (nd <= 0) { /* v < 10^-n: result is 0 or 10^-n */
+      if (nd == 0) {
+        dd_t s; dd_scale(v, n, &s); /* in [0.1, 1) */
+        if (s.hi > 0.5 || (s.hi == 0.5 && s.lo > 0.0)) { *pd = 1; *pe = -n; return 1; }
+      }
+      *pd = 0; *pe = -n; return 0;
+    }
+  }
+  dd_digits(v, nd, pd, pe);
+  return nd;
+}
+
+/* decimal strtod: up to 36 significant digits are kept (as a dd), the
+ * rest only matters as a 'sticky' nonzero indicator */
+static double strtod_dec(const char *s, const char *pc, bool neg, char **endp)
+{
+  uint64_t d1 = 0, d2 = 0; int n1 = 0, n2 = 0, dexp = 0, ex = 0, k = 0, m;
+  bool seendig = false, seendot = false, eneg = false, sticky = false;
+  dd_t x; double r;
+  for (;; ++pc) {
+    int c = *pc;
+    if (c == '.' && !seendot) { seendot = true; continue; }
+    if (c < '0' || c > '9') break;
+    seendig = true;
+    if (c == '0' && n1 == 0) { if (seendot) --dexp; } /* leading zero */
+    else if (n1 < 19) { d1 = d1 * 10 + (uint64_t)(c - '0'); ++n1; if (seendot) --dexp; }
+    else if (n2 < 17) { d2 = d2 * 10 + (uint64_t)(c - '0'); ++n2; if (seendot) --dexp; }
+    else { if (c != '0') sticky = true; if (!seendot) ++dexp; }
+  }
+  if (!seendig) { /* no conversion */
+    if (endp != NULL) *endp = (char *)s;
+    return 0.0;
+  }
+  if (*pc == 'e' || *pc == 'E') { /* exponent is used only if it has digits */
+    const char *pe = pc + 1;
+    if (*pe == '-') { eneg = true; ++pe; } else if (*pe == '+') ++pe;
+    if (isdigit(*pe)) {
+      for (; isdigit(*pe); ++pe) if (ex < 100000) ex = ex * 10 + (*pe - '0');
+      pc = pe;
+    }
+  }
+  if (endp != NULL) *endp = (char *)pc;
+  r = 0.0;
+  if (n1 == 0) return neg ? -r : r; /* all zeros */
+  dexp += eneg ? -ex : ex; m = dexp + n1 + n2; /* v ~ 0.ddd * 10^m */
+  if (m > 310) { errno = ERANGE; r = HUGE_VAL; return neg ? -r : r; }
+  if (m < -326) { errno = ERANGE; return neg ? -r : r; }
+  x.hi = (double)d1; x.lo = (double)(int64_t)(d1 - (uint64_t)x.hi);
+  if (n2 > 0) { /* x = x * 10^n2 + d2 (+ sticky) */
+    double h, l, s1, bb, e1;
+    dd_mul(&x, (double)ip10[n2], 0.0);
+    h = (double)d2; l = (double)(int64_t)(d2 - (uint64_t)h);
+    if (sticky) l += 0.5;
+    s1 = x.hi + h; bb = s1 - x.hi; e1 = (x.hi - (s1 - bb)) + (h - bb); e1 += x.lo + l;
+    x.hi = s1 + e1; x.lo = e1 - (x.hi - s1); 
+  }
+  if (m < -290) { x.hi *= 0x1p+200; x.lo *= 0x1p+200; k = 200; }
+  else if (m > 290) { x.hi *= 0x1p-128; x.lo *= 0x1p-128; k = -128; }
+  dd_mul_p10(&x, dexp);
+  if (!k) r = x.hi;
+  else if (k < 0) r = x.hi * 0x1p+128; /* may overflow to inf */
+  else if (x.hi * 0x1p-200 >= 0x1p-1022) r = x.hi * 0x1p-200; /* normal: hi already rounded */
+  else { /* subnormal: round to the 2^-1074 grid once */
+    dd_t q; q.hi = x.hi * 0x1p+874; q.lo = x.lo * 0x1p+874;
+    /* a tie window of 2^-103 is the measured best compromise between exact
+     * midpoints (dd error ~2^-100) and near-midpoint inputs of 30+ digits */
+    r = (double)dd_round(&q, 0x1p-103) * 0x1p-1074;
+  }
+  if (r == HUGE_VAL || r < 0x1p-1022) errno = ERANGE; /* overflow, underflow */
+  return neg ? -r : r;
+}
+
+/* hexadecimal strtod: exact, rounds to nearest even once */
 static double strtod_hex(const char *s, const char *pc, bool neg, char **endp)
 {
-  bool negexp = false;
-  double fraction; // , exponent, *pd;
-  int c, exp = 0, fracexp = 0, val;
-  int mantsz = 0, dotpos = -1, expsz = -1;
-  const char *pexp;
-
-  while (true) {
-    if (!isxdigit(c = *pc)) {
-      if ((c != '.') || (dotpos >= 0)) break;
-      dotpos = mantsz;
-    }
-    ++pc; ++mantsz;
+  uint64_t m = 0, kept, rem, half, bits; int nd = 0, bexp = 0, ex = 0, drop, e;
+  bool seendig = false, seendot = false, eneg = false, sticky = false;
+  union { uint64_t u; double d; } c; double r;
+  for (;; ++pc) {
+    int ch = *pc, v;
+    if (ch == '.' && !seendot) { seendot = true; continue; }
+    if ('0' <= ch && ch <= '9') v = ch - '0';
+    else if ('a' <= ch && ch <= 'f') v = ch - 'a' + 10;
+    else if ('A' <= ch && ch <= 'F') v = ch - 'A' + 10;
+    else break;
+    seendig = true;
+    if (v == 0 && nd == 0) { if (seendot) bexp -= 4; } /* leading zero */
+    else if (nd < 16) { m = (m << 4) | (uint64_t)v; ++nd; if (seendot) bexp -= 4; }
+    else { if (v != 0) sticky = true; if (!seendot) bexp += 4; }
   }
-  pexp = pc; pc -= mantsz;
-  if (dotpos < 0) dotpos = mantsz;
-  else --mantsz;
-  if (mantsz > MAX_BASE16_DIGS) mantsz = MAX_BASE16_DIGS;
-  fracexp = (dotpos - mantsz)*4;
-  if (mantsz == 0) {
-    if (endp != NULL) *endp = (char*)s;
-    return 0.0;
-  } else {
-    long long frac = 0LL;
-    while (mantsz-- > 0) {
-      if ((c = *pc++) == '.') c = *pc++;
-      if ('0' <= c && c <= '9') val = c - '0';
-      else if ('a' <= c && c <= 'f') val = c - 'a' + 10;
-      else val = c - 'A' + 10;
-      frac = 16LL * frac + val;
-    }
-    fraction = (double)frac;
+  if (!seendig) { /* "0x" without hex digits: the subject is "0" */
+    if (endp != NULL) *endp = (char *)pc - (seendot ? 2 : 1); 
+    r = 0.0; return neg ? -r : r;
   }
-  pc = pexp;
-  if ((*pc == 'P') || (*pc == 'p')) {
-    expsz = 0;
-    if (*++pc == '-') { ++pc; negexp = true; }
-    else if (*pc == '+') ++pc;
-    while (isdigit(*pc)) {
-      exp = exp * 10 + (*pc++ - '0');
-      ++expsz;
+  if (*pc == 'p' || *pc == 'P') { /* exponent is used only if it has digits */
+    const char *pe = pc + 1;
+    if (*pe == '-') { eneg = true; ++pe; } else if (*pe == '+') ++pe;
+    if (isdigit(*pe)) {
+      for (; isdigit(*pe); ++pe) if (ex < 100000) ex = ex * 10 + (*pe - '0');
+      pc = pe;
     }
   }
-  if (expsz == 0) {
-    if (endp != NULL) *endp = (char*)s;
-    return 0.0;
-  }
-  if (negexp) exp = fracexp - exp;
-  else exp = fracexp + exp;
-  if (exp < 0) { negexp = true; exp = -exp; }
-  else negexp = false;
-  if (exp > MAX_BASE2_EXPONENT) {
-    if (endp != NULL) *endp = (char *)pc;
-    errno = ERANGE;
-    return neg ? -HUGE_VAL : HUGE_VAL;
-  }
-  fraction = ldexp(fraction, negexp ? -exp : exp);
-
   if (endp != NULL) *endp = (char *)pc;
-  return neg ? -fraction : fraction;
+  r = 0.0;
+  if (m == 0) return neg ? -r : r;
+  bexp += eneg ? -ex : ex;
+  while (!(m >> 63)) { m <<= 1; --bexp; } /* v = m * 2^bexp, m in [2^63, 2^64) */
+  e = bexp + 63; /* v in [2^e, 2^(e+1)) */
+  if (e > 1023) { errno = ERANGE; r = HUGE_VAL; return neg ? -r : r; }
+  if (e < -1075) { errno = ERANGE; return neg ? -r : r; }
+  drop = e >= -1022 ? 11 : 11 + (-1022 - e); /* 11..64 low bits to drop */
+  kept = drop == 64 ? 0 : m >> drop;
+  rem = drop == 64 ? m : m & ((1ULL << drop) - 1);
+  half = 1ULL << (drop - 1);
+  if (rem > half || (rem == half && (sticky || (kept & 1)))) ++kept;
+  if (rem != 0) sticky = true; /* now: result is inexact */
+  /* kept includes the implicit bit, so adding it to the exponent field 
+   * one below the real one handles carries into the exponent and inf */
+  bits = (e >= -1022 ? (uint64_t)(e + 1022) << 52 : 0) + kept;
+  c.u = bits; r = c.d;
+  if (r == HUGE_VAL || (r < 0x1p-1022 && sticky)) errno = ERANGE; /* overflow, underflow */
+  return neg ? -r : r;
 }
 
 /* internal scanner for special values */
@@ -308,7 +424,9 @@ double strtod(const char *s, char **endp)
     int n = strtod_s(pc, "NAN(*)");
     if (n >= 3) {
       if (endp) *endp = (char *)pc + n;
-      return -HUGE_VAL + HUGE_VAL; /* fixme */
+      union { uint64_t u; double d; } c; /* quiet NaN with the sign given */
+      c.u = neg ? 0xFFF8000000000000ULL : 0x7FF8000000000000ULL;
+      return c.d;
     } else {
       if (endp) *endp = (char *)s;
       return 0.0;
@@ -325,74 +443,97 @@ static int digitval(int c)
   return -1;
 }
 
-static uintmax_t strntoumax(const char *nptr, char **endptr, int base, size_t n)
+/* common integer scanner: magnitude is returned, sign in *pneg; if the
+ * magnitude does not fit in uintmax_t, *povf is set and UINTMAX_MAX is
+ * returned; if no digits are found, *endptr is nptr and 0 is returned */
+static uintmax_t strntou(const char *nptr, char **endptr, int base, size_t n, bool *pneg, bool *povf)
 {
-  int minus = 0; uintmax_t v = 0; int d;
-  while (n && isspace((unsigned char)*nptr)) {  nptr++;  n--; }
-  if (n) {
-    char c = *nptr;
-    if (c == '-' || c == '+') {
-      minus = (c == '-');
-      nptr++;
-      n--;
-    }
+  const char *s = nptr; uintmax_t v = 0, lim; int d, dlim; bool any = false;
+  *pneg = *povf = false;
+  if (base < 0 || base == 1 || base > 36) {
+    errno = EINVAL;
+    if (endptr) *endptr = (char *)nptr;
+    return 0;
   }
-  if (base == 0) {
-    if (n >= 2 && nptr[0] == '0' &&
-        (nptr[1] == 'x' || nptr[1] == 'X')) {
-      n -= 2; nptr += 2; base = 16;
-    } else if (n >= 1 && nptr[0] == '0') {
-      n--; nptr++; base = 8;
-    } else {
-      base = 10;
-    }
-  } else if (base == 16) {
-    if (n >= 2 && nptr[0] == '0' &&
-        (nptr[1] == 'x' || nptr[1] == 'X')) {
-      n -= 2; nptr += 2;
-    }
+  while (n && isspace((unsigned char)*s)) { ++s; --n; }
+  if (n && (*s == '-' || *s == '+')) { *pneg = (*s == '-'); ++s; --n; }
+  /* "0x" prefix is skipped only if a hex digit follows it */
+  if ((base == 0 || base == 16) && n >= 3 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')
+      && (d = digitval(s[2])) >= 0 && d < 16) {
+    s += 2; n -= 2; base = 16;
+  } else if (base == 0) {
+    base = (n && s[0] == '0') ? 8 : 10;
   }
-  while (n && (d = digitval(*nptr)) >= 0 && d < base) {
-    v = v * base + d;
-    n--; nptr++;
+  lim = UINTMAX_MAX / (uintmax_t)base; dlim = (int)(UINTMAX_MAX % (uintmax_t)base);
+  while (n && (d = digitval(*s)) >= 0 && d < base) {
+    if (v > lim || (v == lim && d > dlim)) *povf = true;
+    else v = v * (uintmax_t)base + (uintmax_t)d;
+    any = true; ++s; --n;
   }
-  if (endptr) *endptr = (char *)nptr;
-  return minus ? -v : v;
+  if (endptr) *endptr = (char *)(any ? s : nptr);
+  if (!any) *pneg = false;
+  return *povf ? UINTMAX_MAX : v;
+}
+
+/* signed conversion to [min, max], ERANGE and clamping outside of it */
+static intmax_t strntos(const char *nptr, char **endptr, int base, size_t n, intmax_t min, intmax_t max)
+{
+  bool neg, ovf; uintmax_t v = strntou(nptr, endptr, base, n, &neg, &ovf);
+  if (neg) {
+    if (ovf || v > (uintmax_t)max + 1) { errno = ERANGE; return min; }
+    return v == (uintmax_t)max + 1 ? min : -(intmax_t)v;
+  }
+  if (ovf || v > (uintmax_t)max) { errno = ERANGE; return max; }
+  return (intmax_t)v;
+}
+
+/* unsigned conversion to [0, max]; a '-' negates the result in the
+ * unsigned type, as required by C */
+static uintmax_t strntous(const char *nptr, char **endptr, int base, size_t n, uintmax_t max)
+{
+  bool neg, ovf; uintmax_t v = strntou(nptr, endptr, base, n, &neg, &ovf);
+  if (ovf || v > max) { errno = ERANGE; return max; }
+  return neg ? (0 - v) & max : v;
 }
 
 intmax_t strntoimax(const char *nptr, char **endptr, int base, size_t n)
 {
-  return (intmax_t)strntoumax(nptr, endptr, base, n);
+  return strntos(nptr, endptr, base, n, INTMAX_MIN, INTMAX_MAX);
+}
+
+static uintmax_t strntoumax(const char *nptr, char **endptr, int base, size_t n)
+{
+  return strntous(nptr, endptr, base, n, UINTMAX_MAX);
 }
 
 intmax_t strtoimax(const char *nptr, char **endptr, int base)
 {
-  return (intmax_t)strntoumax(nptr, endptr, base, ~(size_t)0);
+  return strntos(nptr, endptr, base, ~(size_t)0, INTMAX_MIN, INTMAX_MAX);
 }
 
 long strtol(const char *nptr, char **endptr, int base)
 {
-  return (long)strntoumax(nptr, endptr, base, ~(size_t)0);
+  return (long)strntos(nptr, endptr, base, ~(size_t)0, LONG_MIN, LONG_MAX);
 }
 
 long long strtoll(const char *nptr, char **endptr, int base)
 {
-  return (long long)strntoumax(nptr, endptr, base, ~(size_t)0);
+  return (long long)strntos(nptr, endptr, base, ~(size_t)0, LLONG_MIN, LLONG_MAX);
 }
 
 unsigned long strtoul(const char *nptr, char **endptr, int base)
 {
-  return (unsigned long)strntoumax(nptr, endptr, base, ~(size_t)0);
+  return (unsigned long)strntous(nptr, endptr, base, ~(size_t)0, ULONG_MAX);
 }
 
 unsigned long long strtoull(const char *nptr, char **endptr, int base)
 {
-  return (unsigned long long) strntoumax(nptr, endptr, base, ~(size_t)0);
+  return (unsigned long long)strntous(nptr, endptr, base, ~(size_t)0, ULLONG_MAX);
 }
 
 uintmax_t strtoumax(const char *nptr, char **endptr, int base)
 {
-  return (uintmax_t)strntoumax(nptr, endptr, base, ~(size_t)0);
+  return strntous(nptr, endptr, base, ~(size_t)0, UINTMAX_MAX);
 }
 
 static unsigned short rand48_seed[3]; 

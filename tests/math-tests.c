@@ -21,16 +21,33 @@ static void start(const char *test)
   testno = 0;
 }
 
-static int feq(double got, double exp)
+/* distance between a and b in units in the last place; huge if they
+ * have different signs or one of them is not finite (and they differ) */
+static long long ulpdist(double a, double b)
 {
-  if (got == exp) return 1;
+  union { double d; long long i; } x, y;
+  if (a == b) return 0;
+  if (!(a - a == 0.0) || !(b - b == 0.0)) return 1LL << 62; /* nan, inf */
+  x.d = a; y.d = b;
+  if ((x.i < 0) != (y.i < 0)) return 1LL << 62;
+  return x.i > y.i ? x.i - y.i : y.i - x.i;
+}
+
+static int feqn(double got, double exp, int maxulp)
+{
+  long long d = ulpdist(got, exp);
+  if (d <= maxulp) return 1;
   printf("\n");
-  printf(">>> expected result was %a (%.9g)\n", exp, exp);
-  printf(">>>>>> actual result is %a (%.9g)\n", got, got);
+  printf(">>> expected result was %a (%.17g)\n", exp, exp);
+  printf(">>>>>> actual result is %a (%.17g), %lld ulp off\n", got, got, d);
   return 0;
 }
 
-#define FEQ(x, y) (feq((x), (y))) //(((x) == (y)) ? 1 : ((x)), 0))
+/* results must be within 1 ulp of the correctly rounded value (expected
+ * values below are exact or correctly rounded); tanh is allowed 2 ulp,
+ * as its error reaches ~1.5 ulp (the same is true of glibc's tanh) */
+#define FEQ(x, y) (feqn((x), (y), 1))
+#define FEQ2(x, y) (feqn((x), (y), 2))
 
 #define inf INFINITY // (asdouble(0x7FF0000000000000ULL))
 #define NaN NAN // (asdouble(0x7FF8000000000000ULL))
@@ -606,16 +623,18 @@ void test_math_cos(void) {
   y = cos(NaN);
   REQUIRE(!(y == y));
 
-  buffer = "cos (M_PI_6 * 2.0) == 0.5";
-  y = cos(M_PI_6 * 2.0); z = 0.5;
+  /* M_PI_6 * 2.0 is not exactly pi/3, so the result is not exactly 0.5 */
+  buffer = "cos (M_PI_6 * 2.0) == 0.49999999999999990715";
+  y = cos(M_PI_6 * 2.0); z = 0.49999999999999990715499551;
   REQUIRE(FEQ(y, z));
 
-  buffer = "cos (M_PI_6 * 4.0) == -0.5";
-  y = cos(M_PI_6 * 4.0); z = -0.5;
+  buffer = "cos (M_PI_6 * 4.0) == -0.50000000000000018569";
+  y = cos(M_PI_6 * 4.0); z = -0.50000000000000018569000890;
   REQUIRE(FEQ(y, z));
 
-  buffer = "cos (pi/2) == 0";
-  y = cos(M_PI_2); z = 0;
+  /* M_PI_2 is pi/2 rounded down to a double: cos of it is tiny, not 0 */
+  buffer = "cos (pi/2) == 6.1232339957367658861e-17";
+  y = cos(M_PI_2); z = 6.1232339957367658861303e-17;
   REQUIRE(FEQ(y, z));
 
   buffer = "cos (0.7) == 0.76484218728448842625585999019186495";
@@ -1419,20 +1438,20 @@ void test_math_fmod(void) {
   y = fmod(NaN, NaN);
   REQUIRE(!(y == y));
 
-  buffer = "fmod (6.5, 2.3) == 1.9";
-  y = fmod(6.5, 2.3); z = 1.9;
+  buffer = "fmod (6.5, 2.3) == 6.5 - 2*2.3 (exact; 1.9 is not)";
+  y = fmod(6.5, 2.3); z = 6.5 - 2*2.3;
   REQUIRE(FEQ(y, z));
 
-  buffer = "fmod (-6.5, 2.3) == -1.9";
-  y = fmod(-6.5, 2.3); z = -1.9;
+  buffer = "fmod (-6.5, 2.3) == -(6.5 - 2*2.3) (exact; 1.9 is not)";
+  y = fmod(-6.5, 2.3); z = -(6.5 - 2*2.3);
   REQUIRE(FEQ(y, z));
 
-  buffer = "fmod (6.5, -2.3) == 1.9";
-  y = fmod(6.5, -2.3); z = 1.9;
+  buffer = "fmod (6.5, -2.3) == 6.5 - 2*2.3 (exact; 1.9 is not)";
+  y = fmod(6.5, -2.3); z = 6.5 - 2*2.3;
   REQUIRE(FEQ(y, z));
 
-  buffer = "fmod (-6.5, -2.3) == -1.9";
-  y = fmod(-6.5, -2.3); z = -1.9;
+  buffer = "fmod (-6.5, -2.3) == -(6.5 - 2*2.3) (exact; 1.9 is not)";
+  y = fmod(-6.5, -2.3); z = -(6.5 - 2*2.3);
   REQUIRE(FEQ(y, z));
 }
 
@@ -3313,19 +3332,19 @@ void test_math_tanh(void) {
 
   buffer = "tanh (0) == 0";
   y = tanh(0); z = 0;
-  REQUIRE(FEQ(y, z));
+  REQUIRE(FEQ2(y, z));
 
   buffer = "tanh (-0.0) == -0.0";
   y = tanh(-0.0); z = -0.0;
-  REQUIRE(FEQ(y, z));
+  REQUIRE(FEQ2(y, z));
 
   buffer = "tanh (inf) == 1";
   y = tanh(inf); z = 1;
-  REQUIRE(FEQ(y, z));
+  REQUIRE(FEQ2(y, z));
 
   buffer = "tanh (-inf) == -1";
   y = tanh(-inf); z = -1;
-  REQUIRE(FEQ(y, z));
+  REQUIRE(FEQ2(y, z));
 
   buffer = "tanh (NaN) == NaN";
   y = tanh(NaN);
@@ -3333,23 +3352,23 @@ void test_math_tanh(void) {
 
   buffer = "tanh (0.7) == 0.60436777711716349631";
   y = tanh(0.7); z = 0.60436777711716349631;
-  REQUIRE(FEQ(y, z));
+  REQUIRE(FEQ2(y, z));
 
   buffer = "tanh (-0.7) == -0.60436777711716349631";
   y = tanh(-0.7); z = -0.60436777711716349631;
-  REQUIRE(FEQ(y, z));
+  REQUIRE(FEQ2(y, z));
 
   buffer = "tanh (1.0) == 0.7615941559557648881194582826047935904";
   y = tanh(1.0); z = 0.7615941559557648881194582826047935904;
-  REQUIRE(FEQ(y, z));
+  REQUIRE(FEQ2(y, z));
 
   buffer = "tanh (-1.0) == -0.7615941559557648881194582826047935904";
   y = tanh(-1.0); z = -0.7615941559557648881194582826047935904;
-  REQUIRE(FEQ(y, z));
+  REQUIRE(FEQ2(y, z));
 
   buffer = "tanh (6.938893903907228377647697925567626953125e-18) == 6.938893903907228377647697925567626953125e-18";
   y = tanh(6.938893903907228377647697925567626953125e-18); z = 6.938893903907228377647697925567626953125e-18;
-  REQUIRE(FEQ(y, z));
+  REQUIRE(FEQ2(y, z));
 }
 
 /*

@@ -327,7 +327,7 @@ void test_minus_flag (void) {
   REQUIRE(!strcmp(buffer, "-4.200e+01     "));
 
   sprintf(buffer, "%0-15.3g", -42.);
-  REQUIRE(!strcmp(buffer, "-42.0          "));
+  REQUIRE(!strcmp(buffer, "-42            "));
 }
 
 
@@ -1080,12 +1080,12 @@ void test_float (void) {
   // this testcase checks, that the precision is truncated to 9 digits.
   // a perfect working float should return the whole number
   sprintf(buffer, "%.12f", 42.89522312345678);
-  REQUIRE(!strcmp(buffer, "42.895223123000"));
+  REQUIRE(!strcmp(buffer, "42.895223123457"));
 
   // this testcase checks, that the precision is truncated AND rounded to 9 digits.
   // a perfect working float should return the whole number
   sprintf(buffer, "%.12f", 42.89522387654321);
-  REQUIRE(!strcmp(buffer, "42.895223877000"));
+  REQUIRE(!strcmp(buffer, "42.895223876543"));
 
   sprintf(buffer, "%6.2f", 42.8952);
   REQUIRE(!strcmp(buffer, " 42.90"));
@@ -1139,7 +1139,7 @@ void test_float (void) {
   REQUIRE(!strcmp(buffer, "1.2346E+08"));
 
   sprintf(buffer, "%.6G", 12345.);
-  REQUIRE(!strcmp(buffer, "12345.0"));
+  REQUIRE(!strcmp(buffer, "12345"));
 
   sprintf(buffer, "%+12.4g", 123456789.);
   REQUIRE(!strcmp(buffer, "  +1.235e+08"));
@@ -1161,7 +1161,7 @@ void test_float (void) {
 
   // out of range for float: should switch to exp notation if supported, else empty
   sprintf(buffer, "%.1f", 1E20);
-  REQUIRE(!strcmp(buffer, "1.0e+20"));
+  REQUIRE(!strcmp(buffer, "100000000000000000000.0"));
 
   /* brute force float
   bool fail = false;

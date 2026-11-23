@@ -14,11 +14,14 @@ Features listed below are the ones that are either borrowed from modern C dialec
 - `static_assert(expr);`, `static_assert(expr, "message");` on top level in headers and module files
 - `sizeof`, `alignof`, and `offsetof` are supported for types and limited expressions
 - static evaluation of expressions (numerics only in general, numerics+static pointers in top-level initializers)
+- built-in `__LINE__` and `__FILE__` macros (plus `__DATE__` and `__TIME__`, see below)
 - top-level macros: `#define FOO 1234`, `#define FOO (expr)`, `#define FOO do {...} while (0)` as well as 
   corresponding parameterized forms (`#define FOO(a, b) ...`)   
 - top-level conditional compilation blocks formed with `#ifdef __WCPL__`, `#ifndef __WCPL__`, `#if 0`, `#if 1`, `#else`, `#endif`
   are allowed and treated as fancy comments; inactive parts can contain any C99 code and properly nested conditional compilation blocks 
 - `const` and `volatile` specifiers are allowed but ignored
+- `typedef` with a list of declarators, e.g. `typedef struct s S, *PS, AS[4];`
+- array dimensions can be any constant expression, including `sizeof` expressions; zero or negative dimensions are reported as errors
 - variables can be declared at any top-level position in a block
 - variables can be declared in the first clause of the `for` statement
 - labels can only label starts/ends of sub-blocks; `goto` can only target labels in the same block or its parent blocks
@@ -36,7 +39,8 @@ Features listed below are the ones that are either borrowed from modern C dialec
 - implicit conversion of function pointer to function (reported as an error)
 - implicit conversion of longer to shorter integral types (use explicit casts)
 - implicit conversion of same-length unsigned to signed integer parameters (use explicit casts)
-- taking address of a global scalar var (for now, `&` works for global arrays/structs/unions only)
+- taking address of a global scalar var (for now, `&` works for global arrays/structs/unions only);
+  using it in a static initializer is reported at compile time
 - non-constant `{}` initializers for locals in function scope
 - `static` variables in function scope
 - structures/unions/arrays as parameters
@@ -57,12 +61,13 @@ Features listed below are the ones that are either borrowed from modern C dialec
 
 - `#pragma module "foo"` in headers
 - `asm` form for inline webassembly
+- `-DNDEBUG` command line option disables `assert` (no other `-D` definitions are accepted)
 
 # Libraries
 
 ## Libraries already implemented
 
-- `<assert.h>` (C90, header only)
+- `<assert.h>` (C90; a failing `assert` prints `file:line: assertion failed` to `stderr` and traps; disabled by `-DNDEBUG`)
 - `<ctype.h>`  (C90)
 - `<errno.h>` (C90 + full WASI error list)
 - `<fenv.h>` (with WASM limitations)
@@ -74,7 +79,7 @@ Features listed below are the ones that are either borrowed from modern C dialec
 - `<stddef.h>` (C90, header only)
 - `<stdint.h>` (C99, header only)
 - `<stdio.h>` (C90, abridged: no `gets`, `tmpfile`, `tmpnam`)
-- `<stdlib.h>` (C90, abridged: no `system`)
+- `<stdlib.h>` (C90, abridged: no `system`; `strto*` functions clamp out-of-range values and set `errno` to `ERANGE`)
 - `<string.h>` (C90 + some POSIX-like extras)
 - `<math.h>` (C90 + some C99 extras)
 - `<time.h>` (C90 + some POSIX-like extras)
@@ -87,6 +92,17 @@ Features listed below are the ones that are either borrowed from modern C dialec
 - `<dirent.h>` (POSIX-like, abridged)
 - `<unistd.h>` (POSIX-like, abridged)
 - `<wasi/api.h>` (header only, implemented by host)
+
+## Floating-point precision
+
+The math library follows one size-vs-precision trade-off: results are within 1 ulp of the exact value, at a moderate cost in code size.
+
+- `<math.h>` functions (fdlibm-based) have measured maximum errors of 0.71-0.86 ulp for `sin`, `cos`, `tan`, `exp`, `expm1`, `log`, `log10`, `atan`, `asin`, `acos` and `pow`, and 0.5 ulp for `sqrt`;
+  `cosh`, `atan2`, `sinh` and `tanh` are within 1.07-1.45 ulp
+- `strtod` (and `scanf` family, `atof`) uses a double-double core and keeps about 36 significant digits: all inputs of up to 17 significant digits
+  are converted exactly; adversarial inputs (20+ digits within ~1e-30 of a halfway point) can be 1 ulp off; subnormals are supported; overflow and underflow set `errno` to `ERANGE`
+- `printf` family `%e`, `%f` and `%g` use a double-double core and are correctly rounded up to 17 significant digits; digits past the 17th are printed as `0`
+  (they only appear where the format requires them: `%f`/`%e` with large precision, or `%#g`); `%g` without `#` removes trailing zeros as required by the C standard; `%a` is exact
  
 ## Libaries that won't be supported
 

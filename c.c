@@ -29,6 +29,7 @@ sym_t   g_hb_id;    /* id for heap base global */
 size_t  g_sdbaddr;  /* static data allocation start */
 size_t  g_stacksz;  /* stack size in bytes */
 size_t  g_argvbsz;  /* argv buf size in bytes */
+bool    g_ndebug;   /* -DNDEBUG: use library's include/NDEBUG/ headers */
 
 /* initialize wcpl environment */
 void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl, size_t sarg, size_t aarg)
@@ -38,6 +39,10 @@ void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl, size_t sarg, size_t 
   g_ibases = newbuf(sizeof(sym_t));
   for (i = 0; i < dsblen(pincv); ++i) {
     dstr_t *pds = dsbref(pincv, i);
+    if (g_ndebug) { /* NDEBUG variants (assert.h) shadow regular ones */
+      int sepchar = strsuf(*pds, "\\") ? '\\' : '/';
+      *(sym_t*)bufnewbk(g_ibases) = internf("%sNDEBUG%c", *pds, sepchar);
+    }
     *(sym_t*)bufnewbk(g_ibases) = intern(*pds);
   }
   g_lbases = newbuf(sizeof(sym_t));
@@ -47,6 +52,8 @@ void init_wcpl(dsbuf_t *pincv, dsbuf_t *plibv, long optlvl, size_t sarg, size_t 
     dstr_t *pds = dsbref(plibv, i);
     int sepchar = strsuf(*pds, "\\") ? '\\' : '/';
     *(sym_t*)bufnewbk(g_lbases) = intern(*pds);
+    if (g_ndebug) /* NDEBUG variants (assert.h) shadow regular ones */
+      *(sym_t*)bufnewbk(g_ibases) = internf("%sinclude%cNDEBUG%c", *pds, sepchar, sepchar);
     *(sym_t*)bufnewbk(g_ibases) = internf("%sinclude%c", *pds, sepchar);
   }
   fsbinit(&g_funcsigs);
@@ -203,6 +210,9 @@ static ts_t ts_arith_common(ts_t ts1, ts_t ts2)
   if (ts1 == TS_ULLONG || ts2 == TS_ULLONG) return TS_ULLONG;
   if (ts1 == TS_LLONG  || ts2 == TS_LLONG)  return TS_LLONG;
   if (ts1 == TS_ULONG  || ts2 == TS_ULONG)  return TS_ULONG;
+  /* wasm32: long can't represent all unsigned int values, so C's usual
+   * arithmetic conversions make long op unsigned int unsigned long */
+  if ((ts1 == TS_LONG && ts2 == TS_UINT) || (ts1 == TS_UINT && ts2 == TS_LONG)) return TS_ULONG;
   if (ts1 == TS_LONG   || ts2 == TS_LONG)   return TS_LONG;
   if (ts1 == TS_UINT   || ts2 == TS_UINT)   return TS_UINT;
   return TS_INT;
@@ -213,6 +223,8 @@ static bool ts_arith_assign_compatible(ts_t ts1, ts_t ts2)
 {
   assert(ts_numerical_or_enum(ts1) && ts_numerical_or_enum(ts2));
   if (ts1 == ts2) return true;
+  /* implicit unsigned int => long stays allowed (same width on wasm32) */
+  if (ts1 == TS_LONG && ts2 == TS_UINT) return true;
   return ts_arith_common(ts1, ts2) == ts1;
 }
 
@@ -953,10 +965,12 @@ bool static_eval(node_t *pn, buf_t *prib, seval_t *pr)
       if (ts_numerical(tc) && static_eval(ndref(pn, 1), prib, &rx) && ts_numerical(rx.ts)) {
         numval_t vc = rx.val; numval_convert(tc, rx.ts, &vc);
         pr->ts = tc; pr->val = vc; ok = true;
-      } else if (tc == TS_PTR && ndlen(ndref(pn, 0)) == 1 && ndref(ndref(pn, 0), 0)->ts == TS_VOID) {
-        int ri; /* see if this is NULL pointer, i.e. (void*)0 */ 
+      } else if (tc == TS_PTR) {
+        int ri; /* see if this is NULL pointer, i.e. (void*)0 or (T*)0 */ 
         if (arithmetic_eval_to_int(ndref(pn, 1), prib, &ri) && ri == 0) {
           pr->ts = TS_PTR; pr->val.i = 0; pr->id = 0; ok = true;
+        } else if (static_eval(ndref(pn, 1), prib, &rx) && rx.ts == TS_PTR) {
+          *pr = rx; ok = true; /* (T*)&x etc: still an address constant */
         }
       } 
       return ok;
@@ -1236,7 +1250,9 @@ static watie_t *initialize_bulk_data(size_t pdidx, watie_t *pd, size_t off, node
       if (!pin) neprintf(pdn, "unknown name in address initializer");
       assert(pin->nt == NT_IMPORT && ndlen(pin) == 1 && ndcref(pin, 0)->nt == NT_TYPE);
       pitn = ndcref(pin, 0);
-      if (ts_bulk(pitn->ts) || pitn->ts == TS_PTR) {
+      /* scalar globals (incl. pointers) are wasm globals, so they have no 
+       * address; string literals are posted as char* but live in data */
+      if (ts_bulk(pitn->ts) || (pitn->ts == TS_PTR && strsuf(symname(r.id), "$") != NULL)) {
         inscode_t *pic = icbnewbk(&pd->code);
         pic->in = IN_REF_DATA; pic->id = r.id; pic->arg2.mod = pin->name;
         pic->arg.i = r.val.i; /* 0 or numerical offset in 'elements' */
@@ -1326,9 +1342,13 @@ static void process_vardecl(sym_t mmod, node_t *pdn, node_t *pin)
             } else neprintf(pdn, "constant initializer cannot be implicitly converted to expected type");
             asm_numerical_const(r.ts == TS_PTR ? TS_UINT : r.ts, &r.val, &pg->ic); /* wasm32 */
           } else {
-            const node_t *pimn = lookup_global(r.id); inscode_t *pic = &pg->ic;
+            const node_t *pimn = lookup_global(r.id); inscode_t *pic = &pg->ic; ts_t its;
             if (!pimn) neprintf(pdn, "unknown identifier in address initializer");
             assert(pimn->nt == NT_IMPORT && pimn->name != 0 && ndlen(pimn) == 1);
+            /* as above: functions, data, string literals; not scalar globals */
+            its = ndcref(pimn, 0)->ts;
+            if (its != TS_FUNCTION && !ts_bulk(its) && !(its == TS_PTR && strsuf(symname(r.id), "$") != NULL))
+              neprintf(pin, "address initializer should be a reference to a nonscalar type");
             pic->in = ndcref(pimn, 0)->ts == TS_FUNCTION ? IN_REF_FUNC : IN_REF_DATA; 
             pic->id = r.id; pic->arg2.mod = pimn->name;
           }
@@ -4603,10 +4623,11 @@ int main(int argc, char **argv)
      "  -o ofile  Output file (use .wasm suffix for binary executable)\n"
      "  -I path   Add include path (must end with path separator)\n"
      "  -L path   Add library path (must end with path separator)\n"
+     "  -DNDEBUG  Disable assert() (no other -D macros are supported)\n"
      "  -s stksz  Stack size in bytes; defaults to 131072 (128K)\n"
      "  -a argsz  Argument area size in bytes (use 0 for malloc); defaults to 4096\n"
      "  -h        This help");
-  while ((opt = egetopt(argc, argv, "wvqcO:o:L:I:s:a:h")) != EOF) {
+  while ((opt = egetopt(argc, argv, "wvqcO:o:L:I:D:s:a:h")) != EOF) {
     switch (opt) {
       case 'w':  setwlevel(3); break;
       case 'v':  incverbosity(); break;
@@ -4616,6 +4637,9 @@ int main(int argc, char **argv)
       case 'o':  ofile_arg = eoptarg; break;
       case 'I':  eoarg = eoptarg; dsbpushbk(&incv, &eoarg); break;
       case 'L':  eoarg = eoptarg; dsbpushbk(&libv, &eoarg); break;
+      case 'D':  if (streql(eoptarg, "NDEBUG")) g_ndebug = true;
+                 else eusage("-D%s: only -DNDEBUG is supported", eoptarg);
+                 break;
       case 's':  s_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'a':  a_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'h':  eusage("WCPL 1.04 built on " __DATE__);

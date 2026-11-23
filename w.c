@@ -3964,12 +3964,20 @@ int dsme_cmp(const void *p1, const void *p2)
   return 0;
 }
 
+/* pending patch of an address into the combined data segment */
+typedef struct dpatch {
+  sym_t mod, id;     /* referenced data */
+  long long addend;  /* offset added to its address */
+  size_t pos;        /* where to put the result in combined segment */
+} dpatch_t;
+
 /* remove dependence on non-standard WAT features and instructions */
 size_t watify_wat_module(wat_module_t* pm)
 {
   size_t curaddr = g_sdbaddr;
   cbuf_t dseg = mkcb(); size_t i;
   buf_t dpmap = mkbuf(sizeof(dpme_t));
+  buf_t patches = mkbuf(sizeof(dpatch_t));
   buf_t table = mkbuf(sizeof(dpme_t));
   dsmebuf_t dsmap; dsmebinit(&dsmap);
   
@@ -4011,31 +4019,26 @@ size_t watify_wat_module(wat_module_t* pm)
         align = pd->align, n = addr % align;
         if (n > 0) addr += align - n;
         if (n > 0) bufresize(&dseg, buflen(&dseg) + (align-n));
-        if (icblen(&pd->code) > 0) { /* patch pd->data */
-          size_t i; cbuf_t cb = mkcb(); bool gotarg = false;
+        if (icblen(&pd->code) > 0) { /* record patches of pd->data */
+          /* references can point to data not laid out yet (e.g. a data 
+           * object also used by code), so they are patched at the end */
+          size_t i; dpatch_t *pp = NULL;
           for (i = 0; i < icblen(&pd->code); ++i) {
-            modid_t mi; dpme_t *pdpme; size_t off; 
             inscode_t *pic = icbref(&pd->code, i);
-            if (!gotarg && pic->in == IN_REF_DATA) {
-              unsigned address;
-              mi.mod = pic->arg2.mod; mi.id = pic->id;
-              pdpme = bufsearch(&dpmap, &mi, &modid_cmp); /* linear, still adding to it */
-              if (!pdpme) eprintf("internal error: undefined ref in data: $%s:%s", 
-                mi.mod ? symname(mi.mod) : "?", mi.id ? symname(mi.id) : "?");
-              address = (unsigned)((long long)pdpme->address + pic->arg.i);
-              bufclear(&cb); binuint(address, &cb); /* wasm32 */
-              gotarg = true;
-            } else if (gotarg && pic->in == IN_DATA_PUT_REF) {
-              off = (size_t)pic->arg.u; assert(pic->id == 0);
+            if (!pp && pic->in == IN_REF_DATA) {
+              pp = bufnewbk(&patches);
+              pp->mod = pic->arg2.mod; pp->id = pic->id; pp->addend = pic->arg.i;
+            } else if (pp && pic->in == IN_DATA_PUT_REF) {
+              size_t off = (size_t)pic->arg.u; assert(pic->id == 0);
               if (off % 4 != 0 || off + 4 > cblen(&pd->data)) /* wasm32 */
                 eprintf("internal error: cannot patch data: bad offset %lu", (unsigned long)off);
-              memcpy(cbdata(&pd->data) + off, cbdata(&cb), 4); /* wasm32 */
-              gotarg = false;
+              pp->pos = (addr - g_sdbaddr) + off;
+              pp = NULL;
             } else {
               eprintf("internal error in data patch");
             }
           }
-          cbfini(&cb);
+          if (pp) eprintf("internal error in data patch");
         }
         cbcat(&dseg, &pd->data);
         curaddr = addr + buflen(&pd->data);
@@ -4052,6 +4055,22 @@ size_t watify_wat_module(wat_module_t* pm)
   
   /* prepare dpmap for binary search */
   bufqsort(&dpmap, &modid_cmp);
+
+  /* patch addresses into data, now that all data are laid out */
+  for (i = 0; i < buflen(&patches); ++i) {
+    dpatch_t *pp = bufref(&patches, i); 
+    modid_t mi; dpme_t *pdpme; unsigned address; cbuf_t cb = mkcb();
+    mi.mod = pp->mod; mi.id = pp->id;
+    pdpme = bufbsearch(&dpmap, &mi, &modid_cmp);
+    if (!pdpme) eprintf("internal error: undefined ref in data: $%s:%s", 
+      mi.mod ? symname(mi.mod) : "?", mi.id ? symname(mi.id) : "?");
+    address = (unsigned)((long long)pdpme->address + pp->addend);
+    binuint(address, &cb); /* wasm32 */
+    assert(cblen(&cb) == 4 && pp->pos + 4 <= cblen(&dseg));
+    memcpy(cbdata(&dseg) + pp->pos, cbdata(&cb), 4);
+    cbfini(&cb);
+  }
+  buffini(&patches);
   
   /* patch IN_REF_{DATA,FUNC}s, memory export, zero globals */
   for (i = 0; i < watieblen(&pm->exports); ++i) {
