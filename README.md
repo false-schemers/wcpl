@@ -21,7 +21,7 @@ Features listed below are the ones that are either borrowed from modern C dialec
   are allowed and treated as fancy comments; inactive parts can contain any C99 code and properly nested conditional compilation blocks 
 - `const` and `volatile` specifiers are allowed but ignored
 - `typedef` with a list of declarators, e.g. `typedef struct s S, *PS, AS[4];`
-- array dimensions can be any constant expression, including `sizeof` expressions; zero or negative dimensions are reported as errors
+- array dimensions can be any positive integer constant expression, including `sizeof` expressions
 - variables can be declared at any top-level position in a block
 - variables can be declared in the first clause of the `for` statement
 - labels can only label starts/ends of sub-blocks; `goto` can only target labels in the same block or its parent blocks
@@ -39,8 +39,7 @@ Features listed below are the ones that are either borrowed from modern C dialec
 - implicit conversion of function pointer to function (reported as an error)
 - implicit conversion of longer to shorter integral types (use explicit casts)
 - implicit conversion of same-length unsigned to signed integer parameters (use explicit casts)
-- taking address of a global scalar var (for now, `&` works for global arrays/structs/unions only);
-  using it in a static initializer is reported at compile time
+- taking address of a global scalar var (for now, `&` works for global arrays/structs/unions only)
 - non-constant `{}` initializers for locals in function scope
 - `static` variables in function scope
 - structures/unions/arrays as parameters
@@ -67,7 +66,7 @@ Features listed below are the ones that are either borrowed from modern C dialec
 
 ## Libraries already implemented
 
-- `<assert.h>` (C90; a failing `assert` prints `file:line: assertion failed` to `stderr` and traps; disabled by `-DNDEBUG`)
+- `<assert.h>` (C90; disabled by `-DNDEBUG`)
 - `<ctype.h>`  (C90)
 - `<errno.h>` (C90 + full WASI error list)
 - `<fenv.h>` (with WASM limitations)
@@ -79,7 +78,7 @@ Features listed below are the ones that are either borrowed from modern C dialec
 - `<stddef.h>` (C90, header only)
 - `<stdint.h>` (C99, header only)
 - `<stdio.h>` (C90, abridged: no `gets`, `tmpfile`, `tmpnam`)
-- `<stdlib.h>` (C90, abridged: no `system`; `strto*` functions clamp out-of-range values and set `errno` to `ERANGE`)
+- `<stdlib.h>` (C90, abridged: no `system`)
 - `<string.h>` (C90 + some POSIX-like extras)
 - `<math.h>` (C90 + some C99 extras)
 - `<time.h>` (C90 + some POSIX-like extras)
