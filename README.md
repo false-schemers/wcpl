@@ -35,8 +35,7 @@ Features listed below are the ones that are either borrowed from modern C dialec
 - adjacent mixed-char-size string literals concatenation (works for same-char-size)
 - implicit conversions of arrays to element pointers; explicit `&arr[0]` required for now
 - implicit conversion of `0` to `NULL` (also currently reported as an error)
-- implicit conversion of pointer to `bool`/integer in assignments and initializers (requires explicit `!= NULL`; pointers can be used as
-  conditions and as operands of `!`, `&&`, `||` and `?:`)
+- implicit conversion of pointer to `bool`/integer in assignments and initializers (requires explicit `!= NULL`)
 - implicit conversion of function pointer to function (reported as an error)
 - implicit conversion of longer to shorter integral types (use explicit casts)
 - implicit conversion of same-length unsigned to signed integer parameters (use explicit casts)
@@ -67,7 +66,7 @@ Features listed below are the ones that are either borrowed from modern C dialec
 
 ## Libraries already implemented
 
-- `<assert.h>` (C90; disabled by `-DNDEBUG`)
+- `<assert.h>` (C90; checks disabled by `-DNDEBUG`)
 - `<ctype.h>`  (C90)
 - `<errno.h>` (C90 + full WASI error list)
 - `<fenv.h>` (with WASM limitations)
