@@ -4688,7 +4688,7 @@ int main(int argc, char **argv)
                  break;
       case 's':  s_arg = strtoul(eoptarg, NULL, 0); break; 
       case 'a':  a_arg = strtoul(eoptarg, NULL, 0); break; 
-      case 'h':  eusage("WCPL 1.04 built on " __DATE__);
+      case 'h':  eusage("WCPL 1.05 built on " __DATE__);
     }
   }
 
