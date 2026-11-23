@@ -4,6 +4,7 @@
 #   make           build the native compiler
 #   make test      compile the tests and examples, then check self-hosting
 #   make install   install the binary
+#   make lib       rebuild lib/*.wo from lib/src and re-embed lib/ in l.c
 #   make clean     remove build products
 #
 # The compiler is self-sufficient: it carries its own headers and
@@ -19,6 +20,8 @@ CFLAGS  ?= -O2
 PREFIX  ?= /usr/local
 BINDIR  ?= $(PREFIX)/bin
 INSTALL ?= install
+BAZ     ?= baz
+ZOPFLI_I ?= 1000
 
 SRCS = c.c l.c p.c w.c
 HDRS = c.h l.h p.h w.h
@@ -34,6 +37,40 @@ install: wcpl
 
 clean:
 	rm -f wcpl wcpl.wasm wcpl1.wasm tests/*.wasm examples/*.wasm
+	rm -rf .libres
+
+# `lib' is for changes to the bundled library (lib/src, lib/include).
+# The compiler carries lib/ inside l.c as a compressed in-memory archive,
+# so a library change takes three steps, all done here:
+#
+#  1. compile every lib/src/*.c to lib/*.wo with the current compiler,
+#     reading headers from lib/include rather than the embedded copies;
+#  2. pack lib/ (minus sources and READMEs) with baz -- see
+#     https://github.com/false-schemers/baz -- compressing through
+#     zopfli when ZOPFLI_I > 0 (set ZOPFLI_I=0 for a quick build); the
+#     embedded text files use CRLF line ends, as they always have;
+#  3. replace the archive section of l.c, between its start and end
+#     markers, and rebuild the compiler.
+#
+# Run `make lib' twice after a change that affects code generation, so
+# that the library is compiled by the compiler that contains the change.
+lib: wcpl
+	@set -e; \
+	for s in lib/src/*.c; do \
+	  ./wcpl -q -c -I lib/include/ -o lib/`basename $$s .c`.wo $$s; \
+	  echo "  compiled $$s"; \
+	done; \
+	rm -rf .libres; mkdir -p .libres/wcpl; cp -R lib .libres/wcpl/; \
+	find .libres/wcpl/lib -type f ! -path '*/src/*' ! -name README.md | \
+	  while read f; do tr -d '\r' < $$f | sed 's/$$/\r/' > $$f.tmp; mv $$f.tmp $$f; done; \
+	if [ $(ZOPFLI_I) -gt 0 ]; then Z=--zopfli=$(ZOPFLI_I); else Z=; fi; \
+	(cd .libres && $(BAZ) cfz l.c --exclude=src --exclude=README.md $$Z wcpl/lib); \
+	awk -v f=.libres/l.c \
+	  '/^\/\* start of in-memory archive \*\//{while((getline l < f)>0) print l; skip=1; next} \
+	   /^\/\* end of in-memory archive \*\//{skip=0; next} !skip' l.c > .libres/l.c.new; \
+	mv .libres/l.c.new l.c; rm -rf .libres; \
+	echo "  l.c archive section regenerated"
+	$(MAKE) wcpl
 
 # `test' does three things, cheapest first:
 #
@@ -86,4 +123,4 @@ test: wcpl
 	fi; \
 	rm -f .wasirun.mjs
 
-.PHONY: all install clean test
+.PHONY: all install clean test lib
