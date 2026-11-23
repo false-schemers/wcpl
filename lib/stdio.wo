@@ -2945,6 +2945,8 @@
     i32.const 0
     end
     end
+    i32.const 0
+    i32.ne
     return
   )
   (func $stdio:_strnlen_s
@@ -6455,17 +6457,18 @@
     i32.and
     local.set $flags
     end
-    i32.const 1
-    i64.extend_i32_s
-    local.get $value
     local.get $flags
     i32.const 1024
     i32.and
     i32.eqz
-    select
+    if (result i32)
+    i32.const 1
+    else
+    local.get $value
     i32.const 0
     i64.extend_i32_u
     i64.ne
+    end
     if
     block $2$
     loop $1$
@@ -7033,6 +7036,8 @@
     i32.const 16
     i32.and
     end
+    i32.const 0
+    i32.ne
     i32.eqz
     i32.eqz
     local.set $dot

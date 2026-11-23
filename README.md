@@ -35,7 +35,8 @@ Features listed below are the ones that are either borrowed from modern C dialec
 - adjacent mixed-char-size string literals concatenation (works for same-char-size)
 - implicit conversions of arrays to element pointers; explicit `&arr[0]` required for now
 - implicit conversion of `0` to `NULL` (also currently reported as an error)
-- implicit conversion of pointer to boolean in `||`, `&&` and `?:` expressions (now requires explicit `!= NULL`)
+- implicit conversion of pointer to `bool`/integer in assignments and initializers (requires explicit `!= NULL`; pointers can be used as
+  conditions and as operands of `!`, `&&`, `||` and `?:`)
 - implicit conversion of function pointer to function (reported as an error)
 - implicit conversion of longer to shorter integral types (use explicit casts)
 - implicit conversion of same-length unsigned to signed integer parameters (use explicit casts)

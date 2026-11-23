@@ -1,4 +1,4 @@
-/* Regression tests for fixed WCPL compiler and library defects (found
+/* Regression tests for fixed WCPL compiler and library defects (most found
  * while porting a bignum program).  Each test set names the defect.
  * Defects that are compile-time errors (negative array size, overflowing
  * literals) cannot be checked by a running program and are not here. */
@@ -277,6 +277,63 @@ void test_strtod(void)
 }
 
 
+/* B1: && and || yield 0 or 1 */
+
+enum b2color { B2RED, B2GREEN = 5, B2BLUE };
+
+static int b1seven(void) { return 7; }
+
+void test_logical_values(void)
+{
+  int a = 1, b = 5, z = 0, r, cnt = 0; unsigned u = 4; long l = 3;
+  long long ll = 1LL << 40; double d = 0.5, dz = 0.0;
+  char *p = "x", *n = NULL; bool t = true;
+  start("B1: && and || yield 0 or 1");
+  r = a && b;      REQUIRE(r == 1);
+  r = z || b;      REQUIRE(r == 1);
+  r = a || b;      REQUIRE(r == 1);
+  r = z && b;      REQUIRE(r == 0);
+  r = l && u;      REQUIRE(r == 1);
+  r = ll && 1;     REQUIRE(r == 1);
+  r = z || ll;     REQUIRE(r == 1);
+  r = d && b;      REQUIRE(r == 1);
+  r = dz || dz;    REQUIRE(r == 0);
+  r = p && *p;     REQUIRE(r == 1);
+  r = n || p;      REQUIRE(r == 1);
+  r = p || n;      REQUIRE(r == 1);
+  r = n && *n;     REQUIRE(r == 0);
+  r = t && b;      REQUIRE(r == 1);
+  r = b1seven() && b1seven(); REQUIRE(r == 1);
+  r = (a && b) + (z || b) + (b && b); REQUIRE(r == 3);
+  r = !(a || b);   REQUIRE(r == 0);
+  r = a < b && b;  REQUIRE(r == 1);
+  cnt += (b && 9); cnt += (z || 3); REQUIRE(cnt == 2);
+  r = (int)sizeof(a && b); REQUIRE(r == sizeof(int));
+  /* tests (no value needed) still work */
+  r = 0; if (p && *p) r = 1; REQUIRE(r == 1);
+  r = 0; while (b && z) r = 9; REQUIRE(r == 0);
+}
+
+
+/* B2: enum values in arithmetic */
+
+void test_enum_arith(void)
+{
+  enum b2color c = B2BLUE, c2 = B2GREEN; int arr[8], *q;
+  start("B2: enum values in arithmetic");
+  REQUIRE(c + 1 == 7);
+  REQUIRE(c * 2 == 12);
+  REQUIRE(c - B2GREEN == 1);
+  REQUIRE((B2GREEN | 1) == 5);
+  REQUIRE(-c == -6 && ~c == -7 && !c == 0);
+  REQUIRE(c + 0.5 == 6.5);
+  c2 += 1; ++c2;
+  REQUIRE((int)c2 == 7);
+  arr[B2GREEN] = 42; q = &arr[0] + B2GREEN;
+  REQUIRE(*q == 42 && *(B2GREEN + &arr[0]) == 42 && arr[c - 1] == 42);
+}
+
+
 int main(void)
 {
   test_long_unsigned();
@@ -289,6 +346,8 @@ int main(void)
   test_printf_float();
   test_strtol();
   test_strtod();
+  test_logical_values();
+  test_enum_arith();
   printf("\nFAILURES: %d\n", failcnt);
   return failcnt;
 }

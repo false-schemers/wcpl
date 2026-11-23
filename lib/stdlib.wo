@@ -2492,36 +2492,33 @@
     local.get $rem
     local.get $half
     i64.gt_u
-    if (result i64)
+    if (result i32)
     i32.const 1
-    i64.extend_i32_s
     else
     local.get $rem
     local.get $half
     i64.eq
-    if (result i64)
+    if (result i32)
     local.get $sticky
     i32.eqz
     i32.eqz
     i32.const 0
     i32.ne
-    if (result i64)
+    if (result i32)
     i32.const 1
-    i64.extend_i32_s
     else
     local.get $kept
     i32.const 1
     i64.extend_i32_s
     i64.and
-    end
-    else
-    i32.const 0
-    i64.extend_i32_s
-    end
-    end
     i32.const 0
     i64.extend_i32_u
     i64.ne
+    end
+    else
+    i32.const 0
+    end
+    end
     if
     local.get $kept
     i32.const 1

@@ -2803,6 +2803,25 @@ static bool acode_func_ref(node_t *pan)
   return false;
 }
 
+/* check if code is known to produce 0 or 1 (comparison or 0/1 constant) */
+static bool acode_bool01(node_t *pan)
+{
+  while (pan->nt == NT_ACODE && icblen(&pan->data) > 0) {
+    size_t n = icblen(&pan->data); inscode_t *pic = icbref(&pan->data, n-1);
+    if (pic->in == IN_PLACEHOLDER) {
+      /* last placeholder stands for the last spliced-in child */
+      if (ndlen(pan) < 2) return false;
+      pan = ndref(pan, ndlen(pan)-1);
+      continue;
+    }
+    if (pic->in >= IN_I32_EQZ && pic->in <= IN_F64_GE) return true;
+    if (pic->in == IN_I32_CONST && n == 1 && ndlen(pan) == 1)
+      return pic->arg.i == 0 || pic->arg.i == 1;
+    return false;
+  }
+  return false;
+}
+
 /* check if this node is a var get; returns 0 or instruction code */
 static int acode_rval_get(node_t *pan)
 {
@@ -2948,10 +2967,10 @@ static node_t *compile_binary(node_t *prn, node_t *pan1, tt_t op, node_t *pan2)
 {
   node_t *patn1 = acode_type(pan1), *patn2 = acode_type(pan2); 
   ts_t ts1 = patn1->ts, ts2 = patn2->ts;
-  if (((ts1 == TS_ENUM && ts2 == TS_ENUM && 
+  /* enums behave like ints, but values of two different named enums don't mix */
+  if ((ts1 == TS_ENUM && ts2 == TS_ENUM &&
         (patn1->name == 0 || patn2->name == 0 || patn1->name == patn2->name)) ||
-       (ts1 == TS_ENUM && ts_numerical(ts2)) || (ts_numerical(ts1) && ts2 == TS_ENUM))
-      && op >= TT_LT && op <= TT_NE) {
+      (ts1 == TS_ENUM && ts2 != TS_ENUM) || (ts1 != TS_ENUM && ts2 == TS_ENUM)) {
     if (ts1 == TS_ENUM) ts1 = TS_INT;
     if (ts2 == TS_ENUM) ts2 = TS_INT;
   }
@@ -3007,11 +3026,27 @@ static node_t *compile_binary(node_t *prn, node_t *pan1, tt_t op, node_t *pan2)
   return NULL; /* won't happen */
 }
 
+/* check if code is (x ? y : z) != 0 with i32 x ? y : z, e.g. 0/1 result of && or || */
+static bool acode_cond_ne0(node_t *pan)
+{
+  numval_t *pnv; node_t *pxn; instr_t in;
+  if (pan->nt != NT_ACODE || ndlen(pan) != 3 || icblen(&pan->data) != 3) return false;
+  if (icbref(&pan->data, 0)->in != IN_PLACEHOLDER || icbref(&pan->data, 1)->in != IN_PLACEHOLDER) return false;
+  if (icbref(&pan->data, 2)->in != IN_I32_NE) return false;
+  if (acode_const(ndref(pan, 2), &pnv) != TS_INT || pnv->i != 0) return false;
+  pxn = ndref(pan, 1);
+  if (pxn->nt != NT_ACODE || icblen(&pxn->data) == 0) return false;
+  in = icbref(&pxn->data, icblen(&pxn->data)-1)->in;
+  return in == IN_SELECT || in == IN_END;
+}
+
 /* compile regular unary operator expressions (! ~ + -) */
 static node_t *compile_unary(node_t *prn, tt_t op, node_t *pan)
 {
   node_t *pcn = npnewcode(prn), *patn = acode_type(pan); 
   ts_t ts = patn->ts; numval_t v;
+  if (ts == TS_ENUM) ts = TS_INT; /* enums behave like ints */
+  if (op == TT_NOT && acode_cond_ne0(pan)) lift_arg1(pan); /* !((x ? y : z) != 0) => !(x ? y : z) */
   if (ts_numerical(ts)) {
     ts_t rts = ts_integral_promote(ts); 
     ndsettype(ndnewbk(pcn), (op == TT_NOT) ? TS_INT : rts);
@@ -3057,6 +3092,8 @@ node_t *compile_booltest(node_t *prn, node_t *pan)
     if (patn->ts == TS_PTR) pan = compile_cast(prn, acode_type(pzn), pan);
     return compile_binary(prn, pan, TT_NE, pzn);
   } 
+  /* (x ? y : z) != 0 => x ? y : z: any nonzero i32 is true here */
+  if (acode_cond_ne0(pan)) lift_arg1(pan);
   /* else good as-is */
   return pan;
 }
@@ -3822,11 +3859,20 @@ static node_t *expr_compile(node_t *pn, buf_t *prib, const node_t *ret)
       node_t *pan1 = expr_compile(ndcref(pn, 0), prib, NULL);
       node_t *pan2 = expr_compile(ndcref(pn, 1), prib, NULL);
       switch (pn->op) {
-        case TT_AND_AND: {
-          pcn = compile_cond(pn, pan1, pan2, compile_numlit(pn, TS_INT, (v.i = 0, &v)));
-        } break;
-        case TT_OR_OR: {
-          pcn = compile_cond(pn, pan1, compile_numlit(pn, TS_INT, (v.i = 1, &v)), pan2);
+        case TT_AND_AND: case TT_OR_OR: {
+          /* x && y => (x ? y : 0) != 0;  x || y => (x ? 1 : y) != 0;
+           * C requires 0/1; != 0 is omitted when y is known to be 0/1 */
+          bool b01 = acode_type(pan2)->ts == TS_BOOL; /* bool is 0/1 already */
+          if (!b01) {
+            pan2 = compile_booltest(pn, pan2); /* non-i32 y => y != 0 */
+            b01 = acode_bool01(pan2);
+          }
+          if (pn->op == TT_AND_AND)
+            pcn = compile_cond(pn, pan1, pan2, compile_numlit(pn, TS_INT, (v.i = 0, &v)));
+          else
+            pcn = compile_cond(pn, pan1, compile_numlit(pn, TS_INT, (v.i = 1, &v)), pan2);
+          /* != 0 outside, not on y: one compare, and a simple y keeps SELECT */
+          if (!b01) pcn = compile_binary(pn, pcn, TT_NE, compile_numlit(pn, acode_type(pcn)->ts, (v.i = 0, &v)));
         } break;
         default: { /* normal binary */
           pcn = compile_binary(pn, pan1, pn->op, pan2);

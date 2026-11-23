@@ -400,6 +400,8 @@
     else
     i32.const 0
     end
+    i32.const 0
+    i32.ne
     local.set $leap
     local.get $remdays
     i32.const 31

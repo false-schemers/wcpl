@@ -11,6 +11,8 @@
     local.get $c
     call $ctype:isdigit
     end
+    i32.const 0
+    i32.ne
     return
   )
   (func $ctype:isalpha (export "isalpha")
@@ -23,6 +25,8 @@
     local.get $c
     call $ctype:isupper
     end
+    i32.const 0
+    i32.ne
     return
   )
   (func $ctype:iscntrl (export "iscntrl")
@@ -176,6 +180,8 @@
     i32.const 0
     end
     end
+    i32.const 0
+    i32.ne
     return
   )
   (func $ctype:isascii (export "isascii")
