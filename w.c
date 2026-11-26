@@ -3336,13 +3336,21 @@ static void parse_ins(sws_t *pw, inscode_t *pic, icbuf_t *pexb)
           pic->id = parse_id(pw); /* optional label */
         }
       } break;
-      case INSIG_BT: { /* if/block/loop */
-        if (in == IN_IF) {
-          pic->arg.u = parse_blocktype(pw);
-        } else { 
-          pic->id = parse_id(pw);
-          pic->arg.u = BT_VOID;
-        }
+      case INSIG_BT: { /* block/loop/if: a label, then a result type */
+        /* All three take a result type here, so that a module written by
+         * another tool can say what a block or a loop leaves on the stack.
+         * WCPL's own front end never needs it -- a block and a loop both
+         * come from C statements, which have no value -- but the rest of
+         * the path already carries it: the type travels in arg.u, the wat
+         * writer prints the `(result t)' back, and the wasm writer emits
+         * the one byte a blocktype takes.
+         *
+         * A loop still wants its label, since nothing could branch back to
+         * one without it; a block is reachable by falling out of it and may
+         * go without.  An `if' takes one for the same reason the writer has
+         * always printed one. */
+        if (in == IN_LOOP || peekt(pw) == WT_ID) pic->id = parse_id(pw);
+        pic->arg.u = parse_blocktype(pw);
       } break;
       case INSIG_L: case INSIG_XL: { /* br/brif, local.xxx */
         pic->id = parse_id(pw);

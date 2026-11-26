@@ -148,6 +148,14 @@ WCPL uses extended WAT format with symbolic identifiers in place of indices as
 object file format using symbolic names for relocatable constants. This way,
 no custom sections or relocation tables are needed.
 
+WCPL itself never emits a `block` or a `loop` that leaves a value on the stack,
+since in C both come from statements, but the object format accepts one from
+another tool: `block` and `loop` take an optional `(result t)` after the label,
+as `if` already does, and the type is carried through linking into the WASM or
+WAT output. A `loop` still needs its label, since nothing could branch back to
+one without it; a `block` may go without. Only a single result is supported,
+not the several that WASM itself allows.
+
 
 ## Compilation and linking
 

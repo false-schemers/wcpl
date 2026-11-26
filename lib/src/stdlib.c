@@ -277,7 +277,12 @@ static double strtod_dec(const char *s, const char *pc, bool neg, char **endp)
 {
   uint64_t d1 = 0, d2 = 0; int n1 = 0, n2 = 0, dexp = 0, ex = 0, k = 0, m;
   bool seendig = false, seendot = false, eneg = false, sticky = false;
-  dd_t x; double r;
+  /* r starts at zero because the early returns below -- an all-zero
+   * mantissa, and an exponent too small for any subnormal -- answer it
+   * without computing anything.  A wasm local would read as zero anyway,
+   * but only because the spec initializes locals, and that is not a
+   * promise C makes. */
+  dd_t x; double r = 0.0;
   for (;; ++pc) {
     int c = *pc;
     if (c == '.' && !seendot) { seendot = true; continue; }
@@ -336,7 +341,9 @@ static double strtod_hex(const char *s, const char *pc, bool neg, char **endp)
 {
   uint64_t m = 0, kept, rem, half, bits; int nd = 0, bexp = 0, ex = 0, drop, e;
   bool seendig = false, seendot = false, eneg = false, sticky = false;
-  union { uint64_t u; double d; } c; double r;
+  /* r starts at zero, as in strtod_dec above: a zero mantissa and an
+   * exponent below the subnormal range return it uncomputed */
+  union { uint64_t u; double d; } c; double r = 0.0;
   for (;; ++pc) {
     int ch = *pc, v;
     if (ch == '.' && !seendot) { seendot = true; continue; }

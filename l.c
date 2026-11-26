@@ -1713,7 +1713,7 @@ void eoptreset(void)
 
 int egetopt(int argc, char* argv[], const char* opts)
 {
-  int c; char *popt;
+  int c; const char *popt;
 
   /* set the name of the program if it isn't done already */
   if (progname() == NULL) setprogname(argv[0]);
